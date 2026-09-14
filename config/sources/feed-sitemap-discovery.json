@@ -1,0 +1,472 @@
+[
+  {
+    "source_id": "1c638686-e35b-53e9-959c-dc122aa9079f",
+    "feed_checks": [
+      {
+        "url": "https://www.twz.com/feed",
+        "status": 200,
+        "content_type": "application/rss+xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "bb1112e478376dce01d2a9816f52b265046235241759d8bea11f37a9d97909fe",
+        "bytes_read": 623035
+      },
+      {
+        "url": "https://www.twz.com/sitemap_index.xml",
+        "status": 200,
+        "content_type": "text/xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "8e347df92f79134a71609e3373c9a1f981486fff063d39e348e0e844588e9eb5",
+        "bytes_read": 2212
+      },
+      {
+        "url": "https://www.twz.com/sitemap-news.xml",
+        "status": 200,
+        "content_type": "application/xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "e881d37c90f796d2a963a082fe48edc3fdbead3b2e08eb02295175dfb2d3bb46",
+        "bytes_read": 569
+      }
+    ],
+    "homepage_status": 200,
+    "robots_status": 200,
+    "discovery_status": "completed"
+  },
+  {
+    "source_id": "66f1f638-2c67-50cc-bef1-d61a9271e911",
+    "feed_checks": [
+      {
+        "url": "https://www.defensenews.com/arc/outboundfeeds/sitemap-index/?outputType=xml",
+        "status": 200,
+        "content_type": "application/xml; charset=utf-8",
+        "xml_valid": true,
+        "sample_hash": "b85b6be5e15e735a0e68bb6c82cf53214de9c1675b6b7a53577c12b16089310e",
+        "bytes_read": 790
+      },
+      {
+        "url": "https://www.defensenews.com/arc/outboundfeeds/sitemap-news/?outputType=xml",
+        "status": 200,
+        "content_type": "application/xml; charset=utf-8",
+        "xml_valid": true,
+        "sample_hash": "8cc7dc97e60184e3c4fa3a5fa82ab610ccdab6055e6d889f06f8f79b1fd61847",
+        "bytes_read": 24785
+      }
+    ],
+    "homepage_status": 200,
+    "robots_status": 200,
+    "discovery_status": "completed"
+  },
+  {
+    "source_id": "63f8c4c8-70d9-557b-9ebd-6e3893bb827b",
+    "feed_checks": [],
+    "homepage_status": 200,
+    "robots_status": 200,
+    "discovery_status": "completed"
+  },
+  {
+    "source_id": "e4180227-092a-579e-b192-015a969d24f3",
+    "feed_checks": [
+      {
+        "url": "https://breakingdefense.com/feed/",
+        "status": 200,
+        "content_type": "application/rss+xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "beb85b8b7fe62ccd2ea070bede57f67d4d5dd9cf66d597617b44c347fdddbfbb",
+        "bytes_read": 36145
+      },
+      {
+        "url": "https://breakingdefense.com/comments/feed/",
+        "status": 200,
+        "content_type": "application/rss+xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "4794dde8510f865696e67b629edeeb9651ffafb3e471154261e6b62cf0539782",
+        "bytes_read": 781
+      }
+    ],
+    "homepage_status": 200,
+    "robots_status": 200,
+    "discovery_status": "completed"
+  },
+  {
+    "source_id": "7a3d79c1-1413-52e0-bead-8d86b749504d",
+    "feed_checks": [
+      {
+        "url": "https://thedefensepost.com/sitemap_index.xml",
+        "status": 200,
+        "content_type": "text/xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "86139a697748ea44ade4c45450968f4b90dcb5b1f8138a91a7bb60a043c6467e",
+        "bytes_read": 5058
+      }
+    ],
+    "homepage_status": 200,
+    "robots_status": 200,
+    "discovery_status": "completed"
+  },
+  {
+    "source_id": "3b2e730d-4dc4-5d96-b999-0ee61c188f50",
+    "feed_checks": [
+      {
+        "url": "https://www.brookings.edu/sitemap_index.xml",
+        "status": 200,
+        "content_type": "text/xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "aa1992103c6b38241b3a13dbd0e73830c06fdbe6f63d03b83b0cd73a41ad8e11",
+        "bytes_read": 14302
+      }
+    ],
+    "homepage_status": 200,
+    "robots_status": 200,
+    "discovery_status": "completed"
+  },
+  {
+    "source_id": "94221941-1522-50c8-8d7f-d643562bc792",
+    "feed_checks": [
+      {
+        "url": "https://www.armyrecognition.com/sitemapindex_xml.xml",
+        "status": 200,
+        "content_type": "application/xml",
+        "xml_valid": true,
+        "sample_hash": "cdb460160dbae29341c025099a669c225fbdd360951f73611f6b172f4e340112",
+        "bytes_read": 375
+      }
+    ],
+    "homepage_status": 200,
+    "robots_status": 200,
+    "discovery_status": "completed"
+  },
+  {
+    "source_id": "3d54f8e0-fb13-548a-96e4-06186515f114",
+    "feed_checks": [
+      {
+        "url": "https://rusi.org/rss/upcoming-events.xml",
+        "status": 200,
+        "content_type": "application/xml",
+        "xml_valid": true,
+        "sample_hash": "374f3541c2484626725ee875d59b55462ed914b5d2afd47ffaecf4d1c5b77c71",
+        "bytes_read": 466
+      },
+      {
+        "url": "https://rusi.org/rss/latest-commentary.xml",
+        "status": 200,
+        "content_type": "application/xml",
+        "xml_valid": true,
+        "sample_hash": "ec77e19111da428a7512bc6b698b524b5131ecac5fef2bc3253cedf3e11ecc88",
+        "bytes_read": 15052
+      },
+      {
+        "url": "https://rusi.org/rss/latest-publications.xml",
+        "status": 200,
+        "content_type": "application/xml",
+        "xml_valid": true,
+        "sample_hash": "bcc873574c62e87ca1c08d00c6f3e3920073c469118575389df9c672b6742243",
+        "bytes_read": 14565
+      },
+      {
+        "url": "https://rusi.org/rss/whats-new.xml",
+        "status": 200,
+        "content_type": "application/xml",
+        "xml_valid": true,
+        "sample_hash": "d304275e808046eb3097f9663a6846f098e3a93921b7378dac1a06a464528df5",
+        "bytes_read": 34849
+      },
+      {
+        "url": "https://www.rusi.org/sitemap-index.xml",
+        "status": 200,
+        "content_type": "application/xml",
+        "xml_valid": true,
+        "sample_hash": "213b9d93529e33c6f2446221002a921fc7beef8f2e56524b17c5785f30386faa",
+        "bytes_read": 183
+      }
+    ],
+    "homepage_status": 200,
+    "robots_status": 200,
+    "discovery_status": "completed"
+  },
+  {
+    "source_id": "d512c8e2-4d1f-542b-aad5-364dde147263",
+    "feed_checks": [
+      {
+        "url": "https://www.janes.com/sitemap/sitemap-index.xml",
+        "status": 200,
+        "content_type": "text/xml",
+        "xml_valid": true,
+        "sample_hash": "e21cb122e43df8ce23a6c654f05689b726c46a5c2a01cb86e5cca1ad3e758d88",
+        "bytes_read": 257
+      }
+    ],
+    "homepage_status": 200,
+    "robots_status": 200,
+    "discovery_status": "completed"
+  },
+  {
+    "source_id": "02125465-dc6c-5355-823c-989b485ed491",
+    "feed_checks": [
+      {
+        "url": "https://jcfa.org/feed/",
+        "status": 200,
+        "content_type": "application/rss+xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "773a68847b50935de25f41853f6e6bbfdc45b004193f45be9528b9319f4f8b70",
+        "bytes_read": 172509
+      },
+      {
+        "url": "https://jcfa.org/comments/feed/",
+        "status": 200,
+        "content_type": "application/rss+xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "409cd256be16d4026f80a1951094f0743737a232274db9ea8694dee467889a0c",
+        "bytes_read": 803
+      },
+      {
+        "url": "https://jcfa.org/wp-sitemap.xml",
+        "status": 200,
+        "content_type": "application/xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "e9d0d7f9b13eb3e620856c5f736a191a32bbcd76acbcd886e5c45b3a590990ae",
+        "bytes_read": 1559
+      }
+    ],
+    "homepage_status": 200,
+    "robots_status": 200,
+    "discovery_status": "completed"
+  },
+  {
+    "source_id": "854ac2a3-ba0c-5f95-a62b-6d296294960a",
+    "feed_checks": [
+      {
+        "url": "https://defence-blog.com/feed/",
+        "status": 200,
+        "content_type": "application/rss+xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "1f80cfe7b1c01e2258614ee1520b3cc9c2431a3f36475ad2923f958fde2d4485",
+        "bytes_read": 21369
+      },
+      {
+        "url": "https://defence-blog.com/comments/feed/",
+        "status": 200,
+        "content_type": "application/rss+xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "4ffa9fddbc8314eb1c1bb213a8fdeda0c2b1da12e903ce3c0df34ab7fe704899",
+        "bytes_read": 772
+      },
+      {
+        "url": "https://defence-blog.com/wp-sitemap.xml",
+        "status": 200,
+        "content_type": "application/xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "a91aebb00af6f3b2998118fae6c3f8095afdb944fbddbd8e9991afbc0a161a94",
+        "bytes_read": 1670
+      }
+    ],
+    "homepage_status": 200,
+    "robots_status": 200,
+    "discovery_status": "completed"
+  },
+  {
+    "source_id": "07edfccb-57c6-5dc0-8ea3-7951798ec9e8",
+    "feed_checks": [
+      {
+        "url": "https://mwi.westpoint.edu/feed/",
+        "status": 200,
+        "content_type": "application/rss+xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "f969e1abf98e129644eb858546706240832fd5f1f56f2d408120b2f1550b7f21",
+        "bytes_read": 6069
+      },
+      {
+        "url": "https://mwi.westpoint.edu/comments/feed/",
+        "status": 200,
+        "content_type": "application/rss+xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "39c277e1fba95c5b1fcb2ed9efe9d052091224af6a90db5290161029270e9c18",
+        "bytes_read": 3165
+      },
+      {
+        "url": "https://mwi.westpoint.edu/sitemap_index.xml",
+        "status": 200,
+        "content_type": "text/xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "38afd988fc6593a3692dc5d66c972a993efb79fac4bcc3dc847291b0e1c0904d",
+        "bytes_read": 2095
+      }
+    ],
+    "homepage_status": 200,
+    "robots_status": 200,
+    "discovery_status": "completed"
+  },
+  {
+    "source_id": "1623b472-c934-549c-bc04-b4f80a695d17",
+    "feed_checks": [],
+    "homepage_status": 200,
+    "robots_status": 200,
+    "discovery_status": "completed"
+  },
+  {
+    "source_id": "70e9a720-f949-5641-a178-fb439bad0e5b",
+    "feed_checks": [
+      {
+        "url": "https://news.usni.org/feed",
+        "status": 200,
+        "content_type": "application/rss+xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "c62933e3a790c9ea1c75fcc3465424bcf5c048a74e899e63ca467fb870e3d1e8",
+        "bytes_read": 363292
+      }
+    ],
+    "homepage_status": 403,
+    "robots_status": 200,
+    "discovery_status": "completed"
+  },
+  {
+    "source_id": "a7040487-3b56-54d0-aa0a-a86ee5eac297",
+    "feed_checks": [
+      {
+        "url": "https://www.edrmagazine.eu/feed",
+        "status": 200,
+        "content_type": "application/rss+xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "e21174504477eb00bd72c92fae62eb1ac090dfd33d1163a50ce514ab62c80fab",
+        "bytes_read": 70123
+      },
+      {
+        "url": "https://www.edrmagazine.eu/comments/feed",
+        "status": 200,
+        "content_type": "application/rss+xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "2f3be3500687c299dbad503ad5ecda73a3f38dbdb6e47a57b67059b8108ab061",
+        "bytes_read": 742
+      },
+      {
+        "url": "https://www.edrmagazine.eu/sitemap_index.xml",
+        "status": 200,
+        "content_type": "text/xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "86eb15ead400f7df2de600f2a3a42383b72bf013e143a6ee41ad9d375fdb58df",
+        "bytes_read": 3808
+      }
+    ],
+    "homepage_status": 200,
+    "robots_status": 200,
+    "discovery_status": "completed"
+  },
+  {
+    "source_id": "c1781f8f-c222-5fc4-99a9-5fcc73e5f537",
+    "feed_checks": [
+      {
+        "url": "https://www.airandspaceforces.com/feed/",
+        "status": 200,
+        "content_type": "application/rss+xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "f0bf68f898a882822ba9ae5f9a6e384eea31d3126f0eda8f7aaf2f0163e45dd2",
+        "bytes_read": 170463
+      },
+      {
+        "url": "https://www.airandspaceforces.com/sitemap_index.xml",
+        "status": 200,
+        "content_type": "text/xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "1bc46fd6fed305057b23f981874a8b51f33ba3a5dae262bef5fe75951c5673d0",
+        "bytes_read": 13578
+      }
+    ],
+    "homepage_status": 200,
+    "robots_status": 200,
+    "discovery_status": "completed"
+  },
+  {
+    "source_id": "6efbeadb-ebe5-55da-9c78-f7f51a1a4860",
+    "feed_checks": [
+      {
+        "url": "https://www.missiledefenseadvocacy.org/feed/",
+        "status": 200,
+        "content_type": "application/rss+xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "8cce3d8233fb876ac1745469672eeb2142d6623562b72b122adc05c2bc6ee760",
+        "bytes_read": 37731
+      },
+      {
+        "url": "https://www.missiledefenseadvocacy.org/comments/feed/",
+        "status": 200,
+        "content_type": "application/rss+xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "9a1f95db16cfbe751c166dab20ad386ea017a1b28fabf3f22ba3edd9359befb9",
+        "bytes_read": 9243
+      },
+      {
+        "url": "https://www.missiledefenseadvocacy.org/sitemap_index.xml",
+        "status": 200,
+        "content_type": "text/xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "f4cae4a779297007285b3c3e140246351e3cd4457fe7a5e4d486748ce9be850b",
+        "bytes_read": 4883
+      }
+    ],
+    "homepage_status": 200,
+    "robots_status": 200,
+    "discovery_status": "completed"
+  },
+  {
+    "source_id": "516b4133-492d-5c4d-b021-b1113c54b756",
+    "feed_checks": [
+      {
+        "url": "https://defence-industry.eu/feed/",
+        "status": 200,
+        "content_type": "application/rss+xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "98fbcd12c974dd49f2a85f1919db0ad258a6405efb642c43ddd8b132b2b3bc48",
+        "bytes_read": 86512
+      }
+    ],
+    "homepage_status": 200,
+    "robots_status": 200,
+    "discovery_status": "completed"
+  },
+  {
+    "source_id": "3bef586c-ca0d-5ee7-a837-beb5f31f510a",
+    "feed_checks": [
+      {
+        "url": "https://www.jfeed.com/feed",
+        "status": 200,
+        "content_type": "application/rss+xml; charset=UTF-8",
+        "xml_valid": true,
+        "sample_hash": "868cebbcc825bd4be2aaa68dbee3e2e5b8c481427ef0afb42d4ba628f252eabc",
+        "bytes_read": 169954
+      },
+      {
+        "url": "https://www.jfeed.com/sitemap.xml",
+        "status": 200,
+        "content_type": "application/xml; charset=utf-8",
+        "xml_valid": true,
+        "sample_hash": "d11236cf0f61edad4c07dcbb11975cb005bae0417dec3225d162427e766150f1",
+        "bytes_read": 13261
+      },
+      {
+        "url": "https://www.jfeed.com/sitemap-news.xml",
+        "status": 200,
+        "content_type": "application/xml; charset=utf-8",
+        "xml_valid": true,
+        "sample_hash": "cdc3f47d0b4b4af3d9c1368610d9b1df5a1c166058979435956597572002335f",
+        "bytes_read": 31220
+      },
+      {
+        "url": "https://www.jfeed.com/sitemap/scoop-news-fresh",
+        "status": 200,
+        "content_type": "application/xml; charset=utf-8",
+        "xml_valid": true,
+        "sample_hash": "99803fac9e35f2b5a13cad57b1fdcfbde80ada4514cfbb539e0021dc17eb934d",
+        "bytes_read": 27163
+      },
+      {
+        "url": "https://www.jfeed.com/sitemap/videos",
+        "status": 200,
+        "content_type": "application/xml; charset=utf-8",
+        "xml_valid": true,
+        "sample_hash": "d055a171622c7500a7dbc2d6aa34d8cb2fdc277c386205b17a741a5a849e78cb",
+        "bytes_read": 119
+      }
+    ],
+    "homepage_status": 200,
+    "robots_status": 200,
+    "discovery_status": "completed"
+  }
+]

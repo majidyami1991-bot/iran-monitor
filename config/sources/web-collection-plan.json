@@ -1,0 +1,173 @@
+[
+  {
+    "source_id": "1c638686-e35b-53e9-959c-dc122aa9079f",
+    "implementation_tier": "TIER_1_FEED",
+    "recommended_method": "rss",
+    "recommended_poll_interval_minutes": 30,
+    "requires_custom_parser": false,
+    "requires_javascript": false,
+    "compliance_notes": "disabled; planning only"
+  },
+  {
+    "source_id": "66f1f638-2c67-50cc-bef1-d61a9271e911",
+    "implementation_tier": "TIER_1_FEED",
+    "recommended_method": "rss",
+    "recommended_poll_interval_minutes": 30,
+    "requires_custom_parser": false,
+    "requires_javascript": false,
+    "compliance_notes": "disabled; planning only"
+  },
+  {
+    "source_id": "63f8c4c8-70d9-557b-9ebd-6e3893bb827b",
+    "implementation_tier": "TIER_3_HTML",
+    "recommended_method": "html_listing_collector_required",
+    "recommended_poll_interval_minutes": 30,
+    "requires_custom_parser": false,
+    "requires_javascript": false,
+    "compliance_notes": "disabled; planning only"
+  },
+  {
+    "source_id": "e4180227-092a-579e-b192-015a969d24f3",
+    "implementation_tier": "TIER_1_FEED",
+    "recommended_method": "rss",
+    "recommended_poll_interval_minutes": 30,
+    "requires_custom_parser": false,
+    "requires_javascript": false,
+    "compliance_notes": "disabled; planning only"
+  },
+  {
+    "source_id": "7a3d79c1-1413-52e0-bead-8d86b749504d",
+    "implementation_tier": "TIER_2_SITEMAP",
+    "recommended_method": "rss",
+    "recommended_poll_interval_minutes": 30,
+    "requires_custom_parser": false,
+    "requires_javascript": false,
+    "compliance_notes": "disabled; planning only"
+  },
+  {
+    "source_id": "3b2e730d-4dc4-5d96-b999-0ee61c188f50",
+    "implementation_tier": "TIER_2_SITEMAP",
+    "recommended_method": "rss",
+    "recommended_poll_interval_minutes": 30,
+    "requires_custom_parser": false,
+    "requires_javascript": false,
+    "compliance_notes": "disabled; planning only"
+  },
+  {
+    "source_id": "94221941-1522-50c8-8d7f-d643562bc792",
+    "implementation_tier": "TIER_2_SITEMAP",
+    "recommended_method": "rss",
+    "recommended_poll_interval_minutes": 30,
+    "requires_custom_parser": false,
+    "requires_javascript": false,
+    "compliance_notes": "disabled; planning only"
+  },
+  {
+    "source_id": "3d54f8e0-fb13-548a-96e4-06186515f114",
+    "implementation_tier": "TIER_2_SITEMAP",
+    "recommended_method": "rss",
+    "recommended_poll_interval_minutes": 30,
+    "requires_custom_parser": false,
+    "requires_javascript": false,
+    "compliance_notes": "disabled; planning only"
+  },
+  {
+    "source_id": "d512c8e2-4d1f-542b-aad5-364dde147263",
+    "implementation_tier": "TIER_2_SITEMAP",
+    "recommended_method": "rss",
+    "recommended_poll_interval_minutes": 30,
+    "requires_custom_parser": false,
+    "requires_javascript": false,
+    "compliance_notes": "disabled; planning only"
+  },
+  {
+    "source_id": "02125465-dc6c-5355-823c-989b485ed491",
+    "implementation_tier": "TIER_1_FEED",
+    "recommended_method": "rss",
+    "recommended_poll_interval_minutes": 30,
+    "requires_custom_parser": false,
+    "requires_javascript": false,
+    "compliance_notes": "disabled; planning only"
+  },
+  {
+    "source_id": "854ac2a3-ba0c-5f95-a62b-6d296294960a",
+    "implementation_tier": "TIER_1_FEED",
+    "recommended_method": "rss",
+    "recommended_poll_interval_minutes": 30,
+    "requires_custom_parser": false,
+    "requires_javascript": false,
+    "compliance_notes": "disabled; planning only"
+  },
+  {
+    "source_id": "07edfccb-57c6-5dc0-8ea3-7951798ec9e8",
+    "implementation_tier": "TIER_1_FEED",
+    "recommended_method": "rss",
+    "recommended_poll_interval_minutes": 30,
+    "requires_custom_parser": false,
+    "requires_javascript": false,
+    "compliance_notes": "disabled; planning only"
+  },
+  {
+    "source_id": "1623b472-c934-549c-bc04-b4f80a695d17",
+    "implementation_tier": "TIER_3_HTML",
+    "recommended_method": "html_listing_collector_required",
+    "recommended_poll_interval_minutes": 30,
+    "requires_custom_parser": false,
+    "requires_javascript": false,
+    "compliance_notes": "disabled; planning only"
+  },
+  {
+    "source_id": "70e9a720-f949-5641-a178-fb439bad0e5b",
+    "implementation_tier": "TIER_1_FEED",
+    "recommended_method": "rss",
+    "recommended_poll_interval_minutes": 30,
+    "requires_custom_parser": false,
+    "requires_javascript": false,
+    "compliance_notes": "disabled; planning only"
+  },
+  {
+    "source_id": "a7040487-3b56-54d0-aa0a-a86ee5eac297",
+    "implementation_tier": "TIER_1_FEED",
+    "recommended_method": "rss",
+    "recommended_poll_interval_minutes": 30,
+    "requires_custom_parser": false,
+    "requires_javascript": false,
+    "compliance_notes": "disabled; planning only"
+  },
+  {
+    "source_id": "c1781f8f-c222-5fc4-99a9-5fcc73e5f537",
+    "implementation_tier": "TIER_1_FEED",
+    "recommended_method": "rss",
+    "recommended_poll_interval_minutes": 30,
+    "requires_custom_parser": false,
+    "requires_javascript": false,
+    "compliance_notes": "disabled; planning only"
+  },
+  {
+    "source_id": "6efbeadb-ebe5-55da-9c78-f7f51a1a4860",
+    "implementation_tier": "TIER_1_FEED",
+    "recommended_method": "rss",
+    "recommended_poll_interval_minutes": 30,
+    "requires_custom_parser": false,
+    "requires_javascript": false,
+    "compliance_notes": "disabled; planning only"
+  },
+  {
+    "source_id": "516b4133-492d-5c4d-b021-b1113c54b756",
+    "implementation_tier": "TIER_1_FEED",
+    "recommended_method": "rss",
+    "recommended_poll_interval_minutes": 30,
+    "requires_custom_parser": false,
+    "requires_javascript": false,
+    "compliance_notes": "disabled; planning only"
+  },
+  {
+    "source_id": "3bef586c-ca0d-5ee7-a837-beb5f31f510a",
+    "implementation_tier": "TIER_1_FEED",
+    "recommended_method": "rss",
+    "recommended_poll_interval_minutes": 30,
+    "requires_custom_parser": false,
+    "requires_javascript": false,
+    "compliance_notes": "disabled; planning only"
+  }
+]
