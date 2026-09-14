@@ -1,5 +1,5 @@
 import xml.etree.ElementTree as ET
-from ..core import normalize_url,stable_item_id
+from .core import normalize_url,stable_item_id
 def parse_bytes(data,source_id='fixture',category='news'):
  root=ET.fromstring(data); out=[]
  for n in root.findall('.//item')+root.findall('{*}entry'):
