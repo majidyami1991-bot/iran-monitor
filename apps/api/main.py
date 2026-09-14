@@ -36,3 +36,21 @@ def topics():
 @app.get('/',response_class=HTMLResponse)
 def dashboard(): return HTMLResponse('''<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ایران مانیتور</title><style>@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;700&display=swap');*{box-sizing:border-box}body{margin:0;background:#071426;color:#e8f1ff;font-family:Vazirmatn,Tahoma,sans-serif}header{padding:22px 5%;border-bottom:1px solid #234666;background:#0b1d34}main{max-width:1300px;margin:auto;padding:24px 5%}.sub{color:#9db4cc}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}.card{background:#10243d;border:1px solid #285078;border-radius:14px;padding:18px;margin:12px 0}.num{font-size:2rem;color:#6dd6ff;font-weight:700}.toolbar{display:flex;gap:10px;flex-wrap:wrap}input,select,button{background:#0b1d34;color:#e8f1ff;border:1px solid #386184;border-radius:8px;padding:10px;font:inherit}button{cursor:pointer;background:#155b83}.news h3{margin:0 0 8px}.muted{color:#9db4cc;font-size:.9rem}@media(max-width:500px){main{padding:14px}.card{padding:14px}}
 </style></head><body><header><h1>ایران مانیتور</h1><div class=sub>پایش هوشمند اخبار و منابع تحلیلی</div></header><main><section id=stats class=grid></section><section class=card><div class=toolbar><input id=search placeholder="جست‌وجو در عنوان و خلاصه"><select id=sort><option value=newest>جدیدترین</option><option value=oldest>قدیمی‌ترین</option></select><button onclick="load()">اعمال فیلتر</button><button onclick="search.value='';load()">پاک‌کردن</button></div><p id=count class=muted></p></section><section id=news class=news></section></main><script>async function load(){let p=new URLSearchParams({page_size:20,sort:sort.value});if(search.value)p.set('search',search.value);let [s,d]=await Promise.all([fetch('/api/v1/stats/overview').then(x=>x.json()),fetch('/api/v1/items?'+p).then(x=>x.json())]);stats.innerHTML=[['کل اخبار',s.total_items],['منابع',s.sources],['provenance کامل',s.provenance_complete]].map(x=>`<div class=card><div class=num>${x[1]}</div><div>${x[0]}</div></div>`).join('');count.textContent=`${d.total} نتیجه`;news.innerHTML=d.items.map(x=>`<article class=card><h3>${x.title||'بدون عنوان'}</h3><div class=muted>${x.publisher||''} · ${x.published_at||''}</div><p>${x.summary||''}</p><a href="${x.canonical_url}" target=_blank rel="noopener noreferrer">مشاهده منبع اصلی</a></article>`).join('')||'<div class=card>نتیجه‌ای یافت نشد</div>'}load()</script></body></html>''')
+# append supplemental routes
+@app.get('/api/v1/stats/timeline')
+def stats_timeline(group_by:str='day'):
+ if group_by not in ('hour','day','week'): group_by='day'
+ unit={'hour':'hour','day':'day','week':'week'}[group_by]
+ return {'group_by':group_by,'series':q(f"select date_trunc('{unit}',published_at at time zone 'UTC') bucket,count(*)::int count from news_items where published_at is not null group by 1 order by 1 desc limit 90")}
+@app.get('/api/v1/stats/sources')
+def stats_sources(): return {'sources':q('select s.name,count(n.item_id)::int count from sources s left join news_items n on n.source_id=s.source_id group by s.name order by count desc,s.name limit 10')}
+@app.get('/api/v1/stats/provenance')
+def stats_provenance(): return {'provenance':q('select coalesce(provenance_status,\'UNKNOWN\') status,count(*)::int count from news_items group by 1 order by 1')}
+@app.get('/news',response_class=HTMLResponse)
+def news_page(): return dashboard()
+@app.get('/sources',response_class=HTMLResponse)
+def sources_page(): return dashboard()
+@app.get('/analytics',response_class=HTMLResponse)
+def analytics_page(): return dashboard()
+@app.get('/about',response_class=HTMLResponse)
+def about_page(): return dashboard()
