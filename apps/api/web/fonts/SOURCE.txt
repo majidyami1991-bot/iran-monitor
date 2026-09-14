@@ -1,0 +1,7 @@
+﻿Vazirmatn 33.003 (variable WOFF2, weights 100–900)
+Official upstream: https://github.com/rastikerdar/vazirmatn
+Font: https://raw.githubusercontent.com/rastikerdar/vazirmatn/v33.003/fonts/webfonts/Vazirmatn%5Bwght%5D.woff2
+License: https://raw.githubusercontent.com/rastikerdar/vazirmatn/v33.003/OFL.txt
+Download policy: one request per file; no redirect following, no automatic retry.
+Vazirmatn.woff2 SHA256=4E3FA217D38FDAFC1FEA4414CEB58CA5E662CF0AB5FA735A8C8C20E8B42CAD92
+OFL.txt SHA256=17E355067C8284F47743A1EE3B1EF7FF684FF0601EDA357F9353B10B3016AB31

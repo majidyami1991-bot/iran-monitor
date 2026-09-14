@@ -1,6 +1,8 @@
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse
 import os, psycopg, re
+from datetime import date
+from collections import Counter
 app=FastAPI(title='Iran Monitor News API',version='0.2.0'); DSN=os.environ['DATABASE_URL']
 def q(sql,args=()):
  with psycopg.connect(DSN) as c:
@@ -13,6 +15,11 @@ def health(): return {'status':'ok','items':count('news_items'),'database':'read
 def meta(): return {'name':'Iran Monitor','version':'0.2.0','item_count':count('news_items')}
 @app.get('/api/v1/items')
 def items(search:str|None=None,source_id:str|None=None,source_type:str|None=None,date_from:str|None=None,date_to:str|None=None,provenance:str|None=None,sort:str='newest',page:int=1,page_size:int=20):
+ for value in (date_from,date_to):
+  if value:
+   try: date.fromisoformat(value)
+   except ValueError: raise HTTPException(422,'تاریخ نامعتبر است؛ قالب سال-ماه-روز را وارد کنید.')
+ if date_from and date_to and date_from>date_to: raise HTTPException(422,'تاریخ شروع باید قبل از تاریخ پایان باشد.')
  page=max(page,1); size=min(max(page_size,1),100); w=[]; a=[]
  if search: w.append('(n.title ilike %s or coalesce(n.summary,\'\') ilike %s)'); a += [f'%{search}%',f'%{search}%']
  if source_id: w.append('n.source_id=%s'); a.append(source_id)
@@ -32,7 +39,18 @@ def source_list():
 def overview(): return {'total_items':count('news_items'),'sources':count('sources'),'provenance_complete':q("select count(*)::int n from news_items where provenance_status='COMPLETE'")[0]['n']}
 @app.get('/api/v1/stats/topics')
 def topics():
- rows=q("select lower(regexp_replace(word,'[^[:alnum:]آ-ی]+','','g')) topic,count(*)::int count from (select unnest(regexp_split_to_array(coalesce(title,'')||' '||coalesce(summary,''),'\\s+')) word from news_items) x where length(word)>=4 group by 1 order by count desc,topic limit 20"); return {'topics':rows}
+ rows=q("select title,summary from news_items order by item_id limit 10000")
+ return {'topics':topic_counts(rows)}
+
+STOPWORDS=set("the and with from this that these those their they them have has had been being are was were for into onto about after before over under its our your you not but will would could should can may more most than then also first next new now all any one two three در به از با برای این آن یک را که است بود شد می های شود شده بر تا و یا اما نیز خود هر همان خواهد گفت شده‌اند سال خبر گزارش the of on at as is it be by an a us".split())
+def topic_counts(rows):
+ counts=Counter()
+ for row in rows:
+  text=((row.get('title') or '')+' '+(row.get('summary') or '')).lower().translate(str.maketrans({'ي':'ی','ك':'ک','\u200c':' '}))
+  text=re.sub(r'https?://\S+',' ',text)
+  words=re.findall(r'[^\W\d_]+',text,flags=re.UNICODE)
+  counts.update(w for w in words if len(w)>=3 and w not in STOPWORDS)
+ return [{'topic':word,'count':count} for word,count in sorted(counts.items(),key=lambda x:(-x[1],x[0]))[:20]]
 # append supplemental routes
 @app.get('/api/v1/stats/timeline')
 def stats_timeline(group_by:str='day'):
@@ -48,6 +66,8 @@ from fastapi import HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+import mimetypes
+mimetypes.add_type('font/woff2','.woff2')
 WEB=Path(__file__).parent/'web'
 app.mount('/assets', StaticFiles(directory=WEB), name='assets')
 @app.get('/api/v1/sources/{source_id}')
