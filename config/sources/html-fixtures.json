@@ -1,0 +1,12 @@
+{
+  "fixtures": [
+    {
+      "name": "minimal_article_card",
+      "html": "<article><h2><a href=\"/story\">Example</a></h2><time datetime=\"2026-01-01\">Jan 1</time></article>"
+    },
+    {
+      "name": "jsonld_fallback",
+      "html": "<script type=\"application/ld+json\">{\"@type\":\"NewsArticle\",\"headline\":\"Example\",\"url\":\"https://example.test/story\",\"datePublished\":\"2026-01-01\"}</script>"
+    }
+  ]
+}

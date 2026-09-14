@@ -1,0 +1,76 @@
+[
+  {
+    "source_id": "63f8c4c8-70d9-557b-9ebd-6e3893bb827b",
+    "hostname": "www.csis.org",
+    "listing_url": "https://www.csis.org/",
+    "robots_allowed": true,
+    "parser_status": "HTML_COLLECTOR_READY_FOR_IMPLEMENTATION",
+    "extraction_strategy": "semantic_html_then_jsonld",
+    "selectors": {
+      "article_card": "article, .card, [class*=article]",
+      "title": "h1,h2,h3",
+      "link": "a[href]",
+      "date": "time"
+    },
+    "json_ld_strategy": "Article/NewsArticle @type if present",
+    "pagination_strategy": "next-link-only",
+    "canonicalization_rules": [
+      "preserve canonical URL",
+      "remove tracking parameters only"
+    ],
+    "deduplication_strategy": [
+      "canonical article URL",
+      "publisher ID",
+      "JSON-LD @id",
+      "normalized URL hash"
+    ],
+    "date_parsing_rules": "ISO-8601 or visible time element",
+    "timezone_assumption": "UTC when absent",
+    "language": "undetermined",
+    "request_delay_seconds": 3,
+    "recommended_poll_interval_minutes": 30,
+    "max_pages_per_run": 2,
+    "max_items_per_run": 50,
+    "failure_policy": "stop on 401/403/429 or selector drift",
+    "selector_fragility": "MEDIUM",
+    "maintenance_risk": "MEDIUM",
+    "evidence_timestamp_utc": "2026-09-14T00:00:00Z"
+  },
+  {
+    "source_id": "1623b472-c934-549c-bc04-b4f80a695d17",
+    "hostname": "www.nationaldefensemagazine.org",
+    "listing_url": "https://www.nationaldefensemagazine.org/",
+    "robots_allowed": true,
+    "parser_status": "HTML_COLLECTOR_READY_FOR_IMPLEMENTATION",
+    "extraction_strategy": "semantic_html_then_jsonld",
+    "selectors": {
+      "article_card": "article, .card, [class*=article]",
+      "title": "h1,h2,h3",
+      "link": "a[href]",
+      "date": "time"
+    },
+    "json_ld_strategy": "Article/NewsArticle @type if present",
+    "pagination_strategy": "next-link-only",
+    "canonicalization_rules": [
+      "preserve canonical URL",
+      "remove tracking parameters only"
+    ],
+    "deduplication_strategy": [
+      "canonical article URL",
+      "publisher ID",
+      "JSON-LD @id",
+      "normalized URL hash"
+    ],
+    "date_parsing_rules": "ISO-8601 or visible time element",
+    "timezone_assumption": "UTC when absent",
+    "language": "undetermined",
+    "request_delay_seconds": 3,
+    "recommended_poll_interval_minutes": 30,
+    "max_pages_per_run": 2,
+    "max_items_per_run": 50,
+    "failure_policy": "stop on 401/403/429 or selector drift",
+    "selector_fragility": "MEDIUM",
+    "maintenance_risk": "MEDIUM",
+    "evidence_timestamp_utc": "2026-09-14T00:00:00Z"
+  }
+]
