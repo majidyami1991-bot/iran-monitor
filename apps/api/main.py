@@ -1,4 +1,4 @@
-﻿from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse
 import os, psycopg, re
 app=FastAPI(title='Iran Monitor News API',version='0.2.0'); DSN=os.environ['DATABASE_URL']
@@ -27,15 +27,12 @@ def items(search:str|None=None,source_id:str|None=None,source_type:str|None=None
 def item(item_id:str): return (q('select n.*,s.name publisher,s.hostname,s.source_type from news_items n join sources s on s.source_id=n.source_id where n.item_id=%s',(item_id,)) or [{}])[0]
 @app.get('/api/v1/sources')
 def source_list():
- r=q('select s.source_id,s.name,s.source_type,s.canonical_url,s.hostname,s.enabled,count(n.item_id)::int item_count,max(n.published_at) latest from sources s left join news_items n on n.source_id=s.source_id group by s.source_id order by s.name'); return {'sources':r,'total':len(r)}
+ r=q('select s.source_id,s.name,s.source_type,s.canonical_url,s.hostname,s.collection_tier,s.enabled,count(n.item_id)::int item_count,max(n.published_at) latest from sources s left join news_items n on n.source_id=s.source_id group by s.id order by s.name'); return {'sources':r,'total':len(r)}
 @app.get('/api/v1/stats/overview')
 def overview(): return {'total_items':count('news_items'),'sources':count('sources'),'provenance_complete':q("select count(*)::int n from news_items where provenance_status='COMPLETE'")[0]['n']}
 @app.get('/api/v1/stats/topics')
 def topics():
  rows=q("select lower(regexp_replace(word,'[^[:alnum:]آ-ی]+','','g')) topic,count(*)::int count from (select unnest(regexp_split_to_array(coalesce(title,'')||' '||coalesce(summary,''),'\\s+')) word from news_items) x where length(word)>=4 group by 1 order by count desc,topic limit 20"); return {'topics':rows}
-@app.get('/',response_class=HTMLResponse)
-def dashboard(): return HTMLResponse('''<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ایران مانیتور</title><style>@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;700&display=swap');*{box-sizing:border-box}body{margin:0;background:#071426;color:#e8f1ff;font-family:Vazirmatn,Tahoma,sans-serif}header{padding:22px 5%;border-bottom:1px solid #234666;background:#0b1d34}main{max-width:1300px;margin:auto;padding:24px 5%}.sub{color:#9db4cc}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}.card{background:#10243d;border:1px solid #285078;border-radius:14px;padding:18px;margin:12px 0}.num{font-size:2rem;color:#6dd6ff;font-weight:700}.toolbar{display:flex;gap:10px;flex-wrap:wrap}input,select,button{background:#0b1d34;color:#e8f1ff;border:1px solid #386184;border-radius:8px;padding:10px;font:inherit}button{cursor:pointer;background:#155b83}.news h3{margin:0 0 8px}.muted{color:#9db4cc;font-size:.9rem}@media(max-width:500px){main{padding:14px}.card{padding:14px}}
-</style></head><body><header><h1>ایران مانیتور</h1><div class=sub>پایش هوشمند اخبار و منابع تحلیلی</div></header><main><section id=stats class=grid></section><section class=card><div class=toolbar><input id=search placeholder="جست‌وجو در عنوان و خلاصه"><select id=sort><option value=newest>جدیدترین</option><option value=oldest>قدیمی‌ترین</option></select><button onclick="load()">اعمال فیلتر</button><button onclick="search.value='';load()">پاک‌کردن</button></div><p id=count class=muted></p></section><section id=news class=news></section></main><script>async function load(){let p=new URLSearchParams({page_size:20,sort:sort.value});if(search.value)p.set('search',search.value);let [s,d]=await Promise.all([fetch('/api/v1/stats/overview').then(x=>x.json()),fetch('/api/v1/items?'+p).then(x=>x.json())]);stats.innerHTML=[['کل اخبار',s.total_items],['منابع',s.sources],['provenance کامل',s.provenance_complete]].map(x=>`<div class=card><div class=num>${x[1]}</div><div>${x[0]}</div></div>`).join('');count.textContent=`${d.total} نتیجه`;news.innerHTML=d.items.map(x=>`<article class=card><h3>${x.title||'بدون عنوان'}</h3><div class=muted>${x.publisher||''} · ${x.published_at||''}</div><p>${x.summary||''}</p><a href="${x.canonical_url}" target=_blank rel="noopener noreferrer">مشاهده منبع اصلی</a></article>`).join('')||'<div class=card>نتیجه‌ای یافت نشد</div>'}load()</script></body></html>''')
 # append supplemental routes
 @app.get('/api/v1/stats/timeline')
 def stats_timeline(group_by:str='day'):
@@ -46,11 +43,35 @@ def stats_timeline(group_by:str='day'):
 def stats_sources(): return {'sources':q('select s.name,count(n.item_id)::int count from sources s left join news_items n on n.source_id=s.source_id group by s.name order by count desc,s.name limit 10')}
 @app.get('/api/v1/stats/provenance')
 def stats_provenance(): return {'provenance':q('select coalesce(provenance_status,\'UNKNOWN\') status,count(*)::int count from news_items group by 1 order by 1')}
-@app.get('/news',response_class=HTMLResponse)
-def news_page(): return dashboard()
-@app.get('/sources',response_class=HTMLResponse)
-def sources_page(): return dashboard()
-@app.get('/analytics',response_class=HTMLResponse)
-def analytics_page(): return dashboard()
-@app.get('/about',response_class=HTMLResponse)
-def about_page(): return dashboard()
+
+from fastapi import HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+WEB=Path(__file__).parent/'web'
+app.mount('/assets', StaticFiles(directory=WEB), name='assets')
+@app.get('/api/v1/sources/{source_id}')
+def source_detail(source_id: str):
+ rows=q("select s.source_id,s.name,s.hostname,s.canonical_url,s.source_type,s.collection_tier,s.enabled,count(n.item_id)::int item_count,min(n.published_at) first,max(n.published_at) latest from sources s left join news_items n on n.source_id=s.source_id where s.source_id=%s group by s.id",(source_id,))
+ if not rows: raise HTTPException(404,'???? ???? ???')
+ r=rows[0]
+ r['timeline']=q("select date_trunc('day',published_at at time zone 'UTC') bucket,count(*)::int count from news_items where source_id=%s and published_at is not null group by 1 order by 1 limit 90",(source_id,))
+ r['provenance']=q("select provenance_status status,count(*)::int count from news_items where source_id=%s group by 1 order by 1",(source_id,))
+ return r
+@app.get('/api/v1/stats/import')
+def latest_import():
+ return {'latest':next(iter(q('select completed_at,status,input_item_count,inserted_count from import_runs order by started_at desc limit 1')),None)}
+@app.get('/news/{item_id}')
+def news_detail_page(item_id: str):
+ return FileResponse(WEB/'index.html',status_code=200 if q('select 1 from news_items where item_id=%s',(item_id,)) else 404)
+@app.get('/sources/{source_id}')
+def source_detail_page(source_id: str):
+ return FileResponse(WEB/'index.html',status_code=200 if q('select 1 from sources where source_id=%s',(source_id,)) else 404)
+@app.get('/')
+@app.get('/news')
+@app.get('/sources')
+@app.get('/analytics')
+@app.get('/about')
+def dashboard(): return FileResponse(WEB/'index.html')
+@app.get('/{path:path}')
+def missing_page(path: str): return FileResponse(WEB/'index.html',status_code=404)

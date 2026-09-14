@@ -6,3 +6,5 @@ COPY apps/api/main.py ./main.py
 COPY apps/api/db_init.py ./db_init.py
 COPY apps/api/import_db.py ./import_db.py
 EXPOSE 3000
+
+COPY apps/api/web ./web
