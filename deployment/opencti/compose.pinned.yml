@@ -6,7 +6,7 @@
 name: iran-monitor-opencti
 services:
   redis:
-    image: redis:8.10.1
+    image: redis@sha256:298e5b3bc566bade82f46ad5511777a4a07a294097ce16ada2f6a42be5239df5
     restart: always
     volumes:
     - redisdata:/data
@@ -19,7 +19,7 @@ services:
       timeout: 5s
       retries: 3
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.21
+    image: docker.elastic.co/elasticsearch/elasticsearch@sha256:cbf5cd6cfe5532a9c02d510c66d238bf329cd51fe3d57170a2a880aca7d47419
     volumes:
     - esdata:/usr/share/elasticsearch/data
     environment:
@@ -46,7 +46,7 @@ services:
       timeout: 3s
       retries: 50
   rabbitmq:
-    image: rabbitmq:4.3-management
+    image: rabbitmq@sha256:57bddb6fbc3498b5d8b5a14dc6f4506073ebcf94c66ba2a7678c335faa8dd631
     environment:
     - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
     - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
@@ -63,7 +63,7 @@ services:
       timeout: 30s
       retries: 3
   minio:
-    image: pgsty/silo:RELEASE.2026-09-03T13-18-01Z
+    image: pgsty/silo@sha256:b616a0cf8cb281e7e6bb3c9b1fb53875b4016a2878223925541c18f82d6c5ca3
     volumes:
     - s3data:/data
     environment:
@@ -81,7 +81,7 @@ services:
       timeout: 5s
       retries: 3
   opencti:
-    image: opencti/platform:7.260910.0
+    image: opencti/platform@sha256:186fc757c3ebc6d2164edd538a95f542afab3443fd50b88c2fc5531d98b92444
     environment:
     - NODE_OPTIONS=--max-old-space-size=8096
     - APP__PORT=8080
@@ -131,7 +131,7 @@ services:
     ports:
     - 127.0.0.1:8080:8080
   worker:
-    image: opencti/worker:7.260910.0
+    image: opencti/worker@sha256:9c3439afecd881ddc2bb4966ccfe1eac9435075eaf401f09bc2a5e3594ea5ee9
     environment:
     - OPENCTI_URL=http://opencti:8080
     - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
@@ -143,7 +143,7 @@ services:
       replicas: 3
     restart: always
   connector-export-file-stix:
-    image: opencti/connector-export-file-stix:7.260910.0
+    image: opencti/connector-export-file-stix@sha256:64d2dd408b5ce30fd2ff64f1bd371ed0772d2ea9c5180d8e17b4a648e92aa0ec
     environment:
     - OPENCTI_URL=http://opencti:8080
     - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
@@ -156,7 +156,7 @@ services:
       opencti:
         condition: service_healthy
   connector-export-file-csv:
-    image: opencti/connector-export-file-csv:7.260910.0
+    image: opencti/connector-export-file-csv@sha256:0cfba407e3ac046dac2eb658e31759e8828d9d6fd2c3bb92fe2baadec8a8f099
     environment:
     - OPENCTI_URL=http://opencti:8080
     - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
@@ -169,7 +169,7 @@ services:
       opencti:
         condition: service_healthy
   connector-export-file-txt:
-    image: opencti/connector-export-file-txt:7.260910.0
+    image: opencti/connector-export-file-txt@sha256:d18e6040f0e8cf0698a0190dc09ccba002962434825c31ee9d785526364a0bfd
     environment:
     - OPENCTI_URL=http://opencti:8080
     - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
@@ -182,7 +182,7 @@ services:
       opencti:
         condition: service_healthy
   connector-import-file-stix:
-    image: opencti/connector-import-file-stix:7.260910.0
+    image: opencti/connector-import-file-stix@sha256:f3aea0acf2cfe2bfaecebf411cf536b4cb70c2878f07fedf9abe3a60debf8b07
     environment:
     - OPENCTI_URL=http://opencti:8080
     - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
@@ -197,7 +197,7 @@ services:
       opencti:
         condition: service_healthy
   connector-import-document:
-    image: opencti/connector-import-document:7.260910.0
+    image: opencti/connector-import-document@sha256:4d0091405050e10fa6c3da4a7241f95aea6d55330080e13ea931e54e9ad07e13
     environment:
     - OPENCTI_URL=http://opencti:8080
     - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
@@ -214,7 +214,7 @@ services:
       opencti:
         condition: service_healthy
   connector-import-file-yara:
-    image: opencti/connector-import-file-yara:7.260910.0
+    image: opencti/connector-import-file-yara@sha256:22a9052cef49cd06339b6e6195fb07ef6a9d79d8c0befab6c3829944d5acf0b2
     environment:
     - OPENCTI_URL=http://opencti:8080
     - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
