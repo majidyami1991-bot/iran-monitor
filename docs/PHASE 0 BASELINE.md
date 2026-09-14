@@ -26,3 +26,9 @@ Source SHA-256 after Phase 1 matched the before value. Generated secret values w
 No containers, images, networks or volumes were created or modified. Runtime functionality remains untested.
 
 Phase 2R supersedes historical deployment instructions: canonical file is deployment/opencti/compose.pinned.yml; schema 18fdf8512f69e63d0856a7a4f5633ef7e482e5c0; target 7.260910.0. See deployment README for Silo compatibility fix and excluded services.
+
+## Phase 2N registry diagnosis
+
+On 2026-09-14, Windows DNS resolved docker.elastic.co through registry.ea-registry-production.elastic.co to 34.56.16.77; comparison registries also resolved. Windows Test-NetConnection to docker.elastic.co:443 failed, so the failure is TCP reachability rather than DNS. Normal certificate-verifying HTTPS tests did not establish a valid registry response. The Docker Engine reports its internal HTTP/HTTPS proxy as http.docker.internal:3128 (value recorded only as configured; no credentials printed); WinHTTP reports direct access. No proxy or network setting was changed.
+
+The Docker Desktop backend log around the retry contains no useful credential-bearing diagnostic; the observed pull error is a TCP connection failure. Classification: TCP_TIMEOUT / GENERAL_NETWORK_FAILURE. CONNECTIVITY_GATE_PASSED=FALSE, so the authorized single-image retry and all remaining pulls were not attempted. No project containers, networks or volumes were created, and unrelated containers remained unchanged.
