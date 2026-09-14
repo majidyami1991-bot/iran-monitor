@@ -1,0 +1,72 @@
+[
+    {
+        "hostname":  "www.iiss.org",
+        "dns":  "104.16.230.15,104.16.229.15",
+        "tcp_443":  true,
+        "head":  "HTTP/1.1 403 Forbidden",
+        "retry_count":  1,
+        "failure_class":  "HTTP_403",
+        "recovered":  false,
+        "checked_at_utc":  "2026-09-14T09:04:28.9682193Z"
+    },
+    {
+        "hostname":  "www.rand.org",
+        "dns":  "52.84.206.100,52.84.206.91,52.84.206.126,52.84.206.69",
+        "tcp_443":  true,
+        "head":  "HTTP/1.1 403 Forbidden",
+        "retry_count":  1,
+        "failure_class":  "HTTP_403",
+        "recovered":  false,
+        "checked_at_utc":  "2026-09-14T09:04:32.3457507Z"
+    },
+    {
+        "hostname":  "www.inss.org.il",
+        "dns":  "172.66.144.133,104.20.34.223",
+        "tcp_443":  true,
+        "head":  "HTTP/1.1 403 Forbidden",
+        "retry_count":  1,
+        "failure_class":  "HTTP_403",
+        "recovered":  false,
+        "checked_at_utc":  "2026-09-14T09:04:33.4011562Z"
+    },
+    {
+        "hostname":  "www.realcleardefense.com",
+        "dns":  "18.164.188.20,18.164.188.43,18.164.188.68,18.164.188.24",
+        "tcp_443":  true,
+        "head":  "HTTP/1.1 403 HTTP Forbidden",
+        "retry_count":  1,
+        "failure_class":  "HTTP_403",
+        "recovered":  false,
+        "checked_at_utc":  "2026-09-14T09:04:37.6861074Z"
+    },
+    {
+        "hostname":  "www.war.gov",
+        "dns":  "2.19.193.144,2.19.193.145",
+        "tcp_443":  true,
+        "head":  "HTTP/1.1 403 Forbidden",
+        "retry_count":  1,
+        "failure_class":  "HTTP_403",
+        "recovered":  false,
+        "checked_at_utc":  "2026-09-14T09:04:39.6799209Z"
+    },
+    {
+        "hostname":  "www.centcom.mil",
+        "dns":  "2.19.193.153,2.19.193.155",
+        "tcp_443":  true,
+        "head":  "HTTP/1.1 403 Forbidden",
+        "retry_count":  1,
+        "failure_class":  "HTTP_403",
+        "recovered":  false,
+        "checked_at_utc":  "2026-09-14T09:04:41.7504177Z"
+    },
+    {
+        "hostname":  "www.airuniversity.af.edu",
+        "dns":  "184.29.235.221",
+        "tcp_443":  true,
+        "head":  "HTTP/1.1 403 Forbidden",
+        "retry_count":  1,
+        "failure_class":  "HTTP_403",
+        "recovered":  false,
+        "checked_at_utc":  "2026-09-14T09:04:43.6179750Z"
+    }
+]
