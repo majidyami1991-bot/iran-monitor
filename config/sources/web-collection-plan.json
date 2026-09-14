@@ -10,8 +10,8 @@
   },
   {
     "source_id": "66f1f638-2c67-50cc-bef1-d61a9271e911",
-    "implementation_tier": "TIER_1_FEED",
-    "recommended_method": "rss",
+    "implementation_tier": "TIER_2_SITEMAP",
+    "recommended_method": "sitemap_incremental",
     "recommended_poll_interval_minutes": 30,
     "requires_custom_parser": false,
     "requires_javascript": false,
