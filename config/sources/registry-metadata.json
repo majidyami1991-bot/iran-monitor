@@ -1,0 +1,8 @@
+{
+  "source_document": "sites.docx",
+  "source_document_sha256": "3F7522C94952DD85254F45CADF600A64EE6F264D27E30E3D2BF3297D59C47980",
+  "raw_source_count": 64,
+  "canonical_source_count": 62,
+  "generated_by": "build_source_registry.py",
+  "stable_id_algorithm": "UUIDv5 DNS namespace; source_type|canonical_key"
+}
