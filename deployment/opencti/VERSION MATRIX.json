@@ -1,0 +1,126 @@
+{
+  "platform_release": "7.260910.0",
+  "docker_schema_commit": "18fdf8512f69e63d0856a7a4f5633ef7e482e5c0",
+  "services": [
+    {
+      "service_name": "redis",
+      "image_repository": "redis",
+      "upstream_image_reference": "redis:8.10.1",
+      "locally_selected_tag": "8.10.1",
+      "selected_version": "8.10.1",
+      "compatibility_basis": "Official fixed schema dependency; OpenCTI images use verified official release tags. Silo replacement explained by schema commit.",
+      "enabled_for_initial_bootstrap": true,
+      "reason": "Core dependency or internal file import/export"
+    },
+    {
+      "service_name": "elasticsearch",
+      "image_repository": "docker.elastic.co/elasticsearch/elasticsearch",
+      "upstream_image_reference": "docker.elastic.co/elasticsearch/elasticsearch:8.19.21",
+      "locally_selected_tag": "8.19.21",
+      "selected_version": "8.19.21",
+      "compatibility_basis": "Official fixed schema dependency; OpenCTI images use verified official release tags. Silo replacement explained by schema commit.",
+      "enabled_for_initial_bootstrap": true,
+      "reason": "Core dependency or internal file import/export"
+    },
+    {
+      "service_name": "rabbitmq",
+      "image_repository": "rabbitmq",
+      "upstream_image_reference": "rabbitmq:4.3-management",
+      "locally_selected_tag": "4.3-management",
+      "selected_version": "4.3-management",
+      "compatibility_basis": "Official fixed schema dependency; OpenCTI images use verified official release tags. Silo replacement explained by schema commit.",
+      "enabled_for_initial_bootstrap": true,
+      "reason": "Core dependency or internal file import/export"
+    },
+    {
+      "service_name": "minio",
+      "image_repository": "pgsty/silo",
+      "upstream_image_reference": "pgsty/silo:latest",
+      "locally_selected_tag": "RELEASE.2026-09-03T13-18-01Z",
+      "selected_version": "RELEASE.2026-09-03T13-18-01Z",
+      "compatibility_basis": "Official fixed schema dependency; OpenCTI images use verified official release tags. Silo replacement explained by schema commit.",
+      "enabled_for_initial_bootstrap": true,
+      "reason": "Core dependency or internal file import/export"
+    },
+    {
+      "service_name": "opencti",
+      "image_repository": "opencti/platform",
+      "upstream_image_reference": "opencti/platform:latest",
+      "locally_selected_tag": "7.260910.0",
+      "selected_version": "7.260910.0",
+      "compatibility_basis": "Official fixed schema dependency; OpenCTI images use verified official release tags. Silo replacement explained by schema commit.",
+      "enabled_for_initial_bootstrap": true,
+      "reason": "Core dependency or internal file import/export"
+    },
+    {
+      "service_name": "worker",
+      "image_repository": "opencti/worker",
+      "upstream_image_reference": "opencti/worker:latest",
+      "locally_selected_tag": "7.260910.0",
+      "selected_version": "7.260910.0",
+      "compatibility_basis": "Official fixed schema dependency; OpenCTI images use verified official release tags. Silo replacement explained by schema commit.",
+      "enabled_for_initial_bootstrap": true,
+      "reason": "Core dependency or internal file import/export"
+    },
+    {
+      "service_name": "connector-export-file-stix",
+      "image_repository": "opencti/connector-export-file-stix",
+      "upstream_image_reference": "opencti/connector-export-file-stix:latest",
+      "locally_selected_tag": "7.260910.0",
+      "selected_version": "7.260910.0",
+      "compatibility_basis": "Official fixed schema dependency; OpenCTI images use verified official release tags. Silo replacement explained by schema commit.",
+      "enabled_for_initial_bootstrap": true,
+      "reason": "Core dependency or internal file import/export"
+    },
+    {
+      "service_name": "connector-export-file-csv",
+      "image_repository": "opencti/connector-export-file-csv",
+      "upstream_image_reference": "opencti/connector-export-file-csv:latest",
+      "locally_selected_tag": "7.260910.0",
+      "selected_version": "7.260910.0",
+      "compatibility_basis": "Official fixed schema dependency; OpenCTI images use verified official release tags. Silo replacement explained by schema commit.",
+      "enabled_for_initial_bootstrap": true,
+      "reason": "Core dependency or internal file import/export"
+    },
+    {
+      "service_name": "connector-export-file-txt",
+      "image_repository": "opencti/connector-export-file-txt",
+      "upstream_image_reference": "opencti/connector-export-file-txt:latest",
+      "locally_selected_tag": "7.260910.0",
+      "selected_version": "7.260910.0",
+      "compatibility_basis": "Official fixed schema dependency; OpenCTI images use verified official release tags. Silo replacement explained by schema commit.",
+      "enabled_for_initial_bootstrap": true,
+      "reason": "Core dependency or internal file import/export"
+    },
+    {
+      "service_name": "connector-import-file-stix",
+      "image_repository": "opencti/connector-import-file-stix",
+      "upstream_image_reference": "opencti/connector-import-file-stix:latest",
+      "locally_selected_tag": "7.260910.0",
+      "selected_version": "7.260910.0",
+      "compatibility_basis": "Official fixed schema dependency; OpenCTI images use verified official release tags. Silo replacement explained by schema commit.",
+      "enabled_for_initial_bootstrap": true,
+      "reason": "Core dependency or internal file import/export"
+    },
+    {
+      "service_name": "connector-import-document",
+      "image_repository": "opencti/connector-import-document",
+      "upstream_image_reference": "opencti/connector-import-document:latest",
+      "locally_selected_tag": "7.260910.0",
+      "selected_version": "7.260910.0",
+      "compatibility_basis": "Official fixed schema dependency; OpenCTI images use verified official release tags. Silo replacement explained by schema commit.",
+      "enabled_for_initial_bootstrap": true,
+      "reason": "Core dependency or internal file import/export"
+    },
+    {
+      "service_name": "connector-import-file-yara",
+      "image_repository": "opencti/connector-import-file-yara",
+      "upstream_image_reference": "opencti/connector-import-file-yara:latest",
+      "locally_selected_tag": "7.260910.0",
+      "selected_version": "7.260910.0",
+      "compatibility_basis": "Official fixed schema dependency; OpenCTI images use verified official release tags. Silo replacement explained by schema commit.",
+      "enabled_for_initial_bootstrap": true,
+      "reason": "Core dependency or internal file import/export"
+    }
+  ]
+}

@@ -24,3 +24,5 @@ Read-only preflight passed (172 checks). PowerShell syntax passed. An inherited 
 Compose config and config --images succeeded without pulling. Effective services: 16; only 127.0.0.1:8080 -> opencti:8080 published. All 26 sample keys SET; 12 UUIDv4 values valid and distinct.
 Source SHA-256 after Phase 1 matched the before value. Generated secret values were scanned against all candidate project files before staging; no matches.
 No containers, images, networks or volumes were created or modified. Runtime functionality remains untested.
+
+Phase 2R supersedes historical deployment instructions: canonical file is deployment/opencti/compose.pinned.yml; schema 18fdf8512f69e63d0856a7a4f5633ef7e482e5c0; target 7.260910.0. See deployment README for Silo compatibility fix and excluded services.

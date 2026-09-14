@@ -1,7 +1,7 @@
 # Read-only installation gate. No configuration output or credentials are printed.
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$pin = '12ba587e3cd7b0643fc000b0fb27b016893fddd4'
+$pin = '18fdf8512f69e63d0856a7a4f5633ef7e482e5c0'
 $script:passedChecks = 0
 $sourceHash = '3F7522C94952DD85254F45CADF600A64EE6F264D27E30E3D2BF3297D59C47980'
 function Require($condition, [string]$message) {
@@ -68,9 +68,9 @@ try {
     Require (Test-Path -LiteralPath (Join-Path $upstream '.git')) 'Submodule exists'
     Require ((Native git @('-C',$upstream,'rev-parse','HEAD')).Trim() -eq $pin) 'Submodule exact commit pin'
     Require ([string]::IsNullOrWhiteSpace((Native git @('-C',$upstream,'status','--porcelain')))) 'Submodule unmodified'
-    $required = @([IO.File]::ReadAllLines((Join-Path $upstream '.env.sample')) | ForEach-Object {
-        if ($_ -match '^([A-Z][A-Z0-9_]*)=') { $Matches[1] }
-    })
+    $composePath = Join-Path $root 'deployment\opencti\compose.pinned.yml'
+    $required = @([regex]::Matches([IO.File]::ReadAllText($composePath), '\$\{([A-Z][A-Z0-9_]*)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+    Require ([Convert]::FromBase64String($values.OPENCTI_ENCRYPTION_KEY).Length -eq 32) 'Encryption key is 32 bytes'
     $seen = @{}
     foreach ($key in $required) {
         Require ($values.ContainsKey($key) -and -not [string]::IsNullOrWhiteSpace($values[$key])) "$key SET"
@@ -88,14 +88,14 @@ try {
     Require ((Native git @('-C',$root,'check-ignore','.env')).Trim() -eq '.env') '.env ignored'
     Require ([string]::IsNullOrWhiteSpace((Native git @('-C',$root,'ls-files','--','.env')))) '.env untracked'
     Require ((Get-FileHash -LiteralPath (Join-Path $root 'sites.docx') -Algorithm SHA256).Hash -eq $sourceHash) 'Original source hash unchanged'
-    $argsCompose = @('compose','--project-name','iran-monitor-opencti','--env-file',$envPath,'-f',(Join-Path $upstream 'docker-compose.yml'),'-f',(Join-Path $root 'deployment\opencti\compose.override.yml'))
+    $argsCompose = @('compose','--project-name','iran-monitor-opencti','--env-file',$envPath,'-f',$composePath)
     $config = (Native docker ($argsCompose + @('config','--format','json'))) | ConvertFrom-Json
     Require ($config.name -eq 'iran-monitor-opencti') 'Effective Compose project name'
     $published = @()
     foreach ($entry in $config.services.PSObject.Properties) {
         $s = $entry.Value
         Require (-not $s.container_name -and -not $s.privileged -and $s.network_mode -ne 'host' -and -not $s.build) "$($entry.Name) isolation"
-        Require ($s.image -notmatch ':latest$' -and $s.image -match '[:@]') "$($entry.Name) versioned image"
+        Require ($s.image -notmatch ':(latest|rolling|master|edge|nightly)$' -and $s.image -match '[:@]') "$($entry.Name) versioned image"
         foreach ($mount in $s.volumes) { Require ($mount.source -notmatch 'docker.sock' -and $mount.target -notmatch 'docker.sock') "$($entry.Name) no Docker socket" }
         foreach ($port in $s.ports) {
             $published += $port

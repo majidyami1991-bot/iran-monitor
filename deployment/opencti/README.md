@@ -1,26 +1,12 @@
-# Pinned OpenCTI deployment (not started)
-
-Official upstream: https://github.com/OpenCTI-Platform/docker.git
-Stable Git tag: NONE (official remote provides no tags).
-Detached commit: 12ba587e3cd7b0643fc000b0fb27b016893fddd4; numbered OpenCTI image release: 7.260224.0.
-Canonical file: ../../vendor/opencti-docker/docker-compose.yml.
-The current moving branch uses latest images. We intentionally inspect and pin the last explicit numbered release commit instead; this is not the latest-release claim. See the baseline for details.
-
-## Local override
-Compose >= 2.24.4 merge tags remove MinIO host ports, remove the Docker-socket-based xtm-composer and unused rsa-key-generator, and replace web ports with 127.0.0.1:8080:8080.
-A naive empty ports list is NOT used. The merged configuration must contain exactly one host publication. No upstream files are edited. No derived Compose file is needed.
-Default network and named volumes receive the iran-monitor-opencti prefix. No fixed container names or external volumes/networks. Existing unrelated 5432/6379/9000 publications do not conflict.
-RabbitMQ uses the upstream relative rabbitmq.conf bind mount (max message 536870912 bytes; consumer timeout 86400000 ms). Compose resolves it relative to the first, upstream Compose file.
-Upstream healthchecks are preserved. Worker has three replicas. Internal file connectors and OpenCTI/MITRE dataset connectors are retained; an eventual startup will activate them and may fetch upstream datasets. It does not import sites.docx or authorize X access.
-No Enterprise license is supplied. The upstream sample does not require an encryption key at this revision. All sample keys, including unused OpenSearch and removed-manager keys, exist locally for parity.
-
-## Safe validation
-Run scripts/preflight.ps1 from any directory. Do not print full config: it includes secrets.
-From the project root these commands emit only images or services and do not pull:
-
-```powershell
-docker compose --project-name iran-monitor-opencti --env-file .env -f vendor/opencti-docker/docker-compose.yml -f deployment/opencti/compose.override.yml config --images
-docker compose --project-name iran-monitor-opencti --env-file .env -f vendor/opencti-docker/docker-compose.yml -f deployment/opencti/compose.override.yml config --services
-```
-Image references are version tags, not content digests; registry availability and runtime compatibility remain untested. Reassess release security before Phase 2.
-No startup command is executed in Phase 1. After explicit approval, rerun preflight immediately before any startup. If sysctl is low, preflight prints the correction but never applies it.
+# Phase 2R deployment
+Canonical definition: compose.pinned.yml. Earlier compose.override.yml is historical and must not be combined with it.
+Target OpenCTI: 7.260910.0; release commit bf9332a79da75a028113b4d05abf1cb9ce1ef775.
+Official schema: https://github.com/OpenCTI-Platform/docker.git at 18fdf8512f69e63d0856a7a4f5633ef7e482e5c0 (2026-09-12T18:25:44Z).
+Subject: chore(compose): replace the MinIO image by pgsty/silo in the compose stacks (#606) (#607).
+The preferred pre-release schema d3aa93833fe16f06bfd272e76b2876f0a6a81e90 cannot be freshly deployed because minio/minio is unavailable. The official corrective commit explicitly preserves S3, MINIO_* credentials, server /data, mc ready local, named data volume and on-disk compatibility. Its other changes replace the image in alternative stacks and clarify a sample comment.
+Selected Silo tag: RELEASE.2026-09-03T13-18-01Z, registry verified linux/amd64. No dependency port is published.
+Only 12 bootstrap services: four dependencies, platform, worker (three replicas), and six internal file import/export connectors. XTM One, its PostgreSQL/worker, XTM composer/RSA helper, MITRE/OpenCTI external datasets, analysis and external-reference connectors are excluded. Enabling any later requires a separate reviewed configuration change; upstream definitions remain intact.
+Existing secrets preserved; only OPENCTI_ENCRYPTION_KEY added as random base64 32 bytes. Unused existing keys retained; new XTM-only keys are unnecessary. Removed XTM platform links because XTM services are excluded.
+Healthchecks and retained service settings preserved; RabbitMQ config binds the unchanged upstream file via corrected relative path. Only 127.0.0.1:8080 is published.
+Run scripts/preflight.ps1 before initial startup. Runtime sysctl is not persistent. Never print full rendered Compose: it contains secrets.
+Current status: validated before pull, not started. Version matrix records selected tags; IMAGE LOCK will record pulled digests.

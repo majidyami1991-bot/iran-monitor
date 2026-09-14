@@ -22,3 +22,5 @@ See [deployment instructions](deployment/opencti/README.md), [security](docs/SEC
 
 ## Next phase
 After explicit Phase 2 approval: rerun preflight, review pinned images and only then authorize image pulling and startup. No startup is authorized by this README.
+
+Phase 2R supersedes historical deployment instructions: canonical file is deployment/opencti/compose.pinned.yml; schema 18fdf8512f69e63d0856a7a4f5633ef7e482e5c0; target 7.260910.0. See deployment README for Silo compatibility fix and excluded services.

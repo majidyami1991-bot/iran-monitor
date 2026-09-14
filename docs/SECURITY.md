@@ -9,3 +9,5 @@ Future deployment needs least-privilege users, separate connector service accoun
 Back up named database/object-storage volumes consistently and keep encrypted credential backups separately; test restoration before relying on backups. No backup or runtime data directories are created now.
 Runtime sysctl is not persistent. Preflight must fail below 1048575, print the approved corrective command, never apply it silently, and be rerun immediately before any approved startup.
 Image tags are versioned but not immutable digests. Their registry availability and security status must be reviewed before Phase 2; no image layers have been downloaded.
+
+Phase 2R supersedes historical deployment instructions: canonical file is deployment/opencti/compose.pinned.yml; schema 18fdf8512f69e63d0856a7a4f5633ef7e482e5c0; target 7.260910.0. See deployment README for Silo compatibility fix and excluded services.
