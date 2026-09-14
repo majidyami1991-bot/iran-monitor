@@ -1,0 +1,3 @@
+[submodule "vendor/opencti-docker"]
+	path = vendor/opencti-docker
+	url = https://github.com/OpenCTI-Platform/docker.git

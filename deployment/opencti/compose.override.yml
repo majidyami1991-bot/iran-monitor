@@ -1,0 +1,9 @@
+# Compose 2.24.4+ custom merge tags are required.
+services:
+  xtm-composer: !reset null
+  rsa-key-generator: !reset null
+  minio:
+    ports: !reset []
+  opencti:
+    ports: !override
+      - "127.0.0.1:8080:8080"

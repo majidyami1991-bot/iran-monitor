@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "example_only": true,
+  "sources": [
+    {
+      "id": "example-news",
+      "source_type": "website",
+      "category": "news",
+      "name": "EXAMPLE ONLY",
+      "url": "https://example.org/",
+      "x_handle": null,
+      "language": "en",
+      "country": null,
+      "enabled": false,
+      "collection_method": "rss",
+      "poll_interval_minutes": 30,
+      "reliability_score": null,
+      "status": "example_not_validated",
+      "notes": "Schema illustration; not an approved source."
+    }
+  ]
+}
