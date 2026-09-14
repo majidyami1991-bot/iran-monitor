@@ -1,0 +1,18 @@
+{
+  "source_model": "staging news item",
+  "selected_model": "Report + External Reference + Publisher Identity",
+  "fallback_model": "Note + External Reference + Publisher Identity",
+  "prohibited_types": [
+    "Indicator",
+    "Malware",
+    "Intrusion Set",
+    "Threat Actor",
+    "Vulnerability",
+    "Incident",
+    "Campaign"
+  ],
+  "content_text_policy": "null",
+  "publisher_identity": "reuse by source_id",
+  "marking_policy": "TLP:CLEAR pending approval",
+  "mutations_enabled": false
+}
