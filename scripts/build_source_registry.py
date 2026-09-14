@@ -36,6 +36,9 @@ def main():
         if is_http: review.append('http_scheme_review')
         if display.lower()=='https://news.usni.org/': review.append('classification_review')
         records.append({'source_id':str(uuid.uuid5(NAMESPACE,typ+'|'+key)),'source_type':typ,'original_category':items[0]['original_column'],'canonical_category':typ,'display_value':display,'canonical_key':key,'url':display if typ!='x_account' else None,'x_handle':display if typ=='x_account' else None,'scheme':('http' if is_http else 'https') if typ!='x_account' else None,'hostname':(re.sub(r'^https?://','',key).split('/')[0]) if typ!='x_account' else None,'original_order':items[0]['original_order'],'occurrence_count':len(items),'duplicate_status':'duplicate' if len(items)>1 else 'unique','enabled':False,'validation_status':'not_tested','review_status':'needs_review' if review else 'not_reviewed','review_reasons':review,'collection_method':'not_assigned','collection_status':'not_started','last_checked_at':None,'notes':None,'provenance':[{'table_index':x['table_index'],'row_index':x['row_index'],'column_index':x['column_index'],'raw_value':x['raw_value']} for x in items]})
+    decisions=json.loads((OUT/'source-review-decisions.json').read_text()) if (OUT/'source-review-decisions.json').exists() else []
+    for d in decisions:
+        r=next(r for r in records if r['source_id']==d['source_id']); r['url']=d['approved_canonical_value']; r['canonical_key']=d['approved_canonical_value'].lower(); r['scheme']='https'; r['hostname']=re.sub(r'^https?://','',r['canonical_key']).split('/')[0]; r['canonical_category']=d.get('approved_canonical_category',r['canonical_category']); r['review_status']='resolved'; r['review_reasons']=[]
     OUT.mkdir(parents=True,exist_ok=True)
     (OUT/'source-registry.json').write_text(json.dumps(records,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     with (OUT/'source-occurrences.csv').open('w',newline='',encoding='utf-8') as f:
