@@ -1,1 +1,97 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","required":["item_id","source_id","item_canonical_url","availability_status"],"properties":{"item_id":{"type":"string"},"source_id":{"type":"string"},"canonical_source_url":{"type":["string","null"]},"exact_feed_url":{"type":["string","null"]},"item_canonical_url":{"type":"string"},"external_guid":{"type":["string","null"]},"published_at":{"type":["string","null"]},"collected_at":{"type":["string","null"]},"fetched_at":{"type":["string","null"]},"adapter_type":{"type":["string","null"]},"staging_reference":{"type":"string"},"checkpoint_reference":{"type":["string","null"]},"availability_status":{"enum":["available","unavailable"]}},"additionalProperties":false}
+{
+    "$schema":  "https://json-schema.org/draft/2020-12/schema",
+    "type":  "object",
+    "required":  [
+                     "item_id",
+                     "source_id",
+                     "item_canonical_url",
+                     "availability_status",
+                     "provenance_status",
+                     "execution_reference"
+                 ],
+    "properties":  {
+                       "item_id":  {
+                                       "type":  "string"
+                                   },
+                       "source_id":  {
+                                         "type":  "string"
+                                     },
+                       "canonical_source_url":  {
+                                                    "type":  [
+                                                                 "string",
+                                                                 "null"
+                                                             ]
+                                                },
+                       "exact_feed_url":  {
+                                              "type":  [
+                                                           "string",
+                                                           "null"
+                                                       ]
+                                          },
+                       "item_canonical_url":  {
+                                                  "type":  "string"
+                                              },
+                       "external_guid":  {
+                                             "type":  [
+                                                          "string",
+                                                          "null"
+                                                      ]
+                                         },
+                       "published_at":  {
+                                            "type":  [
+                                                         "string",
+                                                         "null"
+                                                     ]
+                                        },
+                       "collected_at":  {
+                                            "type":  [
+                                                         "string",
+                                                         "null"
+                                                     ]
+                                        },
+                       "fetched_at":  {
+                                          "type":  [
+                                                       "string",
+                                                       "null"
+                                                   ]
+                                      },
+                       "adapter_type":  {
+                                            "type":  [
+                                                         "string",
+                                                         "null"
+                                                     ]
+                                        },
+                       "staging_reference":  {
+                                                 "type":  "string"
+                                             },
+                       "checkpoint_reference":  {
+                                                    "type":  [
+                                                                 "string",
+                                                                 "null"
+                                                             ]
+                                                },
+                       "availability_status":  {
+                                                   "enum":  [
+                                                                "available",
+                                                                "unavailable"
+                                                            ]
+                                               },
+                       "provenance_status":  {
+                                                 "enum":  [
+                                                              "COMPLETE",
+                                                              "VALID_PARTIAL",
+                                                              "INVALID"
+                                                          ]
+                                             },
+                       "execution_reference":  {
+                                                   "type":  "string"
+                                               },
+                       "availability_reason":  {
+                                                   "type":  [
+                                                                "string",
+                                                                "null"
+                                                            ]
+                                               }
+                   },
+    "additionalProperties":  false
+}
