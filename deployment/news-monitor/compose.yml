@@ -24,10 +24,14 @@
     security_opt: [no-new-privileges:true]
     networks: [news]
   news-web:
-    build: {context: ../.., dockerfile: apps/api/Dockerfile}
-    command: uvicorn main:app --host 0.0.0.0 --port 3000
+    build: {context: ../../apps/web-next, dockerfile: Dockerfile}
     environment:
-      DATABASE_URL: postgresql://iran_monitor:${NEWS_DB_PASSWORD}@news-db:5432/iran_monitor
+      API_ORIGIN: http://news-api:3000
+      METADATA_ROOT: /metadata
+    volumes: [../../config/sources:/metadata:ro]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
     ports: ["127.0.0.1:3001:3000"]
     depends_on: {news-db: {condition: service_healthy}, news-api: {condition: service_started}}
     restart: unless-stopped
