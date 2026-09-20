@@ -1,0 +1,20 @@
+﻿services:
+  news-web-next-preview:
+    build:
+      context: ../../apps/web-next
+      dockerfile: Dockerfile
+    environment:
+      API_ORIGIN: http://news-api:3000
+      METADATA_ROOT: /metadata
+    volumes:
+      - ../../config/sources:/metadata:ro
+    ports:
+      - 127.0.0.1:3002:3000
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    restart: "no"
+    networks: [news]
+    profiles: [preview]
