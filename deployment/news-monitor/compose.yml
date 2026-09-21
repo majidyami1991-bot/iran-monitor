@@ -51,13 +51,17 @@
     profiles: [tools]
     networks: [news]
   news-collector:
+    image: iran-monitor-news-collector:205d769
     build: {context: ../.., dockerfile: apps/api/Dockerfile}
+    labels:
+      org.opencontainers.image.revision: "205d769"
     command: [python, /app/collector.py]
     environment:
       DATABASE_URL: postgresql://iran_monitor:${NEWS_DB_PASSWORD}@news-db:5432/iran_monitor
       NEWS_COLLECTION_ENABLED: ${NEWS_COLLECTION_ENABLED:-false}
       NEWS_COLLECTION_INTERVAL_SECONDS: ${NEWS_COLLECTION_INTERVAL_SECONDS:-900}
       COLLECTOR_STATE_DIR: /state
+      EXPECTED_COLLECTOR_GIT_REVISION: "205d769"
     volumes: [news-collector-state:/state]
     depends_on: {news-db: {condition: service_healthy}}
     restart: unless-stopped

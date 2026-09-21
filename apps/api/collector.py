@@ -16,6 +16,12 @@ MAX_BYTES=2*1024*1024;TIMEOUT=30;UA='IranMonitor/1.0 (bounded RSS monitoring; pr
 LOG=logging.getLogger('iran_monitor.collector')
 LOCK_KEY=0x4952414E4D4F4E
 SOURCE_TERMINAL={'succeeded','failed_fetch','failed_parse','failed_normalize','committed_checkpoint_failed','failed_finalize'}
+def preflight_image():
+    expected=os.getenv('EXPECTED_COLLECTOR_GIT_REVISION')
+    if not expected:return
+    try:info=json.loads((ROOT/'BUILD_INFO.json').read_text(encoding='utf-8'))
+    except Exception:raise SystemExit('COLLECTOR_IMAGE_REVISION_MISMATCH')
+    if info.get('git_revision')!=expected or info.get('serializer_version')!='1':raise SystemExit('COLLECTOR_IMAGE_REVISION_MISMATCH')
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self,req,fp,code,msg,headers,newurl):return None
 class Text(HTMLParser):
@@ -286,6 +292,7 @@ def finalize_run(runid,*,interrupted=False,run_error=None):
             return {'run_id':runid,'status':status,'sources_attempted':attempted,'sources_succeeded':succeeded,'sources_failed':failed,'http_requests':requests,'items_inserted':inserted,'duplicates':duplicates,'updates':updates,'error_summary':summary}
 
 def cycle(trigger='scheduled'):
+    preflight_image()
     with psycopg.connect(DSN,autocommit=True) as lock:
         if not lock.execute('SELECT pg_try_advisory_lock(%s)',(LOCK_KEY,)).fetchone()[0]:
             rid=str(uuid.uuid4());now=datetime.now(timezone.utc)
