@@ -1,0 +1,5 @@
+services:
+  news-api:
+    image: iran-monitor-news-api:rollback-8b
+  news-web:
+    image: iran-monitor-news-web:rollback-8b

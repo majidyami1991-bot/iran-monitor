@@ -3,7 +3,9 @@ from fastapi.responses import HTMLResponse
 import os, psycopg, re
 from datetime import date
 from collections import Counter
-app=FastAPI(title='Iran Monitor News API',version='0.2.0'); DSN=os.environ['DATABASE_URL']
+app=FastAPI(title='Iran Monitor News API',version='0.3.0'); DSN=os.environ['DATABASE_URL']
+from ops import register_ops
+register_ops(app)
 def q(sql,args=()):
  with psycopg.connect(DSN) as c:
   with c.cursor() as cur:

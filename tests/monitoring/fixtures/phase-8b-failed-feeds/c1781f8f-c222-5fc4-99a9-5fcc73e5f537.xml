@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+ <channel><title>Offline normalization fixture 6</title><language>en</language><item><title>Offline TypeError fixture 6</title><link>https://fixture.invalid/c1781f8f-c222-5fc4-99a9-5fcc73e5f537/new-entry</link><pubDate>not-a-date</pubDate><description><![CDATA[<p>offline safe summary 6</p><script>do-not-retain()</script>]]></description></item></channel>
+</rss>

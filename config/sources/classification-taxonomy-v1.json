@@ -1,0 +1,17 @@
+{
+  "version": "1.0.0",
+  "method": "Deterministic keyword rules over observed title and stored RSS summary only. No confidence score, causal claim, or inference from article content.",
+  "categories": [
+    {"id":"cybersecurity","label":"سایبری","keywords_en":["cyber","hacker","malware","ransomware","phishing","zero-day"],"keywords_fa":["سایبری","هک","بدافزار","باج‌افزار"]},
+    {"id":"diplomacy","label":"دیپلماسی","keywords_en":["diplomacy","diplomatic","talks","negotiation","ambassador","foreign minister"],"keywords_fa":["دیپلماسی","مذاکره","وزیر خارجه","سفیر"]},
+    {"id":"energy","label":"انرژی","keywords_en":["oil","gas","energy","pipeline","nuclear power"],"keywords_fa":["نفت","گاز","انرژی","خط لوله","هسته‌ای"]},
+    {"id":"economy_sanctions","label":"اقتصاد و تحریم","keywords_en":["sanction","trade","tariff","economy","economic","export"],"keywords_fa":["تحریم","اقتصاد","تجارت","صادرات"]},
+    {"id":"maritime","label":"دریایی","keywords_en":["navy","naval","ship","vessel","maritime","strait","carrier"],"keywords_fa":["دریایی","ناو","کشتی","تنگه"]},
+    {"id":"aerospace","label":"هوافضا","keywords_en":["satellite","spacecraft","space force","orbit","launch vehicle"],"keywords_fa":["ماهواره","فضایی","مدار","پرتابگر"]},
+    {"id":"technology_ai","label":"فناوری و هوش مصنوعی","keywords_en":["artificial intelligence"," AI ","technology","chip","semiconductor","drone"],"keywords_fa":["هوش مصنوعی","فناوری","تراشه","پهپاد"]},
+    {"id":"security","label":"امنیتی","keywords_en":["security","terror","attack","hostage","border","intelligence"],"keywords_fa":["امنیتی","حمله","گروگان","مرزی","اطلاعاتی"]},
+    {"id":"defense_military","label":"دفاعی و نظامی","keywords_en":["military","missile","weapon","defense","defence","army","warship","air force"],"keywords_fa":["نظامی","موشک","تسلیحاتی","دفاعی","ارتش"]},
+    {"id":"geopolitics","label":"ژئوپلیتیک","keywords_en":["iran","israel","russia","ukraine","china","middle east","geopolit"],"keywords_fa":["ایران","اسرائیل","روسیه","اوکراین","چین","خاورمیانه"]}
+  ],
+  "fallback": {"id":"other","label":"سایر"}
+}

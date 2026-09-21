@@ -1,0 +1,295 @@
+"""Additive PostgreSQL metadata, bounded operational read APIs and migrations."""
+import json, os, re
+from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import urlsplit
+import psycopg
+from fastapi import HTTPException, Query
+
+DSN=os.environ['DATABASE_URL']
+INTERVAL=int(os.getenv('NEWS_COLLECTION_INTERVAL_SECONDS','900'))
+ROOT=Path('/app')
+
+DDL='''
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS display_name text;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS category text;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS feed_url text;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS language text;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS enabled_for_scheduler boolean NOT NULL DEFAULT false;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS last_attempt_at timestamptz;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS last_success_at timestamptz;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS last_http_status integer;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS last_item_at timestamptz;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS consecutive_failures integer NOT NULL DEFAULT 0;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS health_status text NOT NULL DEFAULT 'not_run';
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS source_url text;
+ALTER TABLE news_items ADD COLUMN IF NOT EXISTS summary_source text;
+ALTER TABLE news_items ADD COLUMN IF NOT EXISTS summary_available boolean;
+ALTER TABLE news_items ADD COLUMN IF NOT EXISTS content_language text;
+ALTER TABLE news_items ADD COLUMN IF NOT EXISTS fetched_at timestamptz;
+ALTER TABLE news_items ADD COLUMN IF NOT EXISTS summary_raw text;
+ALTER TABLE news_items ADD COLUMN IF NOT EXISTS summary_text text;
+ALTER TABLE news_items ADD COLUMN IF NOT EXISTS classification text;
+ALTER TABLE news_items ADD COLUMN IF NOT EXISTS taxonomy_version text;
+ALTER TABLE news_items ADD COLUMN IF NOT EXISTS topics jsonb NOT NULL DEFAULT '[]'::jsonb;
+CREATE TABLE IF NOT EXISTS item_classifications(item_id text PRIMARY KEY REFERENCES news_items(item_id),category_id text NOT NULL,category_label text NOT NULL,topics jsonb NOT NULL DEFAULT '[]'::jsonb,taxonomy_version text NOT NULL,method text NOT NULL,classified_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS collection_runs(run_id text PRIMARY KEY,started_at timestamptz NOT NULL,finished_at timestamptz,trigger_type text NOT NULL,status text NOT NULL,sources_planned integer NOT NULL DEFAULT 11,sources_attempted integer NOT NULL DEFAULT 0,sources_succeeded integer NOT NULL DEFAULT 0,sources_failed integer NOT NULL DEFAULT 0,http_requests integer NOT NULL DEFAULT 0,response_bytes bigint NOT NULL DEFAULT 0,items_observed integer NOT NULL DEFAULT 0,items_inserted integer NOT NULL DEFAULT 0,duplicates integer NOT NULL DEFAULT 0,updates integer NOT NULL DEFAULT 0,rejected integer NOT NULL DEFAULT 0,error_summary text,collector_version text NOT NULL,skipped_locked boolean NOT NULL DEFAULT false);
+CREATE TABLE IF NOT EXISTS source_run_results(run_id text NOT NULL REFERENCES collection_runs(run_id),source_id text NOT NULL REFERENCES sources(source_id),started_at timestamptz NOT NULL,finished_at timestamptz,status text NOT NULL,http_status integer,response_bytes bigint NOT NULL DEFAULT 0,observed integer NOT NULL DEFAULT 0,inserted integer NOT NULL DEFAULT 0,duplicates integer NOT NULL DEFAULT 0,rejected integer NOT NULL DEFAULT 0,error_class text,error_message_sanitized text,PRIMARY KEY(run_id,source_id));
+ALTER TABLE source_run_results ADD COLUMN IF NOT EXISTS error_stage text;
+ALTER TABLE source_run_results ADD COLUMN IF NOT EXISTS diagnostic_json jsonb;
+CREATE INDEX IF NOT EXISTS collection_runs_started_idx ON collection_runs(started_at DESC);
+CREATE INDEX IF NOT EXISTS source_run_results_source_idx ON source_run_results(source_id,finished_at DESC);
+CREATE INDEX IF NOT EXISTS news_items_fetched_idx ON news_items(fetched_at DESC);
+CREATE INDEX IF NOT EXISTS news_items_category_idx ON news_items(classification);
+'''
+REGISTRY=json.loads((ROOT/'source-registry.json').read_text(encoding='utf-8-sig'))
+READY=json.loads((ROOT/'rss-execution-readiness.json').read_text(encoding='utf-8-sig'))
+CAPS=json.loads((ROOT/'collection-capabilities.json').read_text(encoding='utf-8-sig'))
+TAX=json.loads((ROOT/'classification-taxonomy-v1.json').read_text(encoding='utf-8-sig'))
+EXEC={x['source_id']:x for x in READY if x.get('executable') is True}
+CAP={x['source_id']:x for x in CAPS}
+REG={x['source_id']:x for x in REGISTRY}
+
+def q(sql,args=()):
+    with psycopg.connect(DSN) as c:return c.execute(sql,args).fetchall()
+
+def objects(sql,keys,args=()):
+    return [dict(zip(keys,row)) for row in q(sql,args)]
+
+def canonical_source(x):
+    raw=x.get('canonical_key') or x.get('canonical_url') or x.get('url')
+    p=urlsplit(raw or '')
+    return raw if p.scheme in ('https','http') and p.hostname and not p.username and not p.password else None
+
+def classify(title,summary):
+    safe_title=title if isinstance(title,str) else ''
+    safe_summary=summary if isinstance(summary,str) else ''
+    text=(' '+(safe_title+' '+safe_summary).casefold().replace('\u200c',' ')+' ')
+    labels=[]; topics=[]
+    for category in TAX.get('categories',[]) if isinstance(TAX.get('categories',[]),list) else []:
+        if not isinstance(category,dict):continue
+        hits=[]
+        words=(category.get('keywords_en') if isinstance(category.get('keywords_en'),list) else [])+(category.get('keywords_fa') if isinstance(category.get('keywords_fa'),list) else [])
+        for word in words:
+            if not isinstance(word,str):continue
+            needle=word.casefold()
+            found=(needle in text) if len(needle.strip())>4 and any(ord(ch)>127 for ch in needle) else (' '+needle.strip()+' ' in text)
+            if found:hits.append(word.strip())
+        if hits:
+            labels.append(category)
+            topics.extend(hits)
+    primary=labels[0] if labels else TAX.get('fallback',{'id':'other','label':'سایر'})
+    return primary, list(dict.fromkeys(topics)), [x['id'] for x in labels]
+
+def migrate():
+    with psycopg.connect(DSN) as c:
+        c.execute(DDL)
+        for sid,r in REG.items():
+            canonical=canonical_source(r); host=r.get('hostname') or (urlsplit(canonical).hostname if canonical else None)
+            readiness=EXEC.get(sid); cap=CAP.get(sid,{})
+            display=r.get('publisher_name') or r.get('display_name') or r.get('title')
+            # Registry currently records canonical URLs and hostnames, not publisher brands.
+            if display and display.startswith(('http://','https://')):display=None
+            safe_name=display or host
+            tier=(readiness.get('implementation_tier') if readiness else None) or cap.get('implementation_tier') or ('TIER_1_FEED' if readiness else None)
+            c.execute('''UPDATE sources SET name=%s,display_name=COALESCE(display_name,%s),canonical_url=COALESCE(canonical_url,%s),source_url=COALESCE(source_url,%s),hostname=COALESCE(hostname,%s),source_type=COALESCE(source_type,%s),category=COALESCE(category,%s),feed_url=COALESCE(feed_url,%s),collection_tier=COALESCE(collection_tier,%s),enabled_for_scheduler=%s,health_status=CASE WHEN last_success_at IS NOT NULL THEN health_status ELSE 'not_run' END WHERE source_id=%s''',(safe_name,display,canonical,canonical,host,r.get('source_type'),r.get('canonical_category'),readiness.get('verified_feed_url') if readiness else None,tier,bool(readiness),sid))
+        # Legacy entries lack captured RSS payloads. Keep NULL summary_available
+        # to mean unknown; never convert missing historic evidence to source-absent.
+        # Only collected_at is evidence of a feed retrieval. Older seed rows
+        # have neither collected_at nor fetched_at; do not mislabel insert time.
+        c.execute('UPDATE news_items SET fetched_at=NULL WHERE collected_at IS NULL AND fetched_at=created_at')
+        c.execute('UPDATE news_items SET fetched_at=COALESCE(fetched_at,collected_at),summary_text=COALESCE(summary_text,summary)')
+        rows=c.execute('SELECT item_id,title,summary FROM news_items ORDER BY item_id').fetchall()
+        for iid,title,summary in rows:
+            cat,topics,ids=classify(title,summary)
+            c.execute('''INSERT INTO item_classifications(item_id,category_id,category_label,topics,taxonomy_version,method) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(item_id) DO NOTHING''',(iid,cat['id'],cat['label'],json.dumps(topics,ensure_ascii=False),TAX['version'],TAX['method']))
+        c.execute('''UPDATE news_items n SET classification=i.category_label,taxonomy_version=i.taxonomy_version,topics=i.topics FROM item_classifications i WHERE i.item_id=n.item_id''')
+        # Phase 8A is backfilled only if complete sanitized per-source evidence exists.
+        ev=Path('/ops-evidence')
+        manifest=ev/'final-report.json'
+        if manifest.is_file():
+            report=json.loads(manifest.read_text(encoding='utf-8-sig'))
+            if report.get('LIVE_CYCLE_INVOCATIONS')==1 and report.get('HTTP_REQUEST_COUNT')<=11:
+                runid='phase-8a-'+(report.get('GIT_COMMIT_HASH') or 'unknown')[:12]
+                started=datetime.fromtimestamp(manifest.stat().st_mtime,tz=timezone.utc)
+                created=c.execute('''INSERT INTO collection_runs(run_id,started_at,finished_at,trigger_type,status,sources_planned,sources_attempted,sources_succeeded,sources_failed,http_requests,response_bytes,items_observed,items_inserted,duplicates,updates,rejected,collector_version) VALUES(%s,%s,%s,'manual','succeeded',11,11,%s,0,%s,%s,%s,%s,%s,0,0,'8a-pilot') ON CONFLICT(run_id) DO NOTHING RETURNING run_id''',(runid,started,started,int(report['RSS_SOURCES_SUCCEEDED']),int(report['HTTP_REQUEST_COUNT']),int(report['TOTAL_RESPONSE_BYTES']),int(report['TOTAL_ITEMS_OBSERVED']),int(report['INSERTED_ITEM_COUNT']),int(report['DUPLICATE_UNCHANGED_ITEMS']))).fetchone()
+                results_file=ev/'collection-results.json';transactions_file=ev/'transactions.json'
+                if created and results_file.exists() and transactions_file.exists():
+                    results=json.loads(results_file.read_text(encoding='utf-8-sig'));transactions=json.loads(transactions_file.read_text(encoding='utf-8-sig'));inserted={x for t in transactions for x in t.get('inserted',[])}
+                    invocation=ev/'live-invocation.json'
+                    if invocation.is_file():
+                        started=datetime.fromisoformat(json.loads(invocation.read_text(encoding='utf-8-sig'))['started_at'].replace('Z','+00:00'))
+                    for result in results:
+                        sid=result.get('source_id');
+                        if sid not in EXEC:continue
+                        evidence=next((i for i in result.get('items',[]) if i.get('item_id') in inserted),None)
+                        inserted_count=sum(1 for i in result.get('items',[]) if i.get('item_id') in inserted)
+                        dup_count=sum(1 for i in result.get('items',[]) if i.get('classification')=='duplicate_unchanged')
+                        c.execute('''INSERT INTO source_run_results(run_id,source_id,started_at,finished_at,status,http_status,response_bytes,observed,inserted,duplicates,rejected) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING''',(runid,sid,started,started,'succeeded' if result.get('status')=='success' else 'failed',int(result['http_status']) if str(result.get('http_status','')).isdigit() else None,int(result.get('response_bytes',0)),int(result.get('observed',0)),inserted_count,dup_count,int(result.get('rejected',0))))
+                        if result.get('status')=='success':
+                            received=datetime.fromisoformat(result['received_at'].replace('Z','+00:00')) if result.get('received_at') else started
+                            c.execute("UPDATE sources SET last_attempt_at=%s,last_success_at=%s,last_http_status=%s,last_item_at=(SELECT max(COALESCE(published_at,fetched_at)) FROM news_items WHERE source_id=%s),consecutive_failures=0,health_status='healthy' WHERE source_id=%s",(received,received,int(result['http_status']) if str(result.get('http_status','')).isdigit() else None,sid,sid))
+
+def health_for(source):
+    if not source['last_success_at']:return 'not_run'
+    failures=source['consecutive_failures'] or 0
+    if failures>=3:return 'failing'
+    if failures:return 'degraded'
+    if (datetime.now(timezone.utc)-source['last_success_at']).total_seconds()>3*INTERVAL:return 'delayed'
+    return 'healthy'
+
+def register_ops(app):
+    @app.on_event('startup')
+    def schema_migration():migrate()
+
+    @app.get('/api/v1/news')
+    def news(search:str|None=None,source_id:str|None=None,category:str|None=None,window:str='all',sort:str='newest',page:int=Query(1,ge=1),page_size:int=Query(30,ge=1,le=100)):
+        if window not in ('all','24h','7d','30d'):raise HTTPException(422,'invalid_window')
+        if sort not in ('newest','oldest'):raise HTTPException(422,'invalid_sort')
+        clauses=[];args=[]
+        if search:clauses.append("(n.title ILIKE %s OR COALESCE(n.summary_text,n.summary,'') ILIKE %s)");args += [f'%{search[:200]}%',f'%{search[:200]}%']
+        if source_id:clauses.append('n.source_id=%s');args.append(source_id)
+        if category:clauses.append('n.classification=%s');args.append(category[:100])
+        if window!='all':clauses.append("COALESCE(n.published_at,n.fetched_at)>=now()-(%s || ' hours')::interval AND COALESCE(n.published_at,n.fetched_at)<=now()");args.append({'24h':'24','7d':'168','30d':'720'}[window])
+        where=' WHERE '+' AND '.join(clauses) if clauses else ''
+        order='COALESCE(n.published_at,n.fetched_at) '+('ASC' if sort=='oldest' else 'DESC')+' NULLS LAST,n.item_id'
+        total=q('SELECT count(*) FROM news_items n'+where,args)[0][0]
+        rows=q('''SELECT n.item_id,n.source_id,n.title,COALESCE(n.summary_text,n.summary) summary,
+            n.summary_source,n.summary_available,n.content_language,n.canonical_url,n.external_guid,n.published_at,
+            COALESCE(n.fetched_at,n.collected_at) fetched_at,n.first_seen_at,n.classification,n.topics,
+            n.taxonomy_version,n.provenance_status,COALESCE(NULLIF(s.display_name,''),s.hostname),s.hostname,s.source_type,s.category
+            FROM news_items n JOIN sources s USING(source_id)'''+where+' ORDER BY '+order+' LIMIT %s OFFSET %s',args+[page_size,(page-1)*page_size])
+        return {'items':[dict(zip(['item_id','source_id','title','summary','summary_source','summary_available','content_language','canonical_url','external_guid','published_at','fetched_at','first_seen_at','category','topics','taxonomy_version','provenance_status','source_name','hostname','source_type','source_category'],r)) for r in rows], 'total':total,'page':page,'page_size':page_size,'window':window,'sort':sort}
+
+    @app.get('/api/v1/news/{item_id}')
+    def news_item(item_id:str):
+        rows=q('''SELECT n.item_id,n.source_id,n.title,COALESCE(n.summary_text,n.summary),n.summary_source,n.summary_available,n.content_language,n.canonical_url,n.external_guid,n.published_at,COALESCE(n.fetched_at,n.collected_at),n.first_seen_at,n.classification,n.topics,n.taxonomy_version,n.provenance_status,s.display_name,s.hostname,s.source_type,s.canonical_url,s.feed_url FROM news_items n JOIN sources s USING(source_id) WHERE n.item_id=%s''',(item_id,))
+        if not rows:raise HTTPException(404,'news_item_not_found')
+        return dict(zip(['item_id','source_id','title','summary','summary_source','summary_available','content_language','canonical_url','external_guid','published_at','fetched_at','first_seen_at','category','topics','taxonomy_version','provenance_status','source_name','hostname','source_type','source_url','feed_url'],rows[0]))
+
+    @app.get('/api/v1/sources')
+    def sources(page:int=Query(1,ge=1),page_size:int=Query(50,ge=1,le=100)):
+        total=q('SELECT count(*) FROM sources')[0][0]
+        rows=q('''SELECT s.source_id,COALESCE(NULLIF(s.display_name,''),s.hostname) display_name,s.canonical_url,s.hostname,s.source_type,s.category,s.feed_url,s.collection_tier,s.language,s.enabled_for_scheduler,s.last_attempt_at,s.last_success_at,s.last_http_status,s.last_item_at,s.consecutive_failures,s.health_status,COUNT(n.item_id)::int item_count,COUNT(n.item_id) FILTER(WHERE COALESCE(n.published_at,n.fetched_at)>=now()-interval '24 hours')::int items_24h,COUNT(n.item_id) FILTER(WHERE COALESCE(n.published_at,n.fetched_at)>=now()-interval '7 days')::int items_7d,MAX(n.published_at) latest_published FROM sources s LEFT JOIN news_items n USING(source_id) GROUP BY s.id ORDER BY display_name NULLS LAST,s.hostname LIMIT %s OFFSET %s''',(page_size,(page-1)*page_size))
+        data=[]
+        for r in rows:
+            keys=['source_id','display_name','canonical_url','hostname','source_type','category','feed_url','collection_tier','language','enabled_for_scheduler','last_attempt_at','last_success_at','last_http_status','last_item_at','consecutive_failures','health_status','item_count','items_24h','items_7d','latest_published']
+            x=dict(zip(keys,r));x['health_status']=health_for(x);data.append(x)
+        return {'sources':data,'total':total,'page':page,'page_size':page_size}
+
+    @app.get('/api/v1/sources/{source_id}')
+    def source(source_id:str):
+        result=sources(page=1,page_size=100)['sources'];x=next((s for s in result if s['source_id']==source_id),None)
+        if x is None:raise HTTPException(404,'source_not_found')
+        x['provenance']=q('SELECT evidence_status,count(*)::int count FROM news_item_provenance WHERE source_id=%s GROUP BY evidence_status',(source_id,))
+        x['timeline']=q("SELECT date_trunc('day',COALESCE(published_at,fetched_at)) bucket,count(*)::int count FROM news_items WHERE source_id=%s GROUP BY 1 ORDER BY 1 DESC LIMIT 30",(source_id,))
+        x['latest_items']=news(source_id=source_id,page=1,page_size=20)['items']
+        return x
+
+    @app.get('/api/v1/stats/overview')
+    def ops_overview():
+        r=q("""SELECT count(*),count(*) FILTER(WHERE COALESCE(published_at,fetched_at)>=now()-interval '24 hours' AND COALESCE(published_at,fetched_at)<=now()),count(*) FILTER(WHERE COALESCE(published_at,fetched_at)>=now()-interval '7 days' AND COALESCE(published_at,fetched_at)<=now()),count(*) FILTER(WHERE summary_available IS TRUE),count(*) FILTER(WHERE summary_available IS FALSE),count(*) FILTER(WHERE summary_available IS NULL),count(*) FILTER(WHERE published_at IS NULL),count(*) FILTER(WHERE classification='سایر'),count(*) FILTER(WHERE provenance_status='COMPLETE') FROM news_items""")[0]
+        health=[health_for(x) for x in sources(page=1,page_size=100)['sources']]
+        last=q("SELECT run_id,started_at,finished_at,status,sources_succeeded,sources_failed,items_inserted,duplicates FROM collection_runs ORDER BY started_at DESC LIMIT 1")
+        return {'total_items':r[0],'items_24h':r[1],'items_7d':r[2],'summary_available':r[3],'summary_unavailable_known':r[4],'summary_status_unknown':r[5],'missing_publication_date':r[6],'uncategorized':r[7],'provenance_complete':r[8],'sources':len(health),'healthy_sources':health.count('healthy'),'not_run_sources':health.count('not_run'),'delayed_or_failed_sources':sum(x in ('degraded','failing','delayed') for x in health),'last_run':last[0] if last else None}
+
+    @app.get('/api/v1/stats/timeline')
+    def timeline(window:str='24h'):
+        if window not in ('24h','7d','30d'):raise HTTPException(422,'invalid_window')
+        hours={'24h':24,'7d':168,'30d':720}[window]
+        unit='hour' if window=='24h' else 'day'
+        return {'window':window,'timezone':'UTC','unit':unit,'series':objects(f"SELECT date_trunc('{unit}',COALESCE(published_at,fetched_at)) bucket,count(*)::int count FROM news_items WHERE COALESCE(published_at,fetched_at)>=now()-(%s || ' hours')::interval AND COALESCE(published_at,fetched_at)<=now() GROUP BY 1 ORDER BY 1",['bucket','count'],(hours,))}
+
+    @app.get('/api/v1/stats/sources')
+    def source_stats():return {'sources':sources(page=1,page_size=100)['sources']}
+
+    @app.get('/api/v1/stats/topics')
+    def topic_stats():return {'categories':objects('SELECT category_label label,count(*)::int count FROM item_classifications GROUP BY 1 ORDER BY count DESC,label',['label','count']),'topics':objects("SELECT x.topic,count(*)::int count FROM item_classifications,LATERAL jsonb_array_elements_text(topics) AS x(topic) GROUP BY 1 ORDER BY count DESC,topic LIMIT 20",['topic','count'])}
+
+    @app.get('/api/v1/stats/topics/detailed')
+    def topic_stats_detailed(window:str='30d'):
+        if window not in ('24h','7d','30d','all'):raise HTTPException(422,'invalid_window')
+        hours={'24h':24,'7d':168,'30d':720}.get(window)
+        filt='TRUE' if hours is None else "COALESCE(n.published_at,n.fetched_at)>=now()-(%s || ' hours')::interval AND COALESCE(n.published_at,n.fetched_at)<=now()"
+        args=() if hours is None else (hours,)
+        categories=objects(f'''SELECT COALESCE(n.classification,'سایر') label,count(*)::int count,
+            count(DISTINCT n.source_id)::int sources,max(COALESCE(n.published_at,n.fetched_at)) latest
+            FROM news_items n WHERE {filt} GROUP BY 1 ORDER BY count DESC,label''', ['label','count','sources','latest'],args)
+        topics=objects(f'''SELECT x.topic,count(*)::int count,count(DISTINCT n.source_id)::int sources,
+            max(COALESCE(n.published_at,n.fetched_at)) latest
+            FROM news_items n CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(n.topics,'[]'::jsonb)) AS x(topic)
+            WHERE {filt} GROUP BY 1 ORDER BY count DESC,x.topic LIMIT 50''',['topic','count','sources','latest'],args)
+        # Attach compact provenance context for drill-down; do not infer semantics.
+        for row in topics:
+            topic=row['topic']
+            row['previous_count']=q('''SELECT count(*) FROM news_items n CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(n.topics,'[]'::jsonb)) x(topic)
+                WHERE x.topic=%s AND COALESCE(n.published_at,n.fetched_at)>=now()-(%s || ' hours')::interval
+                AND COALESCE(n.published_at,n.fetched_at)<now()-(%s || ' hours')::interval''',(topic,hours or 1440,hours or 720))[0][0] if hours else 0
+            row['source_names']=objects(f'''SELECT DISTINCT COALESCE(NULLIF(s.display_name,''),s.hostname) name
+                FROM news_items n JOIN sources s USING(source_id) CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(n.topics,'[]'::jsonb)) x(topic)
+                WHERE x.topic=%s AND {filt} ORDER BY name LIMIT 5''',['name'],(topic,*args))
+            row['recent_news']=objects(f'''SELECT n.item_id,n.title,n.canonical_url,COALESCE(n.published_at,n.fetched_at) observed_at,
+                COALESCE(NULLIF(s.display_name,''),s.hostname) source_name
+                FROM news_items n JOIN sources s USING(source_id) CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(n.topics,'[]'::jsonb)) x(topic)
+                WHERE x.topic=%s AND {filt} ORDER BY COALESCE(n.published_at,n.fetched_at) DESC NULLS LAST LIMIT 5''',
+                ['item_id','title','canonical_url','observed_at','source_name'],(topic,*args))
+        source_rows=objects(f'''SELECT COALESCE(NULLIF(s.display_name,''),s.hostname) label,count(n.item_id)::int count,
+            count(DISTINCT n.classification)::int categories,max(COALESCE(n.published_at,n.fetched_at)) latest
+            FROM sources s LEFT JOIN news_items n ON n.source_id=s.source_id AND {filt}
+            GROUP BY s.source_id,s.display_name,s.hostname ORDER BY count DESC,label''', ['label','count','categories','latest'],args)
+        uncategorized=q("SELECT count(*) FROM news_items n WHERE COALESCE(n.classification,'سایر')='سایر'")[0][0]
+        uncategorized_in_window=q(f"SELECT count(*) FROM news_items n WHERE {filt} AND COALESCE(n.classification,'سایر')='سایر'",args)[0][0]
+        latest=q('SELECT max(COALESCE(published_at,fetched_at)) FROM news_items')[0][0]
+        return {'window':window,'categories':categories,'topics':topics,'sources':source_rows,
+            'uncategorized':uncategorized,'uncategorized_in_window':uncategorized_in_window,
+            'latest_observation':latest,'method':'Aggregates from stored PostgreSQL records; categories and topics are rule-based labels, not semantic analysis.'}
+
+    @app.get('/api/v1/stats/quality')
+    def quality_stats():return ops_overview() | {'duplicates_prevented':q('SELECT COALESCE(sum(duplicates),0) FROM collection_runs')[0][0],'rejected':q('SELECT COALESCE(sum(rejected),0) FROM collection_runs')[0][0],'classified':q('SELECT count(*) FROM item_classifications')[0][0]}
+
+    @app.get('/api/v1/stats/brief')
+    def brief(window:str='24h'):
+        if window not in ('24h','7d','30d'):raise HTTPException(422,'invalid_window')
+        hours={'24h':24,'7d':168,'30d':720}[window]
+        counts=q("SELECT count(*) FILTER(WHERE COALESCE(published_at,fetched_at)>=now()-(%s || ' hours')::interval AND COALESCE(published_at,fetched_at)<=now()),count(DISTINCT source_id) FILTER(WHERE COALESCE(published_at,fetched_at)>=now()-(%s || ' hours')::interval AND COALESCE(published_at,fetched_at)<=now()) FROM news_items",(hours,hours))[0]
+        previous=q("SELECT count(*) FROM news_items WHERE COALESCE(published_at,fetched_at)>=now()-(%s || ' hours')::interval AND COALESCE(published_at,fetched_at)<now()-(%s || ' hours')::interval",(hours*2,hours))[0][0]
+        quiet=q("SELECT COALESCE(NULLIF(s.display_name,''),s.hostname),s.hostname FROM sources s WHERE NOT EXISTS(SELECT 1 FROM news_items n WHERE n.source_id=s.source_id AND COALESCE(n.published_at,n.fetched_at)>=now()-(%s || ' hours')::interval AND COALESCE(n.published_at,n.fetched_at)<=now()) ORDER BY s.hostname",(hours,))
+        cats=q("SELECT classification,count(*)::int FROM news_items WHERE COALESCE(published_at,fetched_at)>=now()-(%s || ' hours')::interval AND COALESCE(published_at,fetched_at)<=now() GROUP BY 1 ORDER BY 2 DESC,1 LIMIT 3",(hours,))
+        tops=q("SELECT x.topic,count(*)::int, count(DISTINCT n.source_id)::int FROM news_items n,LATERAL jsonb_array_elements_text(n.topics) AS x(topic) WHERE COALESCE(n.published_at,n.fetched_at)>=now()-(%s || ' hours')::interval AND COALESCE(n.published_at,n.fetched_at)<=now() GROUP BY 1 ORDER BY 2 DESC,3 DESC,1 LIMIT 5",(hours,))
+        leaders=q("SELECT COALESCE(NULLIF(s.display_name,''),s.hostname),s.hostname,count(*)::int FROM news_items n JOIN sources s USING(source_id) WHERE COALESCE(n.published_at,n.fetched_at)>=now()-(%s || ' hours')::interval AND COALESCE(n.published_at,n.fetched_at)<=now() GROUP BY s.source_id,s.display_name,s.hostname ORDER BY 3 DESC,1 LIMIT 5",(hours,))
+        return {'window':window,'items':counts[0],'active_sources':counts[1],'previous_items':previous,'change':counts[0]-previous,'categories':cats,'topics':tops,'leading_sources':leaders,'sources_without_recent_items':quiet,'method':'Counts and rule-based keyword categories from PostgreSQL; descriptive only.'}
+
+    @app.get('/api/v1/collection/status')
+    def collection_status():
+        r=q('SELECT run_id,started_at,finished_at,status,sources_planned,sources_attempted,sources_succeeded,sources_failed,http_requests,response_bytes,items_observed,items_inserted,duplicates,updates,rejected,error_summary FROM collection_runs ORDER BY started_at DESC LIMIT 1')
+        try:
+            state=json.loads((Path(os.getenv('COLLECTOR_STATE_DIR','/state'))/'health.json').read_text(encoding='utf-8'))
+            enabled=bool(state.get('enabled'));collector_health='healthy' if enabled and (state.get('heartbeat_at') or state.get('started_at')) else ('stopped' if not enabled else 'unknown')
+            heartbeat=state.get('heartbeat_at') or state.get('started_at')
+            if enabled and heartbeat:
+                beat=datetime.fromisoformat(heartbeat.replace('Z','+00:00'))
+                if (datetime.now(timezone.utc)-beat).total_seconds()>45:
+                    enabled=False;collector_health='stopped_stale_heartbeat'
+        except (OSError,ValueError):state={};enabled=False;collector_health='not_running'
+        next_at=None
+        if enabled and state.get('next_run_at'):
+            next_at=datetime.fromisoformat(state['next_run_at'].replace('Z','+00:00'))
+        elif enabled and state.get('started_at'):
+            next_at=datetime.fromisoformat(state['started_at'].replace('Z','+00:00'))+__import__('datetime').timedelta(seconds=INTERVAL)
+        return {'scheduler_enabled':enabled,'collector_health':collector_health,'interval_seconds':INTERVAL,'next_run_at':next_at if enabled else None,'last_run':dict(zip(['run_id','started_at','finished_at','status','sources_planned','sources_attempted','sources_succeeded','sources_failed','http_requests','response_bytes','items_observed','items_inserted','duplicates','updates','rejected','error_summary'],r[0])) if r else None,'lock':'postgres_advisory_lock'}
+
+    @app.get('/api/v1/collection/runs')
+    def runs(page:int=Query(1,ge=1,le=10000),page_size:int=Query(20,ge=1,le=100)):
+        return {'runs':objects('SELECT run_id,started_at,finished_at,trigger_type,status,sources_planned,sources_attempted,sources_succeeded,sources_failed,http_requests,response_bytes,items_observed,items_inserted,duplicates,updates,rejected,skipped_locked FROM collection_runs ORDER BY started_at DESC LIMIT %s OFFSET %s',['run_id','started_at','finished_at','trigger_type','status','sources_planned','sources_attempted','sources_succeeded','sources_failed','http_requests','response_bytes','items_observed','items_inserted','duplicates','updates','rejected','skipped_locked'],(page_size,(page-1)*page_size)),'total':q('SELECT count(*) FROM collection_runs')[0][0],'page':page,'page_size':page_size}
+
+    @app.get('/api/v1/collection/runs/{run_id}')
+    def run_detail(run_id:str):
+        r=q('SELECT run_id,started_at,finished_at,trigger_type,status,sources_planned,sources_attempted,sources_succeeded,sources_failed,http_requests,response_bytes,items_observed,items_inserted,duplicates,updates,rejected,skipped_locked FROM collection_runs WHERE run_id=%s',(run_id,))
+        if not r:raise HTTPException(404,'collection_run_not_found')
+        return {'run':dict(zip(['run_id','started_at','finished_at','trigger_type','status','sources_planned','sources_attempted','sources_succeeded','sources_failed','http_requests','response_bytes','items_observed','items_inserted','duplicates','updates','rejected','skipped_locked'],r[0])),'sources':objects('SELECT source_id,started_at,finished_at,status,http_status,response_bytes,observed,inserted,duplicates,rejected,error_class,error_message_sanitized,error_stage FROM source_run_results WHERE run_id=%s ORDER BY source_id',['source_id','started_at','finished_at','status','http_status','response_bytes','observed','inserted','duplicates','rejected','error_class','error_message_sanitized','error_stage'],(run_id,))}
+
+    @app.get('/api/v1/taxonomy')
+    def taxonomy():return TAX
+
+    @app.get('/api/v1/health')
+    def health_detail():return {'status':'ok','database':'ready','items':q('SELECT count(*) FROM news_items')[0][0],'sources':q('SELECT count(*) FROM sources')[0][0],'scheduler_enabled':collection_status()['scheduler_enabled']}

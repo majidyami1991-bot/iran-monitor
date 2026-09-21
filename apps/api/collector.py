@@ -1,0 +1,222 @@
+"""Sequential, no-retry RSS cycle used by the opt-in 15-minute scheduler."""
+import email.utils, hashlib, html, json, os, re, time, uuid, signal, logging, traceback
+from datetime import datetime, timezone
+from html.parser import HTMLParser
+from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+from urllib.request import Request, build_opener, ProxyHandler, HTTPRedirectHandler
+from defusedxml import ElementTree as ET
+import psycopg
+from psycopg.types.json import Jsonb
+from ops import EXEC, REG, classify, DSN
+
+ROOT=Path('/app'); STATE=Path(os.getenv('COLLECTOR_STATE_DIR','/state'))
+MAX_BYTES=2*1024*1024;TIMEOUT=30;UA='IranMonitor/1.0 (bounded RSS monitoring; project news-feed collector)';VERSION='1.1.0'
+LOG=logging.getLogger('iran_monitor.collector')
+LOCK_KEY=0x4952414E4D4F4E
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self,req,fp,code,msg,headers,newurl):return None
+class Text(HTMLParser):
+    blocked={'script','style','iframe','object','svg','noscript'}
+    def __init__(self):super().__init__(convert_charrefs=True);self.skip=0;self.parts=[]
+    def handle_starttag(self,tag,attrs):
+        if tag.lower() in self.blocked:self.skip+=1
+        if tag.lower() in ('br','p','div','li','section','article','h1','h2','h3','tr'):self.parts.append(' ')
+    def handle_endtag(self,tag):
+        if tag.lower() in self.blocked and self.skip:self.skip-=1
+        if tag.lower() in ('p','div','li','section','article','h1','h2','h3','tr'):self.parts.append(' ')
+    def handle_data(self,data):
+        if not self.skip:self.parts.append(data)
+def clean(s):
+    if isinstance(s,(list,tuple)):
+        s=' '.join(x for x in (clean(v) for v in s) if x)
+    elif not isinstance(s,str) and callable(getattr(s,'itertext',None)):
+        s=''.join(s.itertext())
+    elif s is not None and not isinstance(s,str):
+        return None
+    if not s:return None
+    p=Text();p.feed(html.unescape(s));p.close();t=' '.join(' '.join(p.parts).split());t=re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]','',t).strip()
+    return t[:2000] or None
+def text(node,path):
+    n=node.find(path)
+    if n is None:return None
+    return ''.join(n.itertext()).strip()
+
+def json_default(value):
+    """Stable JSON encoding for normalized timestamps; rejects unknown values."""
+    if isinstance(value,datetime):
+        if value.tzinfo is None:value=value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc).isoformat()
+    raise TypeError(f'unsupported_json_type:{type(value).__name__}')
+
+def content_hash(item):
+    # Capture-time values are evidence, not story content; excluding them makes
+    # the same item hash stable across naturally repeated feed reads.
+    stable={k:v for k,v in item.items() if k not in ('collected_at','fetched_at')}
+    payload=json.dumps(stable,sort_keys=True,ensure_ascii=False,default=json_default,separators=(',',':'))
+    return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+
+def safe_message(exc):
+    message=str(exc) or type(exc).__name__
+    message=re.sub(r'(?i)(password|secret|token|authorization|api[_-]?key)(\s*[:=]\s*)[^\s,;]+',r'\1\2[REDACTED]',message)
+    message=re.sub(r'https?://[^\s"\']+',lambda m:sanitize_url(m.group(0)),message)
+    message=re.sub(r'(?i)(postgres(?:ql)?://)[^/@\s]+:[^/@\s]+@',r'\1[REDACTED]@',message)
+    return re.sub(r'[\r\n\t]+',' ',message)[:240]
+
+def sanitize_url(value):
+    try:
+        p=urlsplit(value);query=[]
+        for k,v in parse_qsl(p.query,keep_blank_values=True):
+            query.append((k,'[REDACTED]' if re.search(r'(?i)(token|key|secret|auth|password|signature|sig)',k) else v))
+        return urlunsplit((p.scheme,p.netloc,p.path,urlencode(query),'') )
+    except Exception:return '[URL]'
+
+def safe_trace(exc):
+    """Traceback without source lines, local values, feed text, or absolute paths."""
+    return [{'file':Path(f.filename).name,'function':f.name,'line':f.lineno} for f in traceback.extract_tb(exc.__traceback__)][-12:]
+
+def log_failure(*,run_id,source_id,stage,exc,item_index=None,feed_format=None,field_names=None,value_types=None):
+    record={'run_id':run_id,'source_id':source_id,'stage':stage,'exception_class':type(exc).__name__,'exception_message_sanitized':safe_message(exc),'stack_trace_sanitized':safe_trace(exc),'item_index':item_index,'feed_format':feed_format,'field_names':sorted(field_names or []),'value_types':value_types or {},'collector_version':VERSION}
+    LOG.error(json.dumps(record,ensure_ascii=False,separators=(',',':')))
+    return record
+def parse(data,sid,received):
+    root=ET.fromstring(data);tag=root.tag.rsplit('}',1)[-1].lower();nodes=[]
+    xml_lang='{http://www.w3.org/XML/1998/namespace}lang'
+    feed_language=root.attrib.get(xml_lang) or text(root,'channel/language') or text(root,'{*}language')
+    if tag in ('rss','rdf'):
+        nodes=root.findall('.//{*}item')
+    elif tag=='feed':nodes=root.findall('{*}entry')
+    else:raise ValueError('unsupported_feed_format')
+    items=[];rejected=0;seen=set()
+    for n in nodes:
+        try:
+            title=text(n,'title') or text(n,'{*}title'); title=(title or '').strip()
+            link=''
+            for x in n.findall('link')+n.findall('{*}link'):
+                href=x.attrib.get('href');rel=x.attrib.get('rel','alternate')
+                if href and rel in ('alternate',''):link=href;break
+                if x.text:link=x.text.strip();break
+            link=link or text(n,'link') or text(n,'{*}link')
+            u=urlsplit(link or '')
+            if not title or len(title)>10000 or u.scheme not in ('http','https') or not u.hostname or u.username or u.password:raise ValueError()
+            canonical=urlunsplit((u.scheme.lower(),u.netloc.lower(),u.path or '/',urlencode([(k,v) for k,v in parse_qsl(u.query) if not k.lower().startswith(('utm_','fbclid','gclid'))]),''))
+            sidhash=hashlib.sha256((sid+'|'+canonical).encode()).hexdigest()
+            if sidhash in seen:rejected+=1;continue
+            seen.add(sidhash)
+            candidates=[('content_encoded',text(n,'{http://purl.org/rss/1.0/modules/content/}encoded')),('description',text(n,'description')),('description',text(n,'{*}description')),('atom_summary',text(n,'{*}summary')),('atom_content',text(n,'{*}content'))]
+            source=None;summary=None
+            for kind,value in candidates:
+                summary=clean(value)
+                if summary:source=kind;break
+            rawdate=text(n,'pubDate') or text(n,'{*}published') or text(n,'{*}updated') or text(n,'{*}date');published=None
+            if rawdate:
+                try:
+                    d=email.utils.parsedate_to_datetime(rawdate)
+                    if d.tzinfo is None: d=d.replace(tzinfo=timezone.utc)
+                    published=d.astimezone(timezone.utc)
+                except (TypeError,ValueError):
+                    try:published=datetime.fromisoformat(rawdate.replace('Z','+00:00')).astimezone(timezone.utc)
+                    except ValueError:published=None
+            guid=text(n,'guid') or text(n,'{*}id')
+            language=n.attrib.get(xml_lang) or feed_language
+            items.append({'item_id':sidhash,'source_id':sid,'title':title,'canonical_url':canonical,'external_guid':guid,'published_at':published.isoformat() if published else None,'collected_at':received,'fetched_at':received,'summary_raw':summary,'summary_text':summary,'summary_source':source,'summary_available':bool(summary),'content_language':language.strip()[:64] if language and language.strip() else None,'classification':None,'topics':[]})
+        except (ValueError,TypeError):rejected+=1
+    return items,len(nodes),rejected
+def atomic_json(path,obj):
+    path.parent.mkdir(parents=True,exist_ok=True);tmp=path.with_suffix('.tmp');tmp.write_text(json.dumps(obj,ensure_ascii=False,indent=2),encoding='utf-8');os.replace(tmp,path)
+def one_request(url):
+    p=urlsplit(url)
+    if p.scheme!='https' or not p.hostname:raise ValueError('invalid_manifest_url')
+    opener=build_opener(ProxyHandler(),NoRedirect())
+    req=Request(url,headers={'User-Agent':UA,'Accept':'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9'})
+    started=datetime.now(timezone.utc)
+    try:
+        with opener.open(req,timeout=TIMEOUT) as r:
+            status=r.status;chunks=[];total=0
+            while True:
+                b=r.read(min(65536,MAX_BYTES+1-total))
+                if not b:break
+                chunks.append(b);total+=len(b)
+                if total>MAX_BYTES:raise ValueError('response_too_large')
+            return status,b''.join(chunks),total,started,None
+    except HTTPError as e:return e.code,b'',0,started,'http_error'
+    except (URLError,TimeoutError,ValueError) as e:return None,b'',0,started,type(e).__name__
+def source_run(c,runid,source):
+    sid=source['source_id'];url=source['verified_feed_url'];started=datetime.now(timezone.utc);status=None;size=observed=inserted=duplicates=updates=rejected=0;err=None;items=[];http_requests=0;stage='fetch';item_index=None;feed_format=None
+    try:
+        http_requests=1;status,body,size,reqstart,err=one_request(url)
+        if status!=200:raise ValueError(err or 'http_status')
+        stage='xml_parsing'
+        items,observed,rejected=parse(body,sid,datetime.now(timezone.utc))
+        try:feed_format=ET.fromstring(body).tag.rsplit('}',1)[-1].lower()
+        except Exception:feed_format='unknown'
+        digest=hashlib.sha256(body).hexdigest()
+        stage='classification'
+        for item_index,item in enumerate(items):
+            cat,topics,_=classify(item['title'],item['summary_text']);item['classification']=cat['label'];item['topics']=topics
+        # Each source commits news, provenance, health, and run-result together.
+        stage='database_transaction'
+        with c.transaction():
+            for item_index,i in enumerate(items):
+                previous=c.execute('SELECT item_id,title,published_at,summary_text FROM news_items WHERE item_id=%s OR canonical_url=%s FOR UPDATE',(i['item_id'],i['canonical_url'])).fetchone()
+                if previous:
+                    if previous[0]==i['item_id'] and previous[1]==i['title'] and previous[2]==(datetime.fromisoformat(i['published_at']) if i['published_at'] else None) and previous[3]==i['summary_text']:duplicates+=1
+                    else:updates+=1
+                    # Preserve old content and metadata; never overwrite a saved item.
+                    continue
+                stage='content_hash'
+                item_hash=content_hash(i)
+                stage='database_insert'
+                c.execute('''INSERT INTO news_items(item_id,source_id,title,summary,canonical_url,external_guid,published_at,collected_at,fetched_at,summary_raw,summary_text,summary_source,summary_available,content_language,adapter_type,provenance_status,content_hash,classification,taxonomy_version,topics) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'rss','COMPLETE',%s,%s,%s,%s) ON CONFLICT DO NOTHING''',(i['item_id'],sid,i['title'],i['summary_text'],i['canonical_url'],i['external_guid'],i['published_at'],i['collected_at'],i['fetched_at'],i['summary_raw'],i['summary_text'],i['summary_source'],i['summary_available'],i['content_language'],item_hash,i['classification'],__import__('ops').TAX['version'],Jsonb(i['topics'])))
+                if c.execute('SELECT 1 FROM news_items WHERE item_id=%s',(i['item_id'],)).fetchone():
+                    c.execute('INSERT INTO item_classifications(item_id,category_id,category_label,topics,taxonomy_version,method) SELECT %s,%s,%s,%s,%s,%s ON CONFLICT(item_id) DO NOTHING',(i['item_id'],cat['id'],cat['label'],Jsonb(i['topics']),__import__('ops').TAX['version'],__import__('ops').TAX['method']))
+                    c.execute("INSERT INTO news_item_provenance(item_id,source_id,feed_url,execution_reference,evidence_status,evidence_json) VALUES(%s,%s,%s,%s,'COMPLETE',%s) ON CONFLICT(item_id) DO NOTHING",(i['item_id'],sid,url,runid,Jsonb({'http_status':status,'response_sha256':digest,'received_at':i['collected_at'],'summary_source':i['summary_source']})))
+                    inserted+=1
+                else:duplicates+=1
+            finished=datetime.now(timezone.utc)
+            c.execute("UPDATE sources SET last_attempt_at=%s,last_success_at=%s,last_http_status=%s,last_item_at=COALESCE((SELECT max(COALESCE(published_at,fetched_at)) FROM news_items WHERE source_id=%s),last_item_at),consecutive_failures=0,health_status='healthy',updated_at=now() WHERE source_id=%s",(started,finished,status,sid,sid))
+            c.execute("INSERT INTO source_run_results(run_id,source_id,started_at,finished_at,status,http_status,response_bytes,observed,inserted,duplicates,rejected) VALUES(%s,%s,%s,%s,'succeeded',%s,%s,%s,%s,%s,%s)",(runid,sid,started,finished,status,size,observed,inserted,duplicates,rejected))
+        stage='checkpoint';atomic_json(STATE/(sid+'.json'),{'source_id':sid,'run_id':runid,'committed_at':finished.isoformat(),'item_count':inserted,'last_http_status':status,'response_sha256':digest})
+        return {'status':'succeeded','attempted':1,'http_requests':http_requests,'bytes':size,'observed':observed,'inserted':inserted,'duplicates':duplicates,'updates':updates,'rejected':rejected,'error':None}
+    except Exception as e:
+        finished=datetime.now(timezone.utc);diagnostic=log_failure(run_id=runid,source_id=sid,stage=stage,exc=e,item_index=item_index,feed_format=feed_format,field_names=(items[item_index].keys() if item_index is not None and item_index<len(items) else ()),value_types=({k:type(v).__name__ for k,v in items[item_index].items()} if item_index is not None and item_index<len(items) else {}));error_class=type(e).__name__;error_message=safe_message(e)
+        with c.transaction():
+            c.execute("UPDATE sources SET last_attempt_at=%s,last_http_status=%s,consecutive_failures=consecutive_failures+1,health_status=CASE WHEN consecutive_failures+1>=3 THEN 'failing' ELSE 'degraded' END,updated_at=now() WHERE source_id=%s",(started,status,sid))
+            c.execute("INSERT INTO source_run_results(run_id,source_id,started_at,finished_at,status,http_status,response_bytes,observed,inserted,duplicates,rejected,error_class,error_message_sanitized,error_stage,diagnostic_json) VALUES(%s,%s,%s,%s,'failed',%s,%s,%s,0,0,%s,%s,%s,%s,%s)",(runid,sid,started,finished,status,size,observed,rejected,error_class,error_message,stage,Jsonb(diagnostic)))
+        return {'status':'failed','attempted':1,'http_requests':http_requests,'bytes':size,'observed':observed,'inserted':0,'duplicates':0,'updates':0,'rejected':rejected,'error':error_class,'error_summary':f'{stage}: {error_message}'}
+def cycle(trigger='scheduled'):
+    STATE.mkdir(parents=True,exist_ok=True)
+    with psycopg.connect(DSN,autocommit=True) as lock:
+        if not lock.execute('SELECT pg_try_advisory_lock(%s)',(LOCK_KEY,)).fetchone()[0]:
+            rid=str(uuid.uuid4());now=datetime.now(timezone.utc)
+            lock.execute("INSERT INTO collection_runs(run_id,started_at,finished_at,trigger_type,status,sources_planned,skipped_locked,collector_version) VALUES(%s,%s,%s,%s,'skipped_locked',11,true,%s)",(rid,now,now,trigger,VERSION));return {'run_id':rid,'status':'skipped_locked'}
+        rid=str(uuid.uuid4());start=datetime.now(timezone.utc);results=[]
+        lock.execute("INSERT INTO collection_runs(run_id,started_at,trigger_type,status,collector_version) VALUES(%s,%s,%s,'running',%s)",(rid,start,trigger,VERSION))
+        try:
+            with psycopg.connect(DSN) as c:
+                for src in sorted(EXEC.values(),key=lambda x:x['source_id']):results.append(source_run(c,rid,src))
+            finish=datetime.now(timezone.utc);failed=sum(x['status']!='succeeded' for x in results)
+            totals=[sum(x[k] for x in results) for k in ('attempted','http_requests','bytes','observed','inserted','duplicates','updates','rejected')]
+            summaries=[x.get('error_summary') for x in results if x.get('error_summary')]
+            lock.execute("UPDATE collection_runs SET finished_at=%s,status=%s,sources_attempted=%s,sources_succeeded=%s,sources_failed=%s,http_requests=%s,response_bytes=%s,items_observed=%s,items_inserted=%s,duplicates=%s,updates=%s,rejected=%s,error_summary=%s WHERE run_id=%s",(finish,'partial' if failed else 'succeeded',totals[0],len(results)-failed,failed,*totals[1:],'; '.join(summaries)[:500] if summaries else None,rid))
+            return {'run_id':rid,'status':'partial' if failed else 'succeeded','sources':results}
+        finally:lock.execute('SELECT pg_advisory_unlock(%s)',(LOCK_KEY,))
+def run():
+    interval=int(os.getenv('NEWS_COLLECTION_INTERVAL_SECONDS','900'));enabled=os.getenv('NEWS_COLLECTION_ENABLED','false').lower()=='true'
+    if interval!=900:raise ValueError('NEWS_COLLECTION_INTERVAL_SECONDS must be 900')
+    import threading
+    stopping=threading.Event();signal.signal(signal.SIGTERM,lambda *_:stopping.set());signal.signal(signal.SIGINT,lambda *_:stopping.set())
+    started=datetime.now(timezone.utc);deadline=time.monotonic()+interval
+    atomic_json(STATE/'health.json',{'started_at':started.isoformat(),'enabled':enabled,'interval_seconds':interval,'next_run_at':(started+__import__('datetime').timedelta(seconds=interval)).isoformat() if enabled else None})
+    if not enabled:
+        while not stopping.wait(60):atomic_json(STATE/'health.json',{'heartbeat_at':datetime.now(timezone.utc).isoformat(),'enabled':False,'interval_seconds':interval})
+        return
+    while not stopping.is_set():
+        remaining=deadline-time.monotonic()
+        if remaining>0:
+            stopping.wait(min(10,remaining));atomic_json(STATE/'health.json',{'heartbeat_at':datetime.now(timezone.utc).isoformat(),'enabled':True,'interval_seconds':interval,'next_run_at':(datetime.now(timezone.utc)+__import__('datetime').timedelta(seconds=max(0,int(deadline-time.monotonic())))).isoformat()})
+            continue
+        result=cycle('scheduled');atomic_json(STATE/'last-cycle.json',result);deadline+=interval
+        atomic_json(STATE/'health.json',{'heartbeat_at':datetime.now(timezone.utc).isoformat(),'enabled':True,'interval_seconds':interval,'next_run_at':(datetime.now(timezone.utc)+__import__('datetime').timedelta(seconds=max(0,int(deadline-time.monotonic())))).isoformat()})
+if __name__=='__main__':run()

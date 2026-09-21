@@ -18,6 +18,9 @@
     command: uvicorn main:app --host 0.0.0.0 --port 3000
     environment:
       DATABASE_URL: postgresql://iran_monitor:${NEWS_DB_PASSWORD}@news-db:5432/iran_monitor
+    volumes:
+      - ../../runtime/live-rss/phase-8a:/ops-evidence:ro
+      - news-collector-state:/state:ro
     depends_on: {news-db: {condition: service_healthy}}
     restart: unless-stopped
     read_only: true
@@ -28,7 +31,8 @@
     environment:
       API_ORIGIN: http://news-api:3000
       METADATA_ROOT: /metadata
-    volumes: [../../config/sources:/metadata:ro]
+    volumes:
+      - ../../config/sources:/metadata:ro
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]
@@ -46,8 +50,34 @@
     depends_on: {news-db: {condition: service_healthy}}
     profiles: [tools]
     networks: [news]
+  news-collector:
+    build: {context: ../.., dockerfile: apps/api/Dockerfile}
+    command: [python, /app/collector.py]
+    environment:
+      DATABASE_URL: postgresql://iran_monitor:${NEWS_DB_PASSWORD}@news-db:5432/iran_monitor
+      NEWS_COLLECTION_ENABLED: ${NEWS_COLLECTION_ENABLED:-false}
+      NEWS_COLLECTION_INTERVAL_SECONDS: ${NEWS_COLLECTION_INTERVAL_SECONDS:-900}
+      COLLECTOR_STATE_DIR: /state
+    volumes: [news-collector-state:/state]
+    depends_on: {news-db: {condition: service_healthy}}
+    restart: unless-stopped
+    stop_grace_period: 6m
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    user: "65532:65532"
+    healthcheck:
+      test: [CMD, python, /app/health.py]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 30s
+    profiles: [scheduler]
+    networks: [news]
 networks:
   news:
     name: iran-monitor-news_default
 volumes:
   news-db-data:
+  news-collector-state:
