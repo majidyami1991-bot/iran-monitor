@@ -37,6 +37,13 @@ CREATE TABLE IF NOT EXISTS collection_runs(run_id text PRIMARY KEY,started_at ti
 CREATE TABLE IF NOT EXISTS source_run_results(run_id text NOT NULL REFERENCES collection_runs(run_id),source_id text NOT NULL REFERENCES sources(source_id),started_at timestamptz NOT NULL,finished_at timestamptz,status text NOT NULL,http_status integer,response_bytes bigint NOT NULL DEFAULT 0,observed integer NOT NULL DEFAULT 0,inserted integer NOT NULL DEFAULT 0,duplicates integer NOT NULL DEFAULT 0,rejected integer NOT NULL DEFAULT 0,error_class text,error_message_sanitized text,PRIMARY KEY(run_id,source_id));
 ALTER TABLE source_run_results ADD COLUMN IF NOT EXISTS error_stage text;
 ALTER TABLE source_run_results ADD COLUMN IF NOT EXISTS diagnostic_json jsonb;
+ALTER TABLE source_run_results ADD COLUMN IF NOT EXISTS http_requests integer NOT NULL DEFAULT 0;
+ALTER TABLE source_run_results ADD COLUMN IF NOT EXISTS updates integer;
+ALTER TABLE source_run_results ADD COLUMN IF NOT EXISTS response_sha256 text;
+ALTER TABLE source_run_results ADD COLUMN IF NOT EXISTS checkpoint_payload jsonb;
+ALTER TABLE collection_runs ADD COLUMN IF NOT EXISTS repaired_at timestamptz;
+ALTER TABLE collection_runs ADD COLUMN IF NOT EXISTS repair_reason text;
+ALTER TABLE collection_runs ALTER COLUMN updates DROP NOT NULL;
 CREATE INDEX IF NOT EXISTS collection_runs_started_idx ON collection_runs(started_at DESC);
 CREATE INDEX IF NOT EXISTS source_run_results_source_idx ON source_run_results(source_id,finished_at DESC);
 CREATE INDEX IF NOT EXISTS news_items_fetched_idx ON news_items(fetched_at DESC);

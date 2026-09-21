@@ -1,5 +1,5 @@
 """Sequential, no-retry RSS cycle used by the opt-in 15-minute scheduler."""
-import email.utils, hashlib, html, json, os, re, time, uuid, signal, logging, traceback
+import email.utils, hashlib, html, json, os, re, time, uuid, signal, logging, traceback, tempfile
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
@@ -12,9 +12,10 @@ from psycopg.types.json import Jsonb
 from ops import EXEC, REG, classify, DSN
 
 ROOT=Path('/app'); STATE=Path(os.getenv('COLLECTOR_STATE_DIR','/state'))
-MAX_BYTES=2*1024*1024;TIMEOUT=30;UA='IranMonitor/1.0 (bounded RSS monitoring; project news-feed collector)';VERSION='1.1.0'
+MAX_BYTES=2*1024*1024;TIMEOUT=30;UA='IranMonitor/1.0 (bounded RSS monitoring; project news-feed collector)';VERSION='1.2.0'
 LOG=logging.getLogger('iran_monitor.collector')
 LOCK_KEY=0x4952414E4D4F4E
+SOURCE_TERMINAL={'succeeded','failed_fetch','failed_parse','failed_normalize','committed_checkpoint_failed','failed_finalize'}
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self,req,fp,code,msg,headers,newurl):return None
 class Text(HTMLParser):
@@ -124,7 +125,81 @@ def parse(data,sid,received):
         except (ValueError,TypeError):rejected+=1
     return items,len(nodes),rejected
 def atomic_json(path,obj):
-    path.parent.mkdir(parents=True,exist_ok=True);tmp=path.with_suffix('.tmp');tmp.write_text(json.dumps(obj,ensure_ascii=False,indent=2),encoding='utf-8');os.replace(tmp,path)
+    """Write a JSON checkpoint through a same-directory fsynced temp file."""
+    path=Path(path);path.parent.mkdir(parents=True,exist_ok=True);tmp=None
+    try:
+        fd,name=tempfile.mkstemp(prefix=f'.{path.name}.',suffix='.tmp',dir=path.parent);tmp=Path(name)
+        with os.fdopen(fd,'w',encoding='utf-8',newline='\n') as stream:
+            json.dump(obj,stream,ensure_ascii=False,indent=2);stream.write('\n');stream.flush();os.fsync(stream.fileno())
+        os.replace(tmp,path);tmp=None
+        try:
+            dfd=os.open(path.parent,os.O_RDONLY|getattr(os,'O_DIRECTORY',0))
+            try:os.fsync(dfd)
+            finally:os.close(dfd)
+        except OSError:pass
+    except BaseException:
+        if tmp is not None:
+            try:tmp.unlink()
+            except OSError:pass
+        raise
+
+def read_checkpoint(path):
+    """Read and validate a legacy-compatible JSON checkpoint."""
+    try:
+        data=json.loads(Path(path).read_text(encoding='utf-8'))
+    except FileNotFoundError:return None
+    if not isinstance(data,dict) or not all(k in data for k in ('source_id','run_id','committed_at','last_http_status','response_sha256')):
+        raise ValueError('invalid_checkpoint_shape')
+    if not isinstance(data['source_id'],str) or not isinstance(data['run_id'],str) or not isinstance(data['response_sha256'],str):
+        raise ValueError('invalid_checkpoint_types')
+    return data
+
+def _source_start(c,runid,sid,started):
+    """Insert exactly one running result before the bounded request begins."""
+    with c.transaction():
+        row=c.execute('''INSERT INTO source_run_results(run_id,source_id,started_at,status,http_requests)
+            VALUES(%s,%s,%s,'running',1) ON CONFLICT (run_id,source_id) DO NOTHING RETURNING source_id''',(runid,sid,started)).fetchone()
+        if row:return True
+        old=c.execute('SELECT status FROM source_run_results WHERE run_id=%s AND source_id=%s',(runid,sid)).fetchone()
+        raise RuntimeError('duplicate_source_result:'+str(old[0] if old else 'unknown'))
+
+def _source_transition(c,runid,sid,*,status,finished,http_status=None,size=None,observed=None,inserted=None,duplicates=None,updates=None,rejected=None,error_class=None,error_message=None,error_stage=None,diagnostic=None,response_sha256=None,checkpoint_payload=None):
+    if status not in SOURCE_TERMINAL and status!='running':raise ValueError('invalid_source_status')
+    with c.transaction():
+        row=c.execute('''UPDATE source_run_results SET status=%s,finished_at=%s,http_status=COALESCE(%s,http_status),response_bytes=COALESCE(%s,response_bytes),
+            observed=COALESCE(%s,observed),inserted=COALESCE(%s,inserted),duplicates=COALESCE(%s,duplicates),updates=COALESCE(%s,updates),rejected=COALESCE(%s,rejected),http_requests=1,error_class=%s,
+            error_message_sanitized=%s,error_stage=%s,diagnostic_json=%s,response_sha256=%s,
+            checkpoint_payload=COALESCE(%s,checkpoint_payload)
+            WHERE run_id=%s AND source_id=%s AND status IN ('running','committed_checkpoint_failed') RETURNING status''',
+            (status,finished,http_status,size,observed,inserted,duplicates,updates,rejected,error_class,error_message,error_stage,Jsonb(diagnostic) if diagnostic is not None else None,response_sha256,Jsonb(checkpoint_payload) if checkpoint_payload is not None else None,runid,sid)).fetchone()
+        if row:return row[0]
+        old=c.execute('SELECT status FROM source_run_results WHERE run_id=%s AND source_id=%s',(runid,sid)).fetchone()
+        if old and old[0]==status:return status
+        raise RuntimeError('invalid_source_transition:'+str(old[0] if old else 'missing_source_result')+'->'+status)
+
+def _error_status(stage):
+    if stage=='fetch':return 'failed_fetch'
+    if stage=='xml_parsing':return 'failed_parse'
+    if stage in ('classification','normalization'):return 'failed_normalize'
+    return 'failed_finalize'
+
+def recover_pending_checkpoints():
+    """Resume committed checkpoint payloads without fetching or reinserting items."""
+    recovered=[];pending=[]
+    with psycopg.connect(DSN) as c:
+        pending=c.execute("SELECT run_id,source_id,checkpoint_payload FROM source_run_results WHERE status IN ('running','committed_checkpoint_failed') AND checkpoint_payload IS NOT NULL ORDER BY started_at,source_id").fetchall()
+        for runid,sid,payload in pending:
+            if isinstance(payload,str):payload=json.loads(payload)
+            if payload.get('run_id')!=runid or payload.get('source_id')!=sid:raise ValueError('checkpoint_payload_identity_mismatch')
+            try:atomic_json(STATE/(sid+'.json'),payload)
+            except Exception as exc:
+                diag=log_failure(run_id=runid,source_id=sid,stage='checkpoint_recovery',exc=exc)
+                _source_transition(c,runid,sid,status='committed_checkpoint_failed',finished=datetime.now(timezone.utc),http_status=payload.get('last_http_status'),error_class=type(exc).__name__,error_message=safe_message(exc),error_stage='checkpoint_recovery',diagnostic=diag,checkpoint_payload=payload)
+                continue
+            _source_transition(c,runid,sid,status='succeeded',finished=datetime.now(timezone.utc),http_status=payload.get('last_http_status'),response_sha256=payload.get('response_sha256'),checkpoint_payload=payload)
+            recovered.append((runid,sid))
+    for runid in sorted({r for r,_ in recovered}):finalize_run(runid,interrupted=True)
+    return recovered
 def one_request(url):
     p=urlsplit(url)
     if p.scheme!='https' or not p.hostname:raise ValueError('invalid_manifest_url')
@@ -143,19 +218,18 @@ def one_request(url):
     except HTTPError as e:return e.code,b'',0,started,'http_error'
     except (URLError,TimeoutError,ValueError) as e:return None,b'',0,started,type(e).__name__
 def source_run(c,runid,source):
-    sid=source['source_id'];url=source['verified_feed_url'];started=datetime.now(timezone.utc);status=None;size=observed=inserted=duplicates=updates=rejected=0;err=None;items=[];http_requests=0;stage='fetch';item_index=None;feed_format=None
+    sid=source['source_id'];url=source['verified_feed_url'];started=datetime.now(timezone.utc)
+    status=None;size=observed=inserted=duplicates=updates=rejected=0;items=[];stage='fetch';item_index=None;feed_format=None;digest=None;payload=None
+    _source_start(c,runid,sid,started)
     try:
-        http_requests=1;status,body,size,reqstart,err=one_request(url)
+        status,body,size,reqstart,err=one_request(url)
         if status!=200:raise ValueError(err or 'http_status')
-        stage='xml_parsing'
-        items,observed,rejected=parse(body,sid,datetime.now(timezone.utc))
+        stage='xml_parsing';items,observed,rejected=parse(body,sid,datetime.now(timezone.utc))
         try:feed_format=ET.fromstring(body).tag.rsplit('}',1)[-1].lower()
         except Exception:feed_format='unknown'
-        digest=hashlib.sha256(body).hexdigest()
-        stage='classification'
+        digest=hashlib.sha256(body).hexdigest();stage='classification'
         for item_index,item in enumerate(items):
             cat,topics,_=classify(item['title'],item['summary_text']);item['classification']=cat['label'];item['topics']=topics
-        # Each source commits news, provenance, health, and run-result together.
         stage='database_transaction'
         with c.transaction():
             for item_index,i in enumerate(items):
@@ -163,48 +237,88 @@ def source_run(c,runid,source):
                 if previous:
                     if previous[0]==i['item_id'] and previous[1]==i['title'] and previous[2]==(datetime.fromisoformat(i['published_at']) if i['published_at'] else None) and previous[3]==i['summary_text']:duplicates+=1
                     else:updates+=1
-                    # Preserve old content and metadata; never overwrite a saved item.
                     continue
-                stage='content_hash'
-                item_hash=content_hash(i)
-                stage='database_insert'
+                stage='content_hash';item_hash=content_hash(i);stage='database_insert'
                 c.execute('''INSERT INTO news_items(item_id,source_id,title,summary,canonical_url,external_guid,published_at,collected_at,fetched_at,summary_raw,summary_text,summary_source,summary_available,content_language,adapter_type,provenance_status,content_hash,classification,taxonomy_version,topics) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'rss','COMPLETE',%s,%s,%s,%s) ON CONFLICT DO NOTHING''',(i['item_id'],sid,i['title'],i['summary_text'],i['canonical_url'],i['external_guid'],i['published_at'],i['collected_at'],i['fetched_at'],i['summary_raw'],i['summary_text'],i['summary_source'],i['summary_available'],i['content_language'],item_hash,i['classification'],__import__('ops').TAX['version'],Jsonb(i['topics'])))
                 if c.execute('SELECT 1 FROM news_items WHERE item_id=%s',(i['item_id'],)).fetchone():
                     c.execute('INSERT INTO item_classifications(item_id,category_id,category_label,topics,taxonomy_version,method) SELECT %s,%s,%s,%s,%s,%s ON CONFLICT(item_id) DO NOTHING',(i['item_id'],cat['id'],cat['label'],Jsonb(i['topics']),__import__('ops').TAX['version'],__import__('ops').TAX['method']))
                     c.execute("INSERT INTO news_item_provenance(item_id,source_id,feed_url,execution_reference,evidence_status,evidence_json) VALUES(%s,%s,%s,%s,'COMPLETE',%s) ON CONFLICT(item_id) DO NOTHING",(i['item_id'],sid,url,runid,Jsonb({'http_status':status,'response_sha256':digest,'received_at':i['collected_at'],'summary_source':i['summary_source']})))
                     inserted+=1
                 else:duplicates+=1
-            finished=datetime.now(timezone.utc)
-            c.execute("UPDATE sources SET last_attempt_at=%s,last_success_at=%s,last_http_status=%s,last_item_at=COALESCE((SELECT max(COALESCE(published_at,fetched_at)) FROM news_items WHERE source_id=%s),last_item_at),consecutive_failures=0,health_status='healthy',updated_at=now() WHERE source_id=%s",(started,finished,status,sid,sid))
-            c.execute("INSERT INTO source_run_results(run_id,source_id,started_at,finished_at,status,http_status,response_bytes,observed,inserted,duplicates,rejected) VALUES(%s,%s,%s,%s,'succeeded',%s,%s,%s,%s,%s,%s)",(runid,sid,started,finished,status,size,observed,inserted,duplicates,rejected))
-        stage='checkpoint';atomic_json(STATE/(sid+'.json'),{'source_id':sid,'run_id':runid,'committed_at':finished.isoformat(),'item_count':inserted,'last_http_status':status,'response_sha256':digest})
-        return {'status':'succeeded','attempted':1,'http_requests':http_requests,'bytes':size,'observed':observed,'inserted':inserted,'duplicates':duplicates,'updates':updates,'rejected':rejected,'error':None}
-    except Exception as e:
-        finished=datetime.now(timezone.utc);diagnostic=log_failure(run_id=runid,source_id=sid,stage=stage,exc=e,item_index=item_index,feed_format=feed_format,field_names=(items[item_index].keys() if item_index is not None and item_index<len(items) else ()),value_types=({k:type(v).__name__ for k,v in items[item_index].items()} if item_index is not None and item_index<len(items) else {}));error_class=type(e).__name__;error_message=safe_message(e)
+            committed=datetime.now(timezone.utc)
+            payload={'source_id':sid,'run_id':runid,'committed_at':committed.isoformat(),'item_count':inserted,'last_http_status':status,'response_sha256':digest}
+            c.execute("UPDATE sources SET last_attempt_at=%s,last_success_at=%s,last_http_status=%s,last_item_at=COALESCE((SELECT max(COALESCE(published_at,fetched_at)) FROM news_items WHERE source_id=%s),last_item_at),consecutive_failures=0,health_status='healthy',updated_at=now() WHERE source_id=%s",(started,committed,status,sid,sid))
+            c.execute('''UPDATE source_run_results SET http_status=%s,response_bytes=%s,observed=%s,inserted=%s,duplicates=%s,updates=%s,rejected=%s,response_sha256=%s,checkpoint_payload=%s
+                WHERE run_id=%s AND source_id=%s AND status='running' ''',(status,size,observed,inserted,duplicates,updates,rejected,digest,Jsonb(payload),runid,sid))
+        stage='checkpoint'
+        try:atomic_json(STATE/(sid+'.json'),payload)
+        except Exception as exc:
+            diag=log_failure(run_id=runid,source_id=sid,stage=stage,exc=exc,item_index=item_index,feed_format=feed_format,field_names=(items[item_index].keys() if item_index is not None and item_index<len(items) else ()),value_types=({k:type(v).__name__ for k,v in items[item_index].items()} if item_index is not None and item_index<len(items) else {}))
+            _source_transition(c,runid,sid,status='committed_checkpoint_failed',finished=datetime.now(timezone.utc),http_status=status,size=size,observed=observed,inserted=inserted,duplicates=duplicates,updates=updates,rejected=rejected,error_class=type(exc).__name__,error_message=safe_message(exc),error_stage='checkpoint',diagnostic=diag,response_sha256=digest,checkpoint_payload=payload)
+            return {'status':'committed_checkpoint_failed','attempted':1,'http_requests':1,'bytes':size,'observed':observed,'inserted':inserted,'duplicates':duplicates,'updates':updates,'rejected':rejected,'error':type(exc).__name__,'error_summary':'checkpoint: '+safe_message(exc)}
+        _source_transition(c,runid,sid,status='succeeded',finished=datetime.now(timezone.utc),http_status=status,size=size,observed=observed,inserted=inserted,duplicates=duplicates,updates=updates,rejected=rejected,response_sha256=digest,checkpoint_payload=payload)
+        return {'status':'succeeded','attempted':1,'http_requests':1,'bytes':size,'observed':observed,'inserted':inserted,'duplicates':duplicates,'updates':updates,'rejected':rejected,'error':None}
+    except Exception as exc:
+        diag=log_failure(run_id=runid,source_id=sid,stage=stage,exc=exc,item_index=item_index,feed_format=feed_format,field_names=(items[item_index].keys() if item_index is not None and item_index<len(items) else ()),value_types=({k:type(v).__name__ for k,v in items[item_index].items()} if item_index is not None and item_index<len(items) else {}))
+        error_status=_error_status(stage);error_class=type(exc).__name__;error_message=safe_message(exc)
+        try:
+            with c.transaction():
+                c.execute("UPDATE sources SET last_attempt_at=%s,last_http_status=%s,consecutive_failures=consecutive_failures+1,health_status=CASE WHEN consecutive_failures+1>=3 THEN 'failing' ELSE 'degraded' END,updated_at=now() WHERE source_id=%s",(started,status,sid))
+            _source_transition(c,runid,sid,status=error_status,finished=datetime.now(timezone.utc),http_status=status,size=size,observed=observed,inserted=0,duplicates=0,updates=0,rejected=rejected,error_class=error_class,error_message=error_message,error_stage=stage,diagnostic=diag,response_sha256=digest,checkpoint_payload=payload)
+        except Exception as secondary:
+            secondary_diag=log_failure(run_id=runid,source_id=sid,stage='error_handler',exc=secondary,field_names=('primary_exception','primary_stage'),value_types={'primary_exception':error_class,'primary_stage':stage})
+            LOG.error(json.dumps({'run_id':runid,'source_id':sid,'primary_error':diag,'secondary_error':secondary_diag},ensure_ascii=False,separators=(',',':')))
+            return {'status':'failed_finalize','attempted':1,'http_requests':1,'bytes':size,'observed':observed,'inserted':0,'duplicates':0,'updates':None,'rejected':rejected,'error':error_class,'error_summary':f'{stage}: {error_message}; error_handler: {safe_message(secondary)}'}
+        return {'status':error_status,'attempted':1,'http_requests':1,'bytes':size,'observed':observed,'inserted':0,'duplicates':0,'updates':0,'rejected':rejected,'error':error_class,'error_summary':f'{stage}: {error_message}'}
+
+def finalize_run(runid,*,interrupted=False,run_error=None):
+    """Finalize a run once from its persisted source results; repeat calls are no-ops."""
+    with psycopg.connect(DSN) as c:
         with c.transaction():
-            c.execute("UPDATE sources SET last_attempt_at=%s,last_http_status=%s,consecutive_failures=consecutive_failures+1,health_status=CASE WHEN consecutive_failures+1>=3 THEN 'failing' ELSE 'degraded' END,updated_at=now() WHERE source_id=%s",(started,status,sid))
-            c.execute("INSERT INTO source_run_results(run_id,source_id,started_at,finished_at,status,http_status,response_bytes,observed,inserted,duplicates,rejected,error_class,error_message_sanitized,error_stage,diagnostic_json) VALUES(%s,%s,%s,%s,'failed',%s,%s,%s,0,0,%s,%s,%s,%s,%s)",(runid,sid,started,finished,status,size,observed,rejected,error_class,error_message,stage,Jsonb(diagnostic)))
-        return {'status':'failed','attempted':1,'http_requests':http_requests,'bytes':size,'observed':observed,'inserted':0,'duplicates':0,'updates':0,'rejected':rejected,'error':error_class,'error_summary':f'{stage}: {error_message}'}
+            current=c.execute('SELECT status,sources_planned FROM collection_runs WHERE run_id=%s FOR UPDATE',(runid,)).fetchone()
+            if not current:raise ValueError('collection_run_not_found')
+            if current[0]!='running':return {'run_id':runid,'status':current[0],'already_finalized':True}
+            c.execute("UPDATE source_run_results SET status='failed_finalize',finished_at=COALESCE(finished_at,now()),error_class=COALESCE(error_class,'RunFinalizedWithOpenSource'),error_message_sanitized=COALESCE(error_message_sanitized,'source did not reach a terminal state'),error_stage=COALESCE(error_stage,'finalize') WHERE run_id=%s AND status='running' AND checkpoint_payload IS NULL",(runid,))
+            agg=c.execute('''SELECT count(*),count(*) FILTER(WHERE status='succeeded'),count(*) FILTER(WHERE status<>'succeeded'),
+                COALESCE(sum(http_requests),0),COALESCE(sum(response_bytes),0),COALESCE(sum(observed),0),COALESCE(sum(inserted),0),
+                COALESCE(sum(duplicates),0),CASE WHEN bool_or(updates IS NULL) THEN NULL ELSE COALESCE(sum(updates),0) END,COALESCE(sum(rejected),0),
+                string_agg(source_id||':'||status||COALESCE(':'||error_message_sanitized,''),'; ' ORDER BY source_id) FILTER(WHERE status<>'succeeded')
+                FROM source_run_results WHERE run_id=%s''',(runid,)).fetchone()
+            attempted,succeeded,failed,requests,size,observed,inserted,duplicates,updates,rejected,errors=agg
+            planned=current[1];status='succeeded' if attempted==planned and failed==0 else ('partial' if succeeded else 'failed')
+            if interrupted or run_error:status='failed' if succeeded==0 else 'partial'
+            summary='; '.join(x for x in (errors,run_error,'cycle_incomplete' if attempted<planned and not run_error else None) if x) or None
+            c.execute('''UPDATE collection_runs SET finished_at=now(),status=%s,sources_attempted=%s,sources_succeeded=%s,sources_failed=%s,
+                http_requests=%s,response_bytes=%s,items_observed=%s,items_inserted=%s,duplicates=%s,updates=%s,rejected=%s,error_summary=%s
+                WHERE run_id=%s AND status='running' ''',(status,attempted,succeeded,failed,requests,size,observed,inserted,duplicates,updates,rejected,summary,runid))
+            return {'run_id':runid,'status':status,'sources_attempted':attempted,'sources_succeeded':succeeded,'sources_failed':failed,'http_requests':requests,'items_inserted':inserted,'duplicates':duplicates,'updates':updates,'error_summary':summary}
+
 def cycle(trigger='scheduled'):
-    STATE.mkdir(parents=True,exist_ok=True)
     with psycopg.connect(DSN,autocommit=True) as lock:
         if not lock.execute('SELECT pg_try_advisory_lock(%s)',(LOCK_KEY,)).fetchone()[0]:
             rid=str(uuid.uuid4());now=datetime.now(timezone.utc)
             lock.execute("INSERT INTO collection_runs(run_id,started_at,finished_at,trigger_type,status,sources_planned,skipped_locked,collector_version) VALUES(%s,%s,%s,%s,'skipped_locked',11,true,%s)",(rid,now,now,trigger,VERSION));return {'run_id':rid,'status':'skipped_locked'}
-        rid=str(uuid.uuid4());start=datetime.now(timezone.utc);results=[]
-        lock.execute("INSERT INTO collection_runs(run_id,started_at,trigger_type,status,collector_version) VALUES(%s,%s,%s,'running',%s)",(rid,start,trigger,VERSION))
+        rid=str(uuid.uuid4());start=datetime.now(timezone.utc);results=[];run_error=None;final=None
         try:
+            lock.execute("INSERT INTO collection_runs(run_id,started_at,trigger_type,status,collector_version) VALUES(%s,%s,%s,'running',%s)",(rid,start,trigger,VERSION))
+            recover_pending_checkpoints()
             with psycopg.connect(DSN) as c:
-                for src in sorted(EXEC.values(),key=lambda x:x['source_id']):results.append(source_run(c,rid,src))
-            finish=datetime.now(timezone.utc);failed=sum(x['status']!='succeeded' for x in results)
-            totals=[sum(x[k] for x in results) for k in ('attempted','http_requests','bytes','observed','inserted','duplicates','updates','rejected')]
-            summaries=[x.get('error_summary') for x in results if x.get('error_summary')]
-            lock.execute("UPDATE collection_runs SET finished_at=%s,status=%s,sources_attempted=%s,sources_succeeded=%s,sources_failed=%s,http_requests=%s,response_bytes=%s,items_observed=%s,items_inserted=%s,duplicates=%s,updates=%s,rejected=%s,error_summary=%s WHERE run_id=%s",(finish,'partial' if failed else 'succeeded',totals[0],len(results)-failed,failed,*totals[1:],'; '.join(summaries)[:500] if summaries else None,rid))
-            return {'run_id':rid,'status':'partial' if failed else 'succeeded','sources':results}
-        finally:lock.execute('SELECT pg_advisory_unlock(%s)',(LOCK_KEY,))
+                for src in sorted(EXEC.values(),key=lambda x:x['source_id']):
+                    try:results.append(source_run(c,rid,src))
+                    except Exception as exc:
+                        diag=log_failure(run_id=rid,source_id=src['source_id'],stage='source_dispatch',exc=exc)
+                        results.append({'status':'failed_finalize','attempted':0,'http_requests':0,'bytes':0,'observed':0,'inserted':0,'duplicates':0,'updates':None,'rejected':0,'error':type(exc).__name__,'error_summary':safe_message(exc)})
+        except Exception as exc:
+            diag=log_failure(run_id=rid,source_id='collector',stage='cycle',exc=exc)
+            run_error=type(exc).__name__+': '+safe_message(exc)
+        finally:
+            try:final=finalize_run(rid,interrupted=bool(run_error),run_error=run_error)
+            finally:lock.execute('SELECT pg_advisory_unlock(%s)',(LOCK_KEY,))
+        return {**(final or {'run_id':rid,'status':'failed'}),'sources':results}
 def run():
     interval=int(os.getenv('NEWS_COLLECTION_INTERVAL_SECONDS','900'));enabled=os.getenv('NEWS_COLLECTION_ENABLED','false').lower()=='true'
     if interval!=900:raise ValueError('NEWS_COLLECTION_INTERVAL_SECONDS must be 900')
+    recover_pending_checkpoints()
     import threading
     stopping=threading.Event();signal.signal(signal.SIGTERM,lambda *_:stopping.set());signal.signal(signal.SIGINT,lambda *_:stopping.set())
     started=datetime.now(timezone.utc);deadline=time.monotonic()+interval

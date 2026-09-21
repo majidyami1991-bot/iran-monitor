@@ -16,7 +16,18 @@ class FakeCursor:
     def __init__(self, conn): self.conn=conn; self.result=None; self.rowcount=1
     def execute(self, sql, params=()):
         self.conn.sql.append(sql)
-        if sql.startswith('SELECT item_id,title,published_at,summary_text'):
+        if sql.startswith('INSERT INTO source_run_results'):
+            if self.conn.existing_result:self.rowcount=0;self.result=None
+            else:self.conn.source_result_inserts+=1;self.conn.source_status='running';self.result=(params[1],)
+        elif sql.startswith('UPDATE source_run_results SET status=%s'):
+            if self.conn.source_status in ('running','committed_checkpoint_failed'):
+                self.conn.source_status=params[0];self.result=(params[0],)
+            else:self.rowcount=0;self.result=None
+        elif sql.startswith('UPDATE source_run_results SET http_status='):
+            self.conn.checkpoint_payload=params[8];self.result=None
+        elif sql.startswith('SELECT status FROM source_run_results'):
+            self.result=(self.conn.source_status,) if self.conn.source_status else None
+        elif sql.startswith('SELECT item_id,title,published_at,summary_text'):
             self.result=self.conn.previous
         elif sql.startswith('INSERT INTO news_items'):
             self.conn.inserted.add(params[0]); self.result=None
@@ -33,7 +44,7 @@ class Tx:
         else:self.c.rollbacks+=1
         return False
 class FakeConnection:
-    def __init__(self,previous=None):self.previous=previous;self.inserted=set();self.sql=[];self.commits=0;self.rollbacks=0
+    def __init__(self,previous=None):self.previous=previous;self.inserted=set();self.sql=[];self.commits=0;self.rollbacks=0;self.source_result_inserts=0;self.source_status=None;self.checkpoint_payload=None;self.existing_result=False
     def transaction(self):return Tx(self)
     def execute(self,sql,params=()):return FakeCursor(self).execute(sql,params)
 
@@ -62,13 +73,13 @@ class HistoricalFailureFixtures(unittest.TestCase):
                 source={'source_id':sid,'verified_feed_url':'https://fixture.invalid/feed.xml'}
                 def request(_url):return 200,body,len(body),datetime.datetime.now(datetime.timezone.utc),None
                 def checkpoint(path,obj):
-                    self.assertEqual(conn.commits,1)
+                    self.assertEqual(conn.commits,2)
                     checkpoints.append((str(path),obj))
                 with patch.object(collector,'one_request',side_effect=request),patch.object(collector,'atomic_json',side_effect=checkpoint):
                     result=collector.source_run(conn,'offline-fixture-run',source)
                 self.assertEqual(result['status'],'succeeded')
                 self.assertEqual(result['inserted'],1)
-                self.assertEqual(conn.commits,1)
+                self.assertEqual(conn.commits,3)
                 self.assertEqual(len(checkpoints),1)
                 self.assertIn(items[0]['item_id'],conn.inserted)
 
@@ -88,7 +99,7 @@ class HistoricalFailureFixtures(unittest.TestCase):
         checkpoints=[]
         with patch.object(collector,'one_request',return_value=(200,body,len(body),datetime.datetime.now(datetime.timezone.utc),None)):
             def check_checkpoint(path,obj):
-                self.assertEqual(conn.commits,1)
+                self.assertEqual(conn.commits,2)
                 checkpoints.append(path)
             with patch.object(collector,'atomic_json',side_effect=check_checkpoint):
                 result=collector.source_run(conn,'offline-commit-run',{'source_id':sid,'verified_feed_url':'https://fixture.invalid/feed.xml'})
@@ -97,7 +108,7 @@ class HistoricalFailureFixtures(unittest.TestCase):
         sid=FAILED_IDS[2]; body=(FIXTURES/f'{sid}.xml').read_bytes(); conn=FakeConnection()
         with patch.object(collector,'one_request',return_value=(200,body,len(body),datetime.datetime.now(datetime.timezone.utc),None)),patch.object(collector,'content_hash',side_effect=TypeError('injected')),patch.object(collector,'atomic_json') as checkpoint:
             result=collector.source_run(conn,'offline-failed-run',{'source_id':sid,'verified_feed_url':'https://fixture.invalid/feed.xml'})
-            self.assertEqual(result['status'],'failed')
+            self.assertEqual(result['status'],'failed_finalize')
             checkpoint.assert_not_called()
 
     def test_logging_is_sanitized_and_contains_diagnostic_shape(self):
