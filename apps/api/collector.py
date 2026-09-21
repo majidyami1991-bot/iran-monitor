@@ -9,7 +9,7 @@ from urllib.request import Request, build_opener, ProxyHandler, HTTPRedirectHand
 from defusedxml import ElementTree as ET
 import psycopg
 from psycopg.types.json import Jsonb
-from ops import EXEC, REG, classify, DSN
+from ops import EXEC, REG, classify, DSN, database_json, canonical_json_dumps
 
 ROOT=Path('/app'); STATE=Path(os.getenv('COLLECTOR_STATE_DIR','/state'))
 MAX_BYTES=2*1024*1024;TIMEOUT=30;UA='IranMonitor/1.0 (bounded RSS monitoring; project news-feed collector)';VERSION='1.2.0'
@@ -44,19 +44,11 @@ def text(node,path):
     if n is None:return None
     return ''.join(n.itertext()).strip()
 
-def json_default(value):
-    """Stable JSON encoding for normalized timestamps; rejects unknown values."""
-    if isinstance(value,datetime):
-        if value.tzinfo is None:value=value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc).isoformat()
-    raise TypeError(f'unsupported_json_type:{type(value).__name__}')
-
 def content_hash(item):
     # Capture-time values are evidence, not story content; excluding them makes
     # the same item hash stable across naturally repeated feed reads.
     stable={k:v for k,v in item.items() if k not in ('collected_at','fetched_at')}
-    payload=json.dumps(stable,sort_keys=True,ensure_ascii=False,default=json_default,separators=(',',':'))
-    return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+    return hashlib.sha256(canonical_json_dumps(stable).encode('utf-8')).hexdigest()
 
 def safe_message(exc):
     message=str(exc) or type(exc).__name__
@@ -239,10 +231,10 @@ def source_run(c,runid,source):
                     else:updates+=1
                     continue
                 stage='content_hash';item_hash=content_hash(i);stage='database_insert'
-                c.execute('''INSERT INTO news_items(item_id,source_id,title,summary,canonical_url,external_guid,published_at,collected_at,fetched_at,summary_raw,summary_text,summary_source,summary_available,content_language,adapter_type,provenance_status,content_hash,classification,taxonomy_version,topics) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'rss','COMPLETE',%s,%s,%s,%s) ON CONFLICT DO NOTHING''',(i['item_id'],sid,i['title'],i['summary_text'],i['canonical_url'],i['external_guid'],i['published_at'],i['collected_at'],i['fetched_at'],i['summary_raw'],i['summary_text'],i['summary_source'],i['summary_available'],i['content_language'],item_hash,i['classification'],__import__('ops').TAX['version'],Jsonb(i['topics'])))
+                c.execute('''INSERT INTO news_items(item_id,source_id,title,summary,canonical_url,external_guid,published_at,collected_at,fetched_at,summary_raw,summary_text,summary_source,summary_available,content_language,adapter_type,provenance_status,content_hash,classification,taxonomy_version,topics) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'rss','COMPLETE',%s,%s,%s,%s) ON CONFLICT DO NOTHING''',(i['item_id'],sid,i['title'],i['summary_text'],i['canonical_url'],i['external_guid'],i['published_at'],i['collected_at'],i['fetched_at'],i['summary_raw'],i['summary_text'],i['summary_source'],i['summary_available'],i['content_language'],item_hash,i['classification'],__import__('ops').TAX['version'],Jsonb(database_json(i['topics'],path='normalized_item.topics'))))
                 if c.execute('SELECT 1 FROM news_items WHERE item_id=%s',(i['item_id'],)).fetchone():
-                    c.execute('INSERT INTO item_classifications(item_id,category_id,category_label,topics,taxonomy_version,method) SELECT %s,%s,%s,%s,%s,%s ON CONFLICT(item_id) DO NOTHING',(i['item_id'],cat['id'],cat['label'],Jsonb(i['topics']),__import__('ops').TAX['version'],__import__('ops').TAX['method']))
-                    c.execute("INSERT INTO news_item_provenance(item_id,source_id,feed_url,execution_reference,evidence_status,evidence_json) VALUES(%s,%s,%s,%s,'COMPLETE',%s) ON CONFLICT(item_id) DO NOTHING",(i['item_id'],sid,url,runid,Jsonb({'http_status':status,'response_sha256':digest,'received_at':i['collected_at'],'summary_source':i['summary_source']})))
+                    c.execute('INSERT INTO item_classifications(item_id,category_id,category_label,topics,taxonomy_version,method) SELECT %s,%s,%s,%s,%s,%s ON CONFLICT(item_id) DO NOTHING',(i['item_id'],cat['id'],cat['label'],Jsonb(database_json(i['topics'],path='classification.topics')),__import__('ops').TAX['version'],__import__('ops').TAX['method']))
+                    c.execute("INSERT INTO news_item_provenance(item_id,source_id,feed_url,execution_reference,evidence_status,evidence_json) VALUES(%s,%s,%s,%s,'COMPLETE',%s) ON CONFLICT(item_id) DO NOTHING",(i['item_id'],sid,url,runid,Jsonb(database_json({'http_status':status,'response_sha256':digest,'received_at':i['collected_at'],'summary_source':i['summary_source']},path='provenance_payload'))))
                     inserted+=1
                 else:duplicates+=1
             committed=datetime.now(timezone.utc)

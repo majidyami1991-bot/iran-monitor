@@ -1,6 +1,10 @@
 """Additive PostgreSQL metadata, bounded operational read APIs and migrations."""
-import json, os, re
-from datetime import datetime, timezone
+import json, os, re, math, dataclasses
+from datetime import datetime, date, time, timezone
+from decimal import Decimal
+from enum import Enum
+from pathlib import Path
+from uuid import UUID
 from pathlib import Path
 from urllib.parse import urlsplit
 import psycopg
@@ -9,6 +13,40 @@ from fastapi import HTTPException, Query
 DSN=os.environ['DATABASE_URL']
 INTERVAL=int(os.getenv('NEWS_COLLECTION_INTERVAL_SECONDS','900'))
 ROOT=Path('/app')
+
+def to_json_compatible(value, *, path='$'):
+    """Recursively normalize JSON/JSONB values; reject ambiguous or unknown types."""
+    if value is None or isinstance(value,(str,int,bool)): return value
+    if isinstance(value,float):
+        if not math.isfinite(value): raise TypeError(f'unsupported_json_value:{path}:non_finite_float')
+        return value
+    if isinstance(value,datetime):
+        if value.tzinfo is None or value.utcoffset() is None: raise TypeError(f'unsupported_json_type:{path}:naive_datetime')
+        return value.astimezone(timezone.utc).isoformat().replace('+00:00','Z')
+    if isinstance(value,date) and not isinstance(value,datetime): return value.isoformat()
+    if isinstance(value,time):
+        if value.tzinfo is None or value.utcoffset() is None: raise TypeError(f'unsupported_json_type:{path}:naive_time')
+        return value.isoformat()
+    if isinstance(value,UUID): return str(value).lower()
+    if isinstance(value,Decimal): return format(value,'f')
+    if isinstance(value,Enum): return to_json_compatible(value.value,path=path)
+    if isinstance(value,Path): return str(value)
+    if dataclasses.is_dataclass(value) and not isinstance(value,type): return to_json_compatible(dataclasses.asdict(value),path=path)
+    if hasattr(value,'model_dump'): return to_json_compatible(value.model_dump(mode='python'),path=path)
+    if isinstance(value,(list,tuple)): return [to_json_compatible(v,path=f'{path}[{i}]') for i,v in enumerate(value)]
+    if isinstance(value,dict):
+        out={}
+        for k,v in value.items():
+            if not isinstance(k,str): raise TypeError(f'unsupported_json_key:{path}:{type(k).__name__}')
+            out[k]=to_json_compatible(v,path=f'{path}.{k}')
+        return out
+    raise TypeError(f'unsupported_json_type:{path}:{type(value).__name__}')
+
+def canonical_json_dumps(value):
+    return json.dumps(to_json_compatible(value),sort_keys=True,ensure_ascii=False,separators=(',',':'),allow_nan=False)
+
+def database_json(value, *, path='$'):
+    return to_json_compatible(value,path=path)
 
 DDL='''
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS display_name text;
