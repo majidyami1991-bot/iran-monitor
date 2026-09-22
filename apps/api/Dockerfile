@@ -11,7 +11,7 @@ RUN pip install --no-index --find-links=/test-wheelhouse --no-cache-dir pytest==
 COPY apps/api/main.py apps/api/ops.py apps/api/collector.py apps/api/health.py ./
 COPY apps/api/repair_stuck_run.py ./repair_stuck_run.py
 COPY apps/api/iran_monitor_collector ./iran_monitor_collector
-COPY config/sources ./sources
+COPY config/sources/rss-execution-readiness.json config/sources/source-registry.json config/sources/collection-capabilities.json config/sources/classification-taxonomy-v1.json ./sources/
 COPY tests/monitoring ./tests/monitoring
 RUN python -m compileall -q /app && PYTHONPATH=/app pytest -q tests/monitoring && touch /test-stage-passed
 FROM runtime-deps AS runtime-final
@@ -20,7 +20,7 @@ ARG BUILD_TIMESTAMP_UTC=unknown
 LABEL org.opencontainers.image.title="Iran Monitor news collector" org.opencontainers.image.version="1.2.0" org.opencontainers.image.revision="$GIT_REVISION" org.opencontainers.image.created="$BUILD_TIMESTAMP_UTC" org.opencontainers.image.source="local://Iran-monitor"
 COPY apps/api/main.py apps/api/ops.py apps/api/collector.py apps/api/health.py ./
 COPY apps/api/iran_monitor_collector ./iran_monitor_collector
-COPY config/sources/rss-execution-readiness.json config/sources/source-registry.json config/sources/collection-capabilities.json config/sources/classification-taxonomy-v1.json ./
+COPY config/sources/rss-execution-readiness.json config/sources/source-registry.json config/sources/collection-capabilities.json config/sources/classification-taxonomy-v1.json ./sources/
 RUN printf '{"git_revision":"%s","build_timestamp_utc":"%s","collector_version":"1.2.0","serializer_version":"1","schema_version":"8c-r1"}\n' "$GIT_REVISION" "$BUILD_TIMESTAMP_UTC" > BUILD_INFO.json && mkdir -p /state && chown 65532:65532 /state
 COPY --from=test /test-stage-passed /test-stage-passed
 EXPOSE 3000

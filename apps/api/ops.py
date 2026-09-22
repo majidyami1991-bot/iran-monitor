@@ -13,6 +13,13 @@ from fastapi import HTTPException, Query
 DSN=os.environ['DATABASE_URL']
 INTERVAL=int(os.getenv('NEWS_COLLECTION_INTERVAL_SECONDS','900'))
 ROOT=Path('/app')
+METADATA_DIR=Path(os.getenv('COLLECTOR_METADATA_DIR','/app/sources'))
+METADATA_FILES=('source-registry.json','rss-execution-readiness.json','collection-capabilities.json','classification-taxonomy-v1.json')
+def _metadata(name):
+    path=METADATA_DIR/name
+    if not path.is_file(): raise RuntimeError(f'collector_metadata_missing:{name}:{METADATA_DIR}')
+    try:return json.loads(path.read_text(encoding='utf-8-sig'))
+    except Exception as exc: raise RuntimeError(f'collector_metadata_invalid:{name}') from exc
 
 def to_json_compatible(value, *, path='$'):
     """Recursively normalize JSON/JSONB values; reject ambiguous or unknown types."""
@@ -87,10 +94,10 @@ CREATE INDEX IF NOT EXISTS source_run_results_source_idx ON source_run_results(s
 CREATE INDEX IF NOT EXISTS news_items_fetched_idx ON news_items(fetched_at DESC);
 CREATE INDEX IF NOT EXISTS news_items_category_idx ON news_items(classification);
 '''
-REGISTRY=json.loads((ROOT/'source-registry.json').read_text(encoding='utf-8-sig'))
-READY=json.loads((ROOT/'rss-execution-readiness.json').read_text(encoding='utf-8-sig'))
-CAPS=json.loads((ROOT/'collection-capabilities.json').read_text(encoding='utf-8-sig'))
-TAX=json.loads((ROOT/'classification-taxonomy-v1.json').read_text(encoding='utf-8-sig'))
+REGISTRY=_metadata('source-registry.json')
+READY=_metadata('rss-execution-readiness.json')
+CAPS=_metadata('collection-capabilities.json')
+TAX=_metadata('classification-taxonomy-v1.json')
 EXEC={x['source_id']:x for x in READY if x.get('executable') is True}
 CAP={x['source_id']:x for x in CAPS}
 REG={x['source_id']:x for x in REGISTRY}
