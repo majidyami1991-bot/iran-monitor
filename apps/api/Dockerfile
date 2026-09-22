@@ -5,9 +5,11 @@ COPY apps/collector/requirements.exact.txt requirements.exact.txt
 FROM base AS runtime-deps
 RUN pip install --no-index --find-links=/wheelhouse --no-cache-dir -r requirements.exact.txt
 FROM runtime-deps AS test
+ENV DATABASE_URL=postgresql://offline_test:offline_test@127.0.0.1:1/collector_test
 COPY apps/collector/test-wheelhouse /test-wheelhouse
 RUN pip install --no-index --find-links=/test-wheelhouse --no-cache-dir pytest==8.4.1 iniconfig==2.1.0 packaging==25.0 pluggy==1.6.0 pygments==2.19.2
 COPY apps/api/main.py apps/api/ops.py apps/api/collector.py apps/api/health.py ./
+COPY apps/api/repair_stuck_run.py ./repair_stuck_run.py
 COPY apps/api/iran_monitor_collector ./iran_monitor_collector
 COPY config/sources ./sources
 COPY tests/monitoring ./tests/monitoring
