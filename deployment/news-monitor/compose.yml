@@ -25,6 +25,12 @@ services:
     restart: unless-stopped
     read_only: true
     security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:3000/api/v1/health',timeout=8).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     networks: [news]
   news-web:
     build: {context: ../../apps/web-next, dockerfile: Dockerfile}
@@ -37,9 +43,15 @@ services:
     tmpfs: [/tmp]
     cap_drop: [ALL]
     ports: ["127.0.0.1:3001:3000"]
-    depends_on: {news-db: {condition: service_healthy}, news-api: {condition: service_started}}
+    depends_on: {news-db: {condition: service_healthy}, news-api: {condition: service_healthy}}
     restart: unless-stopped
     security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/news').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     networks: [news]
   news-importer:
     build: {context: ../.., dockerfile: apps/api/Dockerfile}
