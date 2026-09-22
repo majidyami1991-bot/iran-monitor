@@ -1,1 +1,1 @@
-"""Non-secret build metadata CLI.""
+"""Non-secret build metadata CLI."""

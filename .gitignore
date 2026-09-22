@@ -22,3 +22,4 @@ venv/
 *.tsbuildinfo
 
 apps/collector/wheelhouse/
+apps/collector/test-wheelhouse/

@@ -1,0 +1,1 @@
+﻿{"schema_version":"8c-r2e.test-wheelhouse.v1","python":"3.12","packages":["pytest==8.4.1","iniconfig==2.1.0","packaging==25.0","pluggy==1.6.0","pygments==2.19.2"]}
