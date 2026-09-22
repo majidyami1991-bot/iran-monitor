@@ -1,2 +1,3 @@
+import {Suspense} from 'react';
 import Monitor from '../../monitor';
-export default function NewsDetailPage(){return <Monitor mode="news-detail"/>}
+export default function Page(){return <Suspense fallback={<p className="loading" role="status">در حال دریافت داده از PostgreSQL…</p>}><Monitor mode="news-detail"/></Suspense>}

@@ -97,6 +97,31 @@ async function shoot(page, file, fullPage = false) {
       check('category drill-down count matches API', false, 'no category available');
     }
 
+    // --- Topic drill-down -------------------------------------------------
+    const topic = (topics.topics || []).find(t => t.count > 0);
+    if (topic) {
+      const byTopic = await api(page, `news?topic=${encodeURIComponent(topic.topic)}&page=1&page_size=30`);
+      check('topic filter returns only items carrying that topic',
+        byTopic.total > 0 && byTopic.items.every(i => (i.topics || []).includes(topic.topic)),
+        `topic=${topic.topic} total=${byTopic.total}`);
+      check('topic total matches the topics endpoint', byTopic.total === topic.count,
+        `news=${byTopic.total} topics=${topic.count}`);
+      await page.goto(`${BASE}/news?topic=${encodeURIComponent(topic.topic)}`, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.item-card', { timeout: 45000 });
+      const cards = await page.locator('.item-card').count();
+      check('topic drill-down renders the filtered list',
+        cards === Math.min(byTopic.total, byTopic.page_size), `dom=${cards} api=${byTopic.total}`);
+      check('active topic is shown to the user', (await page.locator('main').innerText()).includes(topic.topic));
+    } else {
+      check('topic filter returns only items carrying that topic', false, 'no topic available');
+    }
+
+    // The topics page must link through rather than only count.
+    await page.goto(BASE + '/topics', { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.vf-topic-row', { timeout: 45000 });
+    check('topics page links categories to the news flow',
+      await page.locator('.vf-topic-row a[href^="/news?"]').count() > 0);
+
     // --- Time window ------------------------------------------------------
     await page.goto(`${BASE}/news?window=7d`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.item-card, .vf-empty', { timeout: 45000 });

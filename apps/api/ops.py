@@ -252,13 +252,14 @@ def register_ops(app):
     def schema_migration():migrate()
 
     @app.get('/api/v1/news')
-    def news(search:str|None=None,source_id:str|None=None,category:str|None=None,window:str='all',sort:str='newest',page:int=Query(1,ge=1),page_size:int=Query(30,ge=1,le=100)):
+    def news(search:str|None=None,source_id:str|None=None,category:str|None=None,topic:str|None=None,window:str='all',sort:str='newest',page:int=Query(1,ge=1),page_size:int=Query(30,ge=1,le=100)):
         if window not in ('all','24h','7d','30d'):raise HTTPException(422,'invalid_window')
         if sort not in ('newest','oldest'):raise HTTPException(422,'invalid_sort')
         clauses=[];args=[]
         if search:clauses.append("(n.title ILIKE %s OR COALESCE(n.summary_text,n.summary,'') ILIKE %s)");args += [f'%{search[:200]}%',f'%{search[:200]}%']
         if source_id:clauses.append('n.source_id=%s');args.append(source_id)
         if category:clauses.append('n.classification=%s');args.append(category[:100])
+        if topic:clauses.append('n.topics @> %s::jsonb');args.append(json.dumps([topic[:100]],ensure_ascii=False))
         if window!='all':clauses.append("COALESCE(n.published_at,n.fetched_at)>=now()-(%s || ' hours')::interval AND COALESCE(n.published_at,n.fetched_at)<=now()");args.append({'24h':'24','7d':'168','30d':'720'}[window])
         where=' WHERE '+' AND '.join(clauses) if clauses else ''
         order='COALESCE(n.published_at,n.fetched_at) '+('ASC' if sort=='oldest' else 'DESC')+' NULLS LAST,n.item_id'
@@ -281,7 +282,7 @@ def register_ops(app):
         for x in items:
             x['summary_fa_status']=x['summary_fa_status'] or 'pending'
             x['title_fa_status']=x['title_fa_status'] or 'pending'
-        return {'items':items,'total':total,'page':page,'page_size':page_size,'window':window,'sort':sort}
+        return {'items':items,'total':total,'page':page,'page_size':page_size,'window':window,'sort':sort,'topic':topic,'category':category}
 
     @app.get('/api/v1/news/{item_id}')
     def news_item(item_id:str):
