@@ -178,7 +178,7 @@ def store_content(c,item):
     text=result['text'];policy=display_policy(item.get('summary_source'),text)
     digest=hashlib.sha256((text or '').encode('utf-8')).hexdigest() if text else None
     c.execute('''INSERT INTO news_item_content(item_id,content_version,original_language,original_text,text_chars,extraction_method,extraction_status,display_policy,source_url,content_sha256)
-        VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         ON CONFLICT(item_id) DO UPDATE SET original_text=EXCLUDED.original_text,text_chars=EXCLUDED.text_chars,
         extraction_status=EXCLUDED.extraction_status,display_policy=EXCLUDED.display_policy,
         content_sha256=EXCLUDED.content_sha256,updated_at=now()''',

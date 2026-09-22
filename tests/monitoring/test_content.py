@@ -8,6 +8,59 @@ import translate
 RECEIVED = datetime.datetime(2026, 9, 22, 12, 0, tzinfo=datetime.timezone.utc)
 
 
+class ArityCheckingConnection:
+    """Records statements and asserts each one's placeholder count matches its parameters.
+
+    The offline fakes accept any SQL, so a statement with the wrong number of
+    placeholders reached production and failed every source in a live cycle.
+    """
+
+    def __init__(self):
+        self.statements = []
+
+    def execute(self, sql, params=()):
+        placeholders = sql.count('%s')
+        if placeholders != len(params):
+            raise AssertionError(
+                f'{placeholders} placeholders but {len(params)} parameters: {" ".join(sql.split())[:120]}')
+        self.statements.append((sql, params))
+        return self
+
+    def fetchone(self):
+        return None
+
+
+def collector_item(**overrides):
+    item = {'item_id': 'i1', 'source_id': 's1', 'canonical_url': 'https://e.com/a',
+            'summary_source': 'content_encoded', 'content_language': 'en',
+            'content_html': '<p>' + 'body text ' * 60 + '</p><img src="https://cdn.e.com/a.jpg" width="900"/>'}
+    item.update(overrides)
+    return item
+
+
+def test_store_content_statements_have_matching_placeholders_and_parameters():
+    conn = ArityCheckingConnection()
+    collector.store_content(conn, collector_item())
+    assert conn.statements, 'expected at least one statement'
+
+
+def test_store_content_records_an_item_with_no_payload_as_unavailable():
+    conn = ArityCheckingConnection()
+    assert collector.store_content(conn, collector_item(content_html=None)) == 0
+    sql, params = conn.statements[0]
+    assert "'unavailable'" in sql and "'link_only'" in sql
+
+
+def test_store_content_writes_one_media_row_per_accepted_and_rejected_image():
+    conn = ArityCheckingConnection()
+    count = collector.store_content(conn, collector_item(
+        content_html='<img src="https://cdn.e.com/logo.png" width="300"/>'
+                     '<img src="https://cdn.e.com/scene.jpg" width="1200"/>'))
+    assert count == 2
+    media = [s for s in conn.statements if 'news_item_media' in s[0]]
+    assert len(media) == 2
+
+
 def test_rss_channel_title_is_captured_as_the_publisher_name():
     xml = b'''<rss version="2.0"><channel><title>The War Zone</title><language>en-US</language>
     <item><title>Story</title><link>https://www.twz.com/a</link></item></channel></rss>'''
