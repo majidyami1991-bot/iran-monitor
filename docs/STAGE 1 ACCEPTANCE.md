@@ -18,6 +18,36 @@ Invoke-RestMethod http://127.0.0.1:3001/api/v1/sources/coverage | Select-Object 
 Invoke-RestMethod http://127.0.0.1:3001/api/v1/stats/content
 ```
 
+## Measured results, 2026-09-22
+
+Run against the live stack, not inferred from code.
+
+| Suite | Result |
+| --- | --- |
+| Collector unit and integration tests, inside the runtime image | **68 / 68 pass** |
+| Browser acceptance, `tests/ui/stage1-qa.cjs` | **40 / 40 pass** |
+| API smoke, `tests/monitoring/smoke_api.py` | **pass** — 12 sources, 495 items, 62 registered, 11 monitored |
+| Database probes, `tests/monitoring/smoke_database.py` | **pass** — migration rollback, advisory lock, content foreign keys, no stuck runs |
+| Restart recovery, `scripts/restart-recovery-test.ps1` | **11 / 11 pass** — nothing lost, 14 checkpoints survived, scheduling resumed |
+| Backup and restore, `scripts/backup.ps1 -Action verify` | **pass** — restored row counts match the live database |
+
+Collection state at the time of writing:
+
+- Scheduler armed, all four containers healthy, 12 of 12 sources `healthy`, zero consecutive failures.
+- First successful scheduled cycle `12/12` sources, 12 HTTP requests, 143 new items, 95 updates, 22 duplicates, no errors.
+- 495 items stored, 495 distinct canonical URLs — **no duplicates**.
+- Body text extracted for 260 items: 170 `full_syndicated` (average 5,082 characters) and 90 `summary_only`.
+- Media: 94 items with a lead article image, 259 further article images, 17 documents across 13 items, 24 images rejected by rule.
+- Publisher names captured from the feeds themselves for all 12 sources; no UUID or bare hostname is displayed.
+- Classification drift between `news_items` and `item_classifications`: **0 of 495**.
+
+Not yet measured:
+
+| Criterion | Why |
+| --- | --- |
+| A4 — four consecutive successful cycles | One observed so far. The window has been open under an hour and every deployment restarts the interval. |
+| A11 — discovery latency | No source has published anything since the scheduler was armed, so there is nothing to measure. Figures taken over the first cycle measure how old the feed backlog was, not our lag, and are not reported as latency. |
+
 ## A. Collection
 
 | # | Criterion | Threshold | How it is measured |

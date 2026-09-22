@@ -3,6 +3,29 @@
 What the product stores for each news item, how reliable each field is, and what
 is still missing. Live counts come from `GET /api/v1/stats/content`.
 
+## Measured coverage, 2026-09-22
+
+From the live database after the first successful scheduled cycle, 495 items:
+
+| Field | Coverage |
+| --- | --- |
+| English body, publisher-syndicated | 170 items, average 5,082 characters, longest 25,213 |
+| English body, summary only | 90 items, average 156 characters |
+| Not yet processed | 235 items collected before body extraction existed |
+| Lead article image | 94 items |
+| Further article images | 259 |
+| Linked documents | 17 across 13 items |
+| Images rejected by rule | 24 — 21 chrome, 3 undersized |
+| Persian title, summary, body | **0** — no provider configured, all `pending` |
+
+The `not_processed` items age out as feeds refresh: extraction runs against
+whatever the feed still carries, so an item that has scrolled out of every feed
+keeps that state permanently rather than being fetched again.
+
+A spot check of the rejections found WordPress emoji sprites from `s.w.org`
+filtered as chrome, and lead images resolving to real article photography on the
+publishers' own CDNs.
+
 ## The field model
 
 Every item carries five content fields, each with its own state. A field is
