@@ -137,8 +137,8 @@ characters, so roughly **1,800 items per month**.
 Ranges span Claude Haiku 4.5 (`claude-haiku-4-5`, $1/$5 per million input/output
 tokens) at the low end and Claude Sonnet 5 (`claude-sonnet-5`, $2/$10) at the
 high end. Batch processing halves either figure for this workload, which is not
-latency-sensitive. A one-time backfill of the 352 existing items costs under a
-fifth of one month.
+latency-sensitive. A one-time backfill of the 495 items already stored costs
+roughly a quarter of one month at the same rates.
 
 These are estimates from measured volume and assumed token ratios, not
 quotations. The first real batch will produce exact figures, which is why the
