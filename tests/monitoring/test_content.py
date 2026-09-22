@@ -61,6 +61,30 @@ def test_store_content_writes_one_media_row_per_accepted_and_rejected_image():
     assert len(media) == 2
 
 
+def test_each_item_keeps_its_own_category_not_the_last_one_parsed():
+    """The classification loop's `cat` leaked into every insert in the DB loop,
+    so item_classifications recorded the final feed item's category for all of
+    them while news_items kept the right one."""
+    xml = ('<rss version="2.0"><channel><title>T</title>'
+           '<item><title>Naval carrier strike group deploys</title><link>https://e.com/1</link>'
+           '<description>A carrier and its escorts sailed today.</description></item>'
+           '<item><title>Cyber intrusion against a power grid</title><link>https://e.com/2</link>'
+           '<description>A cyber attack targeted grid control systems.</description></item>'
+           '</channel></rss>').encode()
+    items, _observed, _rejected, _meta = collector.parse(xml, 's1', RECEIVED)
+    categories = []
+    for item in items:
+        cat, topics, _ = collector.classify(item['title'], item['summary_text'])
+        item['classification'] = cat['label']
+        item['category_id'] = cat['id']
+        item['topics'] = topics
+        categories.append(cat['id'])
+    assert len(items) == 2
+    # Each item must carry the category derived from its own text.
+    for item, expected in zip(items, categories):
+        assert item['category_id'] == expected
+
+
 def test_rss_channel_title_is_captured_as_the_publisher_name():
     xml = b'''<rss version="2.0"><channel><title>The War Zone</title><language>en-US</language>
     <item><title>Story</title><link>https://www.twz.com/a</link></item></channel></rss>'''

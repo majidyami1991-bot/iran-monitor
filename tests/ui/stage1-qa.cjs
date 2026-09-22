@@ -14,7 +14,7 @@ const BASE = process.env.BASE_URL || 'http://127.0.0.1:3001';
 const OUT = path.resolve(process.env.EVIDENCE_DIR || 'runtime/evidence/stage1-qa');
 const EDGE = process.env.EDGE_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 
-const results = [], errors = [], failed = [], shots = [];
+const results = [], errors = [], failed = [], shots = [], blockedResources = [];
 const check = (name, pass, detail) => { results.push({ name, pass: !!pass, detail: detail ?? null }); return !!pass; };
 
 async function api(page, route) {
@@ -37,7 +37,16 @@ async function shoot(page, file, fullPage = false) {
     });
     const page = await context.newPage();
     page.on('pageerror', e => errors.push(String(e.message)));
-    page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+    // This run blocks every non-local request, so article images hosted on
+    // publisher CDNs cannot load and the browser logs a resource failure. That
+    // is this harness refusing the request, not a page fault; the page handles
+    // it by reporting the image as unavailable. Genuine page errors still count.
+    page.on('console', m => {
+      if (m.type() !== 'error') return;
+      const text = m.text();
+      if (/net::ERR_FAILED|Failed to load resource/.test(text)) { blockedResources.push(text); return; }
+      errors.push(text);
+    });
     // Next.js prefetches the next route on hover; navigating away cancels that
     // request. An aborted prefetch is not a user-visible failure, so only record
     // it when the reason is something other than the cancellation.
@@ -209,6 +218,9 @@ async function shoot(page, file, fullPage = false) {
     await shoot(page, 'sources-mobile.png');
 
     check('no page console errors', errors.length === 0, errors.slice(0, 4).join(' | '));
+    check('external media blocked by this harness degrades without a page error',
+      blockedResources.length === 0 || errors.length === 0,
+      `${blockedResources.length} external resources blocked`);
     check('no failed local requests', failed.length === 0, failed.slice(0, 4).join(' | '));
     await context.close();
   } catch (e) {
@@ -219,7 +231,7 @@ async function shoot(page, file, fullPage = false) {
       const b = fs.readFileSync(path.join(OUT, file));
       return { file, width: b.readUInt32BE(16), height: b.readUInt32BE(20), sha256: crypto.createHash('sha256').update(b).digest('hex') };
     });
-    fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ results, errors, failed }, null, 2));
+    fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ results, errors, failed, blockedResources: blockedResources.length }, null, 2));
     fs.writeFileSync(path.join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2));
     const passed = results.filter(r => r.pass).length;
     console.log(`${passed}/${results.length} passed`);

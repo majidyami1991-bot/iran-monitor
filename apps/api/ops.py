@@ -208,11 +208,20 @@ def migrate():
         # have neither collected_at nor fetched_at; do not mislabel insert time.
         c.execute('UPDATE news_items SET fetched_at=NULL WHERE collected_at IS NULL AND fetched_at=created_at')
         c.execute('UPDATE news_items SET fetched_at=COALESCE(fetched_at,collected_at),summary_text=COALESCE(summary_text,summary)')
-        rows=c.execute('SELECT item_id,title,summary FROM news_items ORDER BY item_id').fetchall()
+        # Classification is recomputed from the item's own text, not copied from
+        # whatever the table already held: a stale row must not survive because it
+        # was written first. Keep the input identical to the collector's
+        # (COALESCE(summary_text,summary)) so the two never disagree.
+        rows=c.execute('SELECT item_id,title,COALESCE(summary_text,summary) FROM news_items ORDER BY item_id').fetchall()
         for iid,title,summary in rows:
             cat,topics,ids=classify(title,summary)
-            c.execute('''INSERT INTO item_classifications(item_id,category_id,category_label,topics,taxonomy_version,method) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(item_id) DO NOTHING''',(iid,cat['id'],cat['label'],json.dumps(topics,ensure_ascii=False),TAX['version'],TAX['method']))
-        c.execute('''UPDATE news_items n SET classification=i.category_label,taxonomy_version=i.taxonomy_version,topics=i.topics FROM item_classifications i WHERE i.item_id=n.item_id''')
+            c.execute('''INSERT INTO item_classifications(item_id,category_id,category_label,topics,taxonomy_version,method) VALUES(%s,%s,%s,%s,%s,%s)
+                ON CONFLICT(item_id) DO UPDATE SET category_id=EXCLUDED.category_id,category_label=EXCLUDED.category_label,
+                topics=EXCLUDED.topics,taxonomy_version=EXCLUDED.taxonomy_version,method=EXCLUDED.method,classified_at=now()
+                WHERE item_classifications.category_label IS DISTINCT FROM EXCLUDED.category_label
+                   OR item_classifications.topics IS DISTINCT FROM EXCLUDED.topics''',(iid,cat['id'],cat['label'],json.dumps(topics,ensure_ascii=False),TAX['version'],TAX['method']))
+        c.execute('''UPDATE news_items n SET classification=i.category_label,taxonomy_version=i.taxonomy_version,topics=i.topics FROM item_classifications i
+            WHERE i.item_id=n.item_id AND (n.classification IS DISTINCT FROM i.category_label OR n.topics IS DISTINCT FROM i.topics OR n.taxonomy_version IS DISTINCT FROM i.taxonomy_version)''')
         # Phase 8A is backfilled only if complete sanitized per-source evidence exists.
         ev=Path('/ops-evidence')
         manifest=ev/'final-report.json'
