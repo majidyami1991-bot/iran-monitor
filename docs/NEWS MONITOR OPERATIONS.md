@@ -13,7 +13,87 @@ Invoke-RestMethod http://127.0.0.1:3001/api/v1/collection/status
 Invoke-RestMethod http://127.0.0.1:3001/api/v1/collection/runs
 ```
 
-The collector profile remains opt-in. Configure `NEWS_COLLECTION_ENABLED=true` and the required fixed interval of `900` seconds in the local environment only when authorized. The first scheduled attempt occurs after one interval. One cycle makes at most 11 feed requests, sequentially, with no retries, redirects, homepage/article/sitemap/X access or OpenCTI ingestion.
+The collector profile remains opt-in. Configure `NEWS_COLLECTION_ENABLED=true` and the required fixed interval of `900` seconds in the local environment only when authorized. The first scheduled attempt occurs after one interval. One cycle makes exactly one request per executable source, sequentially, with no retries, redirects, homepage/article/sitemap/X access or OpenCTI ingestion.
+
+The executable set is defined by `config/sources/rss-execution-readiness.json`; `sources_planned` on each run follows it, so adding a validated source does not make later runs look partial. Check the current figure with:
+
+```powershell
+(Invoke-RestMethod http://127.0.0.1:3001/api/v1/sources/coverage) |
+  Select-Object registered, executable, monitored
+```
+
+`registered`, `executable` and `monitored` are three different numbers and must not be reported as one. See `docs/STAGE 1 SOURCE COVERAGE.md`.
+
+## Daily health check
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:3001/api/v1/collection/status
+Invoke-RestMethod http://127.0.0.1:3001/api/v1/stats/content
+Invoke-RestMethod http://127.0.0.1:3001/api/v1/sources/coverage | Select-Object registered,executable,monitored
+```
+
+Healthy looks like: `scheduler_enabled: true`, `collector_health: healthy`, a `next_run_at` in the future, and a `last_run` whose `status` is `succeeded` and whose `sources_failed` is `0`.
+
+`collector_health` values and what to do:
+
+| Value | Meaning | Action |
+| --- | --- | --- |
+| `healthy` | Heartbeat is current and scheduling is on | None |
+| `stopped_stale_heartbeat` | Heartbeat older than 45 seconds | Check `docker logs iran-monitor-news-news-collector-1`; the container is stopped or wedged |
+| `not_running` | No `health.json` in the state volume | The collector has never started, or the state volume is missing |
+| `stopped` | Scheduling is disabled in the environment | Intentional unless someone expected collection |
+
+A source whose last success is older than three intervals reports `delayed` in `/api/v1/sources`, and the sources page shows it. That is the signal that one publisher has gone quiet while the cycle as a whole still succeeds.
+
+## Backup and restore
+
+```powershell
+./scripts/backup.ps1 -Action backup                      # dump + collector state + SHA-256
+./scripts/backup.ps1 -Action list
+./scripts/backup.ps1 -Action verify -Path runtime/backups/<file>.dump
+./scripts/backup.ps1 -Action restore -Path runtime/backups/<file>.dump
+```
+
+`verify` restores into a scratch database, compares row counts, then drops it; the live database is untouched. `restore` overwrites the live database, requires typing `RESTORE`, and stops the collector first so a running cycle cannot interleave with the archive. Backups land in `runtime/backups`, which is git-ignored, and contain no credentials.
+
+Take a backup before any migration or image change. The database schema is applied by `migrate()` at API startup and is additive — new columns and tables only — so rolling the image back does not require a schema rollback. If a restore is ever needed, restore the dump and the matching `collector-state-*` directory together: the checkpoints in the state volume record feed positions that the database alone does not.
+
+## Persian translation and summary
+
+No provider is configured by default and every Persian field reports `pending`. Nothing is generated without one; no placeholder text is written.
+
+To enable, set `NEWS_TRANSLATION_PROVIDER`, `NEWS_TRANSLATION_API_KEY` and `NEWS_TRANSLATION_MODEL` in `.env`, then run a small batch first:
+
+```powershell
+docker compose -p iran-monitor-news --env-file .env -f deployment/news-monitor/compose.yml run --rm --no-deps news-api python /app/translate_worker.py --limit 5 --dry-run
+docker compose -p iran-monitor-news --env-file .env -f deployment/news-monitor/compose.yml run --rm --no-deps news-api python /app/translate_worker.py --limit 5
+```
+
+Read the five results in the interface before widening. The worker commits each field separately, so it can be interrupted with Ctrl+C and restarted without repeating finished work or losing partial progress. `--fields title,summary` is the default; add `body` only after reviewing summary quality and cost. See `docs/STAGE 1 CONTENT QUALITY.md` for the cost estimate and the decisions that go with it.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Collector exits immediately with `COLLECTOR_IMAGE_REVISION_MISMATCH` | `COLLECTOR_REVISION` in `.env` does not match `BUILD_INFO.json` in the image | Rebuild the image at the current revision and update `.env`; do not edit `BUILD_INFO.json` |
+| Every run reports `partial` right after adding a source | A source is in the executable set but fails to fetch | `GET /api/v1/collection/runs/{run_id}` names the source, stage and sanitized error |
+| A run shows `skipped_locked` | A previous cycle still holds the PostgreSQL advisory lock | Expected if a cycle overran the interval; if it repeats, the previous cycle is wedged |
+| A run sits in `running` | Should not happen: `finalize_run` runs in a `finally` block | If it does, the collector process was killed uncleanly. `repair_stuck_run.py` handles one evidence-bound run at a time and is dry-run by default |
+| API returns 500 on startup | `migrate()` failed, usually a missing metadata file | `docker logs iran-monitor-news-news-api-1`; the error names the file and the directory searched |
+| Persian fields all say `pending` | No provider configured | Expected. See the translation section above |
+| An image does not load in the interface | Publisher blocks hotlinking, or the URL moved | Expected and reported in place. Media is unverified by design; nothing is downloaded |
+
+## Rollback
+
+Images are tagged by git revision, so rolling back is selecting an earlier tag:
+
+```powershell
+docker images iran-monitor-news-collector --format "{{.Tag}}"
+# set COLLECTOR_REVISION in .env to the earlier revision, then
+docker compose -p iran-monitor-news --env-file .env -f deployment/news-monitor/compose.yml --profile scheduler up -d news-collector
+```
+
+The database needs no rollback for an image change because every migration is additive. Never use `down -v` and never prune: the state volume holds collector checkpoints and the database volume holds every collected item.
 
 ## Stop and rollback
 
