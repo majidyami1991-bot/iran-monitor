@@ -111,6 +111,24 @@ async function shoot(page, file, fullPage = false) {
     const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     check('no UUID is shown instead of a source name', names.length > 0 && !names.some(n => uuid.test(n.trim())), names.slice(0, 3).join(' | '));
     check('source rows match API count', names.length === apiSources.sources.length, `dom=${names.length} api=${apiSources.sources.length}`);
+
+    // The three coverage numbers must be visible and distinct in the product,
+    // not just available from the API.
+    const coverage = await api(page, 'sources/coverage');
+    const sourcesText = await page.locator('main').innerText();
+    const faNum = n => new Intl.NumberFormat('fa-IR').format(n);
+    check('coverage panel shows registered, executable and monitored',
+      sourcesText.includes(faNum(coverage.registered)) && sourcesText.includes(faNum(coverage.executable))
+      && sourcesText.includes(faNum(coverage.monitored)),
+      `registered=${coverage.registered} executable=${coverage.executable} monitored=${coverage.monitored}`);
+    check('coverage counts are not conflated', coverage.registered !== coverage.executable,
+      `registered=${coverage.registered} executable=${coverage.executable}`);
+    check('X accounts are not presented as monitored',
+      (coverage.by_state.not_covered || 0) > 0 && coverage.monitored <= coverage.executable,
+      `not_covered=${coverage.by_state.not_covered} monitored=${coverage.monitored}`);
+    check('every registered source has a coverage state and reason',
+      coverage.sources.length === coverage.registered && coverage.sources.every(s => s.coverage_state && s.reason),
+      `${coverage.sources.length}/${coverage.registered}`);
     await shoot(page, 'sources-desktop.png');
 
     // --- Source detail ----------------------------------------------------

@@ -8,7 +8,7 @@ from uuid import UUID
 from pathlib import Path
 from urllib.parse import urlsplit
 import psycopg
-from fastapi import HTTPException, Query
+from fastapi import HTTPException, Query, Response
 
 DSN=os.environ['DATABASE_URL']
 INTERVAL=int(os.getenv('NEWS_COLLECTION_INTERVAL_SECONDS','900'))
@@ -533,3 +533,38 @@ def register_ops(app):
 
     @app.get('/api/v1/health')
     def health_detail():return {'status':'ok','database':'ready','items':q('SELECT count(*) FROM news_items')[0][0],'sources':q('SELECT count(*) FROM sources')[0][0],'scheduler_enabled':collection_status()['scheduler_enabled']}
+
+    @app.get('/api/v1/health/collection')
+    def collection_health(response:Response):
+        """Fails with 503 when monitoring has stalled, so an external check can alert.
+
+        Nothing here notifies anyone; it gives a uniform signal for whatever the
+        operator already polls. `expected_collection` distinguishes a scheduler
+        that is deliberately off from one that has died.
+        """
+        status=collection_status()
+        last=q("SELECT started_at,finished_at,status FROM collection_runs WHERE trigger_type<>'skipped_locked' ORDER BY started_at DESC LIMIT 1")
+        stale_after=3*INTERVAL
+        problems=[]
+        if not status['scheduler_enabled']:
+            problems.append('scheduler_disabled')
+        elif status['collector_health']!='healthy':
+            problems.append('collector_'+status['collector_health'])
+        age=None
+        if last:
+            age=int((datetime.now(timezone.utc)-last[0][0]).total_seconds())
+            if status['scheduler_enabled'] and age>stale_after:
+                problems.append(f'last_run_age_{age}s_over_{stale_after}s')
+            if last[0][2] in ('failed',):
+                problems.append('last_run_failed')
+        elif status['scheduler_enabled']:
+            problems.append('no_run_recorded')
+        stuck=q("SELECT count(*) FROM collection_runs WHERE status='running' AND started_at<now()-interval '1 hour'")[0][0]
+        if stuck:problems.append(f'runs_stuck_in_running:{stuck}')
+        ok=not problems
+        if not ok:response.status_code=503
+        return {'status':'ok' if ok else 'degraded','problems':problems,
+            'expected_collection':status['scheduler_enabled'],
+            'collector_health':status['collector_health'],
+            'last_run_age_seconds':age,'stale_after_seconds':stale_after,
+            'last_run':status['last_run'],'checked_at':datetime.now(timezone.utc)}
