@@ -181,7 +181,8 @@ def store_content(c,item):
         VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         ON CONFLICT(item_id) DO UPDATE SET original_text=EXCLUDED.original_text,text_chars=EXCLUDED.text_chars,
         extraction_status=EXCLUDED.extraction_status,display_policy=EXCLUDED.display_policy,
-        content_sha256=EXCLUDED.content_sha256,updated_at=now()''',
+        content_sha256=EXCLUDED.content_sha256,updated_at=now()
+        WHERE news_item_content.content_sha256 IS DISTINCT FROM EXCLUDED.content_sha256''',
         (item['item_id'],CONTENT_VERSION,item.get('content_language'),text,len(text or ''),
          'feed_'+(item.get('summary_source') or 'unknown'),result['status'],policy,item['canonical_url'],digest))
     for m in result['media']:
