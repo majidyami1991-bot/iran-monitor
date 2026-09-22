@@ -56,7 +56,7 @@ class HistoricalFailureFixtures(unittest.TestCase):
     def test_all_six_reproduce_datetime_json_typeerror_before_fix_and_hash_after_fix(self):
         for sid in FAILED_IDS:
             with self.subTest(source_id=sid):
-                items,observed,rejected=fixture_items(sid)
+                items,observed,rejected,_meta=fixture_items(sid)
                 self.assertEqual((observed,rejected),(1,0))
                 item=items[0]
                 with self.assertRaisesRegex(TypeError,'datetime is not JSON serializable'):
@@ -69,7 +69,7 @@ class HistoricalFailureFixtures(unittest.TestCase):
     def test_six_source_runs_complete_insert_path_offline(self):
         for sid in FAILED_IDS:
             with self.subTest(source_id=sid):
-                items,_,_=fixture_items(sid); body=(FIXTURES/f'{sid}.xml').read_bytes(); conn=FakeConnection(); checkpoints=[]
+                items,_,_,_=fixture_items(sid); body=(FIXTURES/f'{sid}.xml').read_bytes(); conn=FakeConnection(); checkpoints=[]
                 source={'source_id':sid,'verified_feed_url':'https://fixture.invalid/feed.xml'}
                 def request(_url):return 200,body,len(body),datetime.datetime.now(datetime.timezone.utc),None
                 def checkpoint(path,obj):
@@ -84,7 +84,7 @@ class HistoricalFailureFixtures(unittest.TestCase):
                 self.assertIn(items[0]['item_id'],conn.inserted)
 
     def test_update_candidate_is_never_overwritten_and_is_counted_duplicate_or_update(self):
-        sid=FAILED_IDS[0]; items,_,_=fixture_items(sid); i=items[0]
+        sid=FAILED_IDS[0]; items,_,_,_=fixture_items(sid); i=items[0]
         old_date=datetime.datetime.fromisoformat(i['published_at']) if i['published_at'] else None
         conn=FakeConnection((i['item_id'],i['title'],old_date,i['summary_text']))
         body=(FIXTURES/f'{sid}.xml').read_bytes()
@@ -137,7 +137,7 @@ class HistoricalFailureFixtures(unittest.TestCase):
 
     def test_relative_article_url_is_rejected_without_crashing_feed(self):
         xml=b'<rss><channel><item><title>Relative URL</title><link>/news/1</link></item><item><title>Valid</title><link>https://fixture.invalid/valid</link></item></channel></rss>'
-        items,observed,rejected=collector.parse(xml,FAILED_IDS[0],datetime.datetime.now(datetime.timezone.utc))
+        items,observed,rejected,_meta=collector.parse(xml,FAILED_IDS[0],datetime.datetime.now(datetime.timezone.utc))
         self.assertEqual((observed,rejected),(2,1));self.assertEqual(len(items),1)
 
 if __name__=='__main__':unittest.main()

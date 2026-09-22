@@ -84,6 +84,9 @@ def parse(data,sid,received):
     root=ET.fromstring(data);tag=root.tag.rsplit('}',1)[-1].lower();nodes=[]
     xml_lang='{http://www.w3.org/XML/1998/namespace}lang'
     feed_language=root.attrib.get(xml_lang) or text(root,'channel/language') or text(root,'{*}language')
+    # The publisher's own feed title is the only authoritative brand name in the
+    # pipeline; the source document records URLs only.
+    feed_title=clean(text(root,'channel/title') or text(root,'{*}title'))
     if tag in ('rss','rdf'):
         nodes=root.findall('.//{*}item')
     elif tag=='feed':nodes=root.findall('{*}entry')
@@ -126,7 +129,7 @@ def parse(data,sid,received):
             language=n.attrib.get(xml_lang) or feed_language
             items.append({'item_id':sidhash,'source_id':sid,'title':title,'canonical_url':canonical,'external_guid':guid,'published_at':published.isoformat() if published else None,'collected_at':received,'fetched_at':received,'summary_raw':summary,'summary_text':summary,'summary_source':source,'summary_available':bool(summary),'content_html':content_html,'content_language':language.strip()[:64] if language and language.strip() else None,'classification':None,'topics':[]})
         except (ValueError,TypeError):rejected+=1
-    return items,len(nodes),rejected
+    return items,len(nodes),rejected,{'feed_title':feed_title[:200] if feed_title else None,'feed_language':feed_language}
 def atomic_json(path,obj):
     """Write a JSON checkpoint through a same-directory fsynced temp file."""
     path=Path(path);path.parent.mkdir(parents=True,exist_ok=True);tmp=None
@@ -258,7 +261,7 @@ def source_run(c,runid,source):
     try:
         status,body,size,reqstart,err=one_request(url)
         if status!=200:raise ValueError(err or 'http_status')
-        stage='xml_parsing';items,observed,rejected=parse(body,sid,datetime.now(timezone.utc))
+        stage='xml_parsing';items,observed,rejected,feed_meta=parse(body,sid,datetime.now(timezone.utc))
         try:feed_format=ET.fromstring(body).tag.rsplit('}',1)[-1].lower()
         except Exception:feed_format='unknown'
         digest=hashlib.sha256(body).hexdigest();stage='classification'
@@ -285,7 +288,7 @@ def source_run(c,runid,source):
                 else:duplicates+=1
             committed=datetime.now(timezone.utc)
             payload={'source_id':sid,'run_id':runid,'committed_at':committed.isoformat(),'item_count':inserted,'last_http_status':status,'response_sha256':digest}
-            c.execute("UPDATE sources SET last_attempt_at=%s,last_success_at=%s,last_http_status=%s,last_item_at=COALESCE((SELECT max(COALESCE(published_at,fetched_at)) FROM news_items WHERE source_id=%s),last_item_at),consecutive_failures=0,health_status='healthy',updated_at=now() WHERE source_id=%s",(started,committed,status,sid,sid))
+            c.execute("UPDATE sources SET last_attempt_at=%s,last_success_at=%s,last_http_status=%s,last_item_at=COALESCE((SELECT max(COALESCE(published_at,fetched_at)) FROM news_items WHERE source_id=%s),last_item_at),consecutive_failures=0,health_status='healthy',display_name=COALESCE(%s,display_name),language=COALESCE(language,%s),updated_at=now() WHERE source_id=%s",(started,committed,status,sid,feed_meta.get('feed_title'),feed_meta.get('feed_language'),sid))
             c.execute('''UPDATE source_run_results SET http_status=%s,response_bytes=%s,observed=%s,inserted=%s,duplicates=%s,updates=%s,rejected=%s,response_sha256=%s,checkpoint_payload=%s
                 WHERE run_id=%s AND source_id=%s AND status='running' ''',(status,size,observed,inserted,duplicates,updates,rejected,digest,Jsonb(payload),runid,sid))
         stage='checkpoint'

@@ -1,6 +1,43 @@
 """Extraction, media filtering and translation-status tests. No network access."""
+import datetime
+
+import collector
 import content
 import translate
+
+RECEIVED = datetime.datetime(2026, 9, 22, 12, 0, tzinfo=datetime.timezone.utc)
+
+
+def test_rss_channel_title_is_captured_as_the_publisher_name():
+    xml = b'''<rss version="2.0"><channel><title>The War Zone</title><language>en-US</language>
+    <item><title>Story</title><link>https://www.twz.com/a</link></item></channel></rss>'''
+    _items, _observed, _rejected, meta = collector.parse(xml, 's1', RECEIVED)
+    assert meta['feed_title'] == 'The War Zone'
+    assert meta['feed_language'] == 'en-US'
+
+
+def test_atom_feed_title_is_captured():
+    xml = b'''<feed xmlns="http://www.w3.org/2005/Atom"><title>Modern War Institute</title>
+    <entry><title>Story</title><link rel="alternate" href="https://mwi.westpoint.edu/a"/></entry></feed>'''
+    _items, _observed, _rejected, meta = collector.parse(xml, 's2', RECEIVED)
+    assert meta['feed_title'] == 'Modern War Institute'
+
+
+def test_feed_without_a_title_reports_none_rather_than_a_guess():
+    xml = b'''<rss version="2.0"><channel>
+    <item><title>Story</title><link>https://e.com/a</link></item></channel></rss>'''
+    _items, _observed, _rejected, meta = collector.parse(xml, 's3', RECEIVED)
+    assert meta['feed_title'] is None
+
+
+def test_full_content_block_is_preferred_over_a_short_description_for_extraction():
+    xml = b'''<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+    <channel><title>T</title><item><title>Story</title><link>https://e.com/a</link>
+    <description>Short teaser.</description>
+    <content:encoded><![CDATA[<p>The full body runs much longer than the teaser does.</p>]]></content:encoded>
+    </item></channel></rss>'''
+    items, _observed, _rejected, _meta = collector.parse(xml, 's4', RECEIVED)
+    assert 'full body' in items[0]['content_html']
 
 
 def extract(html, *, item_id='item-1', base='https://publisher.example/story', source='content_encoded'):
