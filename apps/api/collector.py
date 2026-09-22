@@ -339,10 +339,12 @@ def cycle(trigger='scheduled'):
     with psycopg.connect(DSN,autocommit=True) as lock:
         if not lock.execute('SELECT pg_try_advisory_lock(%s)',(LOCK_KEY,)).fetchone()[0]:
             rid=str(uuid.uuid4());now=datetime.now(timezone.utc)
-            lock.execute("INSERT INTO collection_runs(run_id,started_at,finished_at,trigger_type,status,sources_planned,skipped_locked,collector_version) VALUES(%s,%s,%s,%s,'skipped_locked',11,true,%s)",(rid,now,now,trigger,VERSION));return {'run_id':rid,'status':'skipped_locked'}
+            lock.execute("INSERT INTO collection_runs(run_id,started_at,finished_at,trigger_type,status,sources_planned,skipped_locked,collector_version) VALUES(%s,%s,%s,%s,'skipped_locked',%s,true,%s)",(rid,now,now,trigger,len(EXEC),VERSION));return {'run_id':rid,'status':'skipped_locked'}
         rid=str(uuid.uuid4());start=datetime.now(timezone.utc);results=[];run_error=None;final=None
         try:
-            lock.execute("INSERT INTO collection_runs(run_id,started_at,trigger_type,status,collector_version) VALUES(%s,%s,%s,'running',%s)",(rid,start,trigger,VERSION))
+            # Planned count follows the executable set; a stale constant would mark
+            # every run partial the moment a source is added.
+            lock.execute("INSERT INTO collection_runs(run_id,started_at,trigger_type,status,sources_planned,collector_version) VALUES(%s,%s,%s,'running',%s,%s)",(rid,start,trigger,len(EXEC),VERSION))
             recover_pending_checkpoints()
             with psycopg.connect(DSN) as c:
                 for src in sorted(EXEC.values(),key=lambda x:x['source_id']):

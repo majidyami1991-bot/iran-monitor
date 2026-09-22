@@ -1,5 +1,44 @@
 [
   {
+    "source_id": "e4180227-092a-579e-b192-015a969d24f3",
+    "hostname": "breakingdefense.com",
+    "verified_feed_url": "https://breakingdefense.com/feed/",
+    "feed_type": "RSS",
+    "evidence_reference": "feed-sitemap-discovery.json",
+    "validation_status": "verified",
+    "implementation_tier": "TIER_1_FEED",
+    "executable": true,
+    "exclusion_reason": null,
+    "registry_enabled": false,
+    "pilot_status": "not_run"
+  },
+  {
+    "source_id": "854ac2a3-ba0c-5f95-a62b-6d296294960a",
+    "hostname": "defence-blog.com",
+    "verified_feed_url": "https://defence-blog.com/feed/",
+    "feed_type": "RSS",
+    "evidence_reference": "feed-sitemap-discovery.json",
+    "validation_status": "verified",
+    "implementation_tier": "TIER_1_FEED",
+    "executable": true,
+    "exclusion_reason": null,
+    "registry_enabled": false,
+    "pilot_status": "not_run"
+  },
+  {
+    "source_id": "516b4133-492d-5c4d-b021-b1113c54b756",
+    "hostname": "defence-industry.eu",
+    "verified_feed_url": "https://defence-industry.eu/feed/",
+    "feed_type": "RSS",
+    "evidence_reference": "feed-sitemap-discovery.json",
+    "validation_status": "verified",
+    "implementation_tier": "TIER_1_FEED",
+    "executable": true,
+    "exclusion_reason": null,
+    "registry_enabled": false,
+    "pilot_status": "not_run"
+  },
+  {
     "source_id": "02125465-dc6c-5355-823c-989b485ed491",
     "hostname": "jcfa.org",
     "verified_feed_url": "https://jcfa.org/feed/",
@@ -26,58 +65,6 @@
     "pilot_status": "not_run"
   },
   {
-    "source_id": "1c638686-e35b-53e9-959c-dc122aa9079f",
-    "hostname": "www.twz.com",
-    "verified_feed_url": "https://www.twz.com/feed",
-    "feed_type": "RSS",
-    "evidence_reference": "feed-sitemap-discovery.json",
-    "validation_status": "verified",
-    "implementation_tier": "TIER_1_FEED",
-    "executable": true,
-    "exclusion_reason": null,
-    "registry_enabled": false,
-    "pilot_status": "not_run"
-  },
-  {
-    "source_id": "3bef586c-ca0d-5ee7-a837-beb5f31f510a",
-    "hostname": "www.jfeed.com",
-    "verified_feed_url": "https://www.jfeed.com/feed",
-    "feed_type": "RSS",
-    "evidence_reference": "feed-sitemap-discovery.json",
-    "validation_status": "verified",
-    "implementation_tier": "TIER_1_FEED",
-    "executable": true,
-    "exclusion_reason": null,
-    "registry_enabled": false,
-    "pilot_status": "not_run"
-  },
-  {
-    "source_id": "516b4133-492d-5c4d-b021-b1113c54b756",
-    "hostname": "defence-industry.eu",
-    "verified_feed_url": "https://defence-industry.eu/feed/",
-    "feed_type": "RSS",
-    "evidence_reference": "feed-sitemap-discovery.json",
-    "validation_status": "verified",
-    "implementation_tier": "TIER_1_FEED",
-    "executable": true,
-    "exclusion_reason": null,
-    "registry_enabled": false,
-    "pilot_status": "not_run"
-  },
-  {
-    "source_id": "6efbeadb-ebe5-55da-9c78-f7f51a1a4860",
-    "hostname": "www.missiledefenseadvocacy.org",
-    "verified_feed_url": "https://www.missiledefenseadvocacy.org/feed/",
-    "feed_type": "RSS",
-    "evidence_reference": "feed-sitemap-discovery.json",
-    "validation_status": "verified",
-    "implementation_tier": "TIER_1_FEED",
-    "executable": true,
-    "exclusion_reason": null,
-    "registry_enabled": false,
-    "pilot_status": "not_run"
-  },
-  {
     "source_id": "70e9a720-f949-5641-a178-fb439bad0e5b",
     "hostname": "news.usni.org",
     "verified_feed_url": "https://news.usni.org/feed",
@@ -91,9 +78,22 @@
     "pilot_status": "not_run"
   },
   {
-    "source_id": "854ac2a3-ba0c-5f95-a62b-6d296294960a",
-    "hostname": "defence-blog.com",
-    "verified_feed_url": "https://defence-blog.com/feed/",
+    "source_id": "3d54f8e0-fb13-548a-96e4-06186515f114",
+    "hostname": "rusi.org",
+    "verified_feed_url": "https://www.rusi.org/rss/whats-new.xml",
+    "feed_type": "RSS",
+    "evidence_reference": "feed-sitemap-discovery.json; revalidated 2026-09-22: rusi.org/rss/whats-new.xml returns 301 to the www host, which returns 200 application/xml",
+    "validation_status": "verified",
+    "implementation_tier": "TIER_1_FEED",
+    "executable": true,
+    "exclusion_reason": null,
+    "registry_enabled": false,
+    "pilot_status": "not_run"
+  },
+  {
+    "source_id": "c1781f8f-c222-5fc4-99a9-5fcc73e5f537",
+    "hostname": "www.airandspaceforces.com",
+    "verified_feed_url": "https://www.airandspaceforces.com/feed/",
     "feed_type": "RSS",
     "evidence_reference": "feed-sitemap-discovery.json",
     "validation_status": "verified",
@@ -117,9 +117,9 @@
     "pilot_status": "not_run"
   },
   {
-    "source_id": "c1781f8f-c222-5fc4-99a9-5fcc73e5f537",
-    "hostname": "www.airandspaceforces.com",
-    "verified_feed_url": "https://www.airandspaceforces.com/feed/",
+    "source_id": "3bef586c-ca0d-5ee7-a837-beb5f31f510a",
+    "hostname": "www.jfeed.com",
+    "verified_feed_url": "https://www.jfeed.com/feed",
     "feed_type": "RSS",
     "evidence_reference": "feed-sitemap-discovery.json",
     "validation_status": "verified",
@@ -130,9 +130,22 @@
     "pilot_status": "not_run"
   },
   {
-    "source_id": "e4180227-092a-579e-b192-015a969d24f3",
-    "hostname": "breakingdefense.com",
-    "verified_feed_url": "https://breakingdefense.com/feed/",
+    "source_id": "6efbeadb-ebe5-55da-9c78-f7f51a1a4860",
+    "hostname": "www.missiledefenseadvocacy.org",
+    "verified_feed_url": "https://www.missiledefenseadvocacy.org/feed/",
+    "feed_type": "RSS",
+    "evidence_reference": "feed-sitemap-discovery.json",
+    "validation_status": "verified",
+    "implementation_tier": "TIER_1_FEED",
+    "executable": true,
+    "exclusion_reason": null,
+    "registry_enabled": false,
+    "pilot_status": "not_run"
+  },
+  {
+    "source_id": "1c638686-e35b-53e9-959c-dc122aa9079f",
+    "hostname": "www.twz.com",
+    "verified_feed_url": "https://www.twz.com/feed",
     "feed_type": "RSS",
     "evidence_reference": "feed-sitemap-discovery.json",
     "validation_status": "verified",

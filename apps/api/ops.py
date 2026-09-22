@@ -187,6 +187,12 @@ def classify(title,summary):
 def migrate():
     with psycopg.connect(DSN) as c:
         c.execute(DDL)
+        # A source validated for execution must exist as a row before a cycle can
+        # record results against it; the update below cannot create one.
+        for sid,r in REG.items():
+            if sid not in EXEC:continue
+            canonical=canonical_source(r); host=r.get('hostname') or (urlsplit(canonical).hostname if canonical else None)
+            c.execute('INSERT INTO sources(source_id,name,hostname,source_type,canonical_url,enabled,enabled_for_scheduler) VALUES(%s,%s,%s,%s,%s,false,true) ON CONFLICT(source_id) DO NOTHING',(sid,host,host,r.get('source_type'),canonical))
         for sid,r in REG.items():
             canonical=canonical_source(r); host=r.get('hostname') or (urlsplit(canonical).hostname if canonical else None)
             readiness=EXEC.get(sid); cap=CAP.get(sid,{})
