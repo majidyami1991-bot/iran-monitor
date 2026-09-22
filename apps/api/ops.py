@@ -14,7 +14,7 @@ DSN=os.environ['DATABASE_URL']
 INTERVAL=int(os.getenv('NEWS_COLLECTION_INTERVAL_SECONDS','900'))
 ROOT=Path('/app')
 METADATA_DIR=Path(os.getenv('COLLECTOR_METADATA_DIR','/app/sources'))
-METADATA_FILES=('source-registry.json','rss-execution-readiness.json','collection-capabilities.json','classification-taxonomy-v1.json')
+METADATA_FILES=('source-registry.json','rss-execution-readiness.json','collection-capabilities.json','classification-taxonomy-v1.json','feed-sitemap-discovery.json')
 def _metadata(name):
     path=METADATA_DIR/name
     if not path.is_file(): raise RuntimeError(f'collector_metadata_missing:{name}:{METADATA_DIR}')
@@ -147,9 +147,11 @@ REGISTRY=_metadata('source-registry.json')
 READY=_metadata('rss-execution-readiness.json')
 CAPS=_metadata('collection-capabilities.json')
 TAX=_metadata('classification-taxonomy-v1.json')
+DISC=_metadata('feed-sitemap-discovery.json')
 EXEC={x['source_id']:x for x in READY if x.get('executable') is True}
 CAP={x['source_id']:x for x in CAPS}
 REG={x['source_id']:x for x in REGISTRY}
+DISCOVERY={x['source_id']:x for x in DISC}
 
 def q(sql,args=()):
     with psycopg.connect(DSN) as c:return c.execute(sql,args).fetchall()
@@ -332,6 +334,61 @@ def register_ops(app):
             keys=['source_id','display_name','canonical_url','hostname','source_type','category','feed_url','collection_tier','language','enabled_for_scheduler','last_attempt_at','last_success_at','last_http_status','last_item_at','consecutive_failures','health_status','item_count','items_24h','items_7d','latest_published']
             x=dict(zip(keys,r));x['health_status']=health_for(x);data.append(x)
         return {'sources':data,'total':total,'page':page,'page_size':page_size}
+
+    @app.get('/api/v1/sources/coverage')
+    def coverage():
+        """Every registered source with its real collection status.
+
+        Three counts are deliberately kept apart: how many sources the client
+        listed, how many have a validated collection path, and how many actually
+        produced a successful fetch. They are not the same number and the product
+        must never merge them.
+        """
+        live={r[0]:r for r in q('''SELECT source_id,last_success_at,health_status,consecutive_failures,
+            (SELECT count(*) FROM news_items n WHERE n.source_id=s.source_id) FROM sources s''')}
+        rows=[]
+        for sid,entry in REG.items():
+            cap=CAP.get(sid,{});ready=EXEC.get(sid);row=live.get(sid)
+            kind=entry.get('source_type')
+            if kind=='x_account':
+                state,reason='not_covered','X account: no authorised collection path or usage policy is in place.'
+            elif ready:
+                state,reason='active_rss','Validated RSS feed collected on the scheduled cycle.'
+            elif cap.get('access_status')=='unreachable' or cap.get('robots_allowed') is False:
+                state,reason='blocked','Publisher returns 403 or disallows automated access; not collected.'
+            elif _has_feed_candidate(sid):
+                state,reason='feed_candidate','A working feed was discovered but is not yet validated for execution.'
+            elif _has_sitemap_candidate(sid):
+                state,reason='sitemap_candidate','No feed; a readable sitemap exists but no tested parser does.'
+            else:
+                state,reason='html_candidate','No feed or sitemap discovered; would require an HTML listing parser.'
+            rows.append({'source_id':sid,'hostname':entry.get('hostname'),'url':entry.get('canonical_key') or entry.get('url'),
+                'source_type':kind,'category':entry.get('canonical_category'),'x_handle':entry.get('x_handle'),
+                'coverage_state':state,'reason':reason,
+                'feed_url':ready.get('verified_feed_url') if ready else None,
+                'homepage_status':cap.get('homepage_status'),'robots_allowed':cap.get('robots_allowed'),
+                'in_database':bool(row),'last_success_at':row[1] if row else None,
+                'health_status':row[2] if row else None,'item_count':row[4] if row else 0})
+        rows.sort(key=lambda r:(r['coverage_state'],r['hostname'] or ''))
+        by_state={};by_type={}
+        for r in rows:
+            by_state[r['coverage_state']]=by_state.get(r['coverage_state'],0)+1
+            by_type.setdefault(r['source_type'],{}).setdefault(r['coverage_state'],0)
+            by_type[r['source_type']][r['coverage_state']]+=1
+        monitored=[r for r in rows if r['coverage_state']=='active_rss' and r['last_success_at']]
+        return {'registered':len(rows),'executable':by_state.get('active_rss',0),'monitored':len(monitored),
+            'by_state':by_state,'by_source_type':by_type,'sources':rows,
+            'definitions':{'registered':'در سند منابع مشتری ثبت شده است.',
+                'executable':'مسیر جمع‌آوری معتبر و آزموده دارد.',
+                'monitored':'دست‌کم یک دریافت موفق واقعی ثبت کرده است.'}}
+
+    def _has_feed_candidate(sid):
+        return any(str(c.get('status'))=='200' and 'sitemap' not in (c.get('url') or '')
+                   for c in (DISCOVERY.get(sid,{}).get('feed_checks') or []))
+
+    def _has_sitemap_candidate(sid):
+        return any(str(c.get('status'))=='200' and 'sitemap' in (c.get('url') or '')
+                   for c in (DISCOVERY.get(sid,{}).get('feed_checks') or []))
 
     @app.get('/api/v1/sources/{source_id}')
     def source(source_id:str):
