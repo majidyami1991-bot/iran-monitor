@@ -93,6 +93,55 @@ CREATE INDEX IF NOT EXISTS collection_runs_started_idx ON collection_runs(starte
 CREATE INDEX IF NOT EXISTS source_run_results_source_idx ON source_run_results(source_id,finished_at DESC);
 CREATE INDEX IF NOT EXISTS news_items_fetched_idx ON news_items(fetched_at DESC);
 CREATE INDEX IF NOT EXISTS news_items_category_idx ON news_items(classification);
+CREATE TABLE IF NOT EXISTS news_item_content(
+  item_id text PRIMARY KEY REFERENCES news_items(item_id),
+  content_version integer NOT NULL DEFAULT 1,
+  original_language text,
+  original_text text,
+  text_chars integer NOT NULL DEFAULT 0,
+  extraction_method text NOT NULL,
+  extraction_status text NOT NULL,
+  display_policy text NOT NULL,
+  source_url text,
+  content_sha256 text,
+  extracted_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS news_item_translations(
+  item_id text NOT NULL REFERENCES news_items(item_id),
+  field text NOT NULL,
+  target_language text NOT NULL DEFAULT 'fa',
+  status text NOT NULL,
+  text text,
+  provider text,
+  model text,
+  content_version integer NOT NULL DEFAULT 1,
+  source_chars integer,
+  latency_ms integer,
+  error text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY(item_id,field,target_language));
+CREATE TABLE IF NOT EXISTS news_item_media(
+  media_id text PRIMARY KEY,
+  item_id text NOT NULL REFERENCES news_items(item_id),
+  kind text NOT NULL,
+  url text NOT NULL,
+  mime_type text,
+  byte_size bigint,
+  declared_width integer,
+  declared_height integer,
+  alt_text text,
+  position integer,
+  relevance text NOT NULL,
+  rejection_reason text,
+  discovery_method text NOT NULL,
+  verification_status text NOT NULL DEFAULT 'unverified',
+  content_sha256 text,
+  discovered_at timestamptz NOT NULL DEFAULT now(),
+  verified_at timestamptz);
+CREATE INDEX IF NOT EXISTS news_item_media_item_idx ON news_item_media(item_id,relevance,position);
+CREATE INDEX IF NOT EXISTS news_item_translations_status_idx ON news_item_translations(status,field);
+CREATE INDEX IF NOT EXISTS news_item_content_status_idx ON news_item_content(extraction_status);
 '''
 REGISTRY=_metadata('source-registry.json')
 READY=_metadata('rss-execution-readiness.json')
@@ -209,15 +258,70 @@ def register_ops(app):
         rows=q('''SELECT n.item_id,n.source_id,n.title,COALESCE(n.summary_text,n.summary) summary,
             n.summary_source,n.summary_available,n.content_language,n.canonical_url,n.external_guid,n.published_at,
             COALESCE(n.fetched_at,n.collected_at) fetched_at,n.first_seen_at,n.classification,n.topics,
-            n.taxonomy_version,n.provenance_status,COALESCE(NULLIF(s.display_name,''),s.hostname),s.hostname,s.source_type,s.category
-            FROM news_items n JOIN sources s USING(source_id)'''+where+' ORDER BY '+order+' LIMIT %s OFFSET %s',args+[page_size,(page-1)*page_size])
-        return {'items':[dict(zip(['item_id','source_id','title','summary','summary_source','summary_available','content_language','canonical_url','external_guid','published_at','fetched_at','first_seen_at','category','topics','taxonomy_version','provenance_status','source_name','hostname','source_type','source_category'],r)) for r in rows], 'total':total,'page':page,'page_size':page_size,'window':window,'sort':sort}
+            n.taxonomy_version,n.provenance_status,COALESCE(NULLIF(s.display_name,''),s.hostname),s.hostname,s.source_type,s.category,
+            ts.status,ts.text,tt.status,tt.text,img.url,img.alt_text,img.verification_status,
+            COALESCE(cn.extraction_status,'not_processed'),COALESCE(cn.display_policy,'link_only'),COALESCE(cn.text_chars,0)
+            FROM news_items n JOIN sources s USING(source_id)
+            LEFT JOIN news_item_translations ts ON ts.item_id=n.item_id AND ts.field='summary' AND ts.target_language='fa'
+            LEFT JOIN news_item_translations tt ON tt.item_id=n.item_id AND tt.field='title' AND tt.target_language='fa'
+            LEFT JOIN news_item_content cn ON cn.item_id=n.item_id
+            LEFT JOIN LATERAL (SELECT url,alt_text,verification_status FROM news_item_media m
+                WHERE m.item_id=n.item_id AND m.kind='image' AND m.relevance='article_image' LIMIT 1) img ON TRUE
+            '''+where+' ORDER BY '+order+' LIMIT %s OFFSET %s',args+[page_size,(page-1)*page_size])
+        keys=['item_id','source_id','title','summary','summary_source','summary_available','content_language','canonical_url','external_guid','published_at','fetched_at','first_seen_at','category','topics','taxonomy_version','provenance_status','source_name','hostname','source_type','source_category','summary_fa_status','summary_fa','title_fa_status','title_fa','lead_image_url','lead_image_alt','lead_image_verification','content_status','display_policy','text_chars']
+        items=[dict(zip(keys,r)) for r in rows]
+        for x in items:
+            x['summary_fa_status']=x['summary_fa_status'] or 'pending'
+            x['title_fa_status']=x['title_fa_status'] or 'pending'
+        return {'items':items,'total':total,'page':page,'page_size':page_size,'window':window,'sort':sort}
 
     @app.get('/api/v1/news/{item_id}')
     def news_item(item_id:str):
         rows=q('''SELECT n.item_id,n.source_id,n.title,COALESCE(n.summary_text,n.summary),n.summary_source,n.summary_available,n.content_language,n.canonical_url,n.external_guid,n.published_at,COALESCE(n.fetched_at,n.collected_at),n.first_seen_at,n.classification,n.topics,n.taxonomy_version,n.provenance_status,s.display_name,s.hostname,s.source_type,s.canonical_url,s.feed_url FROM news_items n JOIN sources s USING(source_id) WHERE n.item_id=%s''',(item_id,))
         if not rows:raise HTTPException(404,'news_item_not_found')
-        return dict(zip(['item_id','source_id','title','summary','summary_source','summary_available','content_language','canonical_url','external_guid','published_at','fetched_at','first_seen_at','category','topics','taxonomy_version','provenance_status','source_name','hostname','source_type','source_url','feed_url'],rows[0]))
+        item=dict(zip(['item_id','source_id','title','summary','summary_source','summary_available','content_language','canonical_url','external_guid','published_at','fetched_at','first_seen_at','category','topics','taxonomy_version','provenance_status','source_name','hostname','source_type','source_url','feed_url'],rows[0]))
+        item['content']=_content_block(item_id)
+        item['translations']=_translation_block(item_id)
+        item['media']=_media_block(item_id)
+        item['provenance']=objects('SELECT feed_url,execution_reference,evidence_status,evidence_json FROM news_item_provenance WHERE item_id=%s',['feed_url','execution_reference','evidence_status','evidence_json'],(item_id,))
+        return item
+
+    def _content_block(item_id):
+        """Body text plus an explicit extraction status; never a fabricated field."""
+        rows=objects('''SELECT content_version,original_language,original_text,text_chars,extraction_method,
+            extraction_status,display_policy,content_sha256,extracted_at,updated_at FROM news_item_content WHERE item_id=%s''',
+            ['content_version','original_language','original_text','text_chars','extraction_method','extraction_status','display_policy','content_sha256','extracted_at','updated_at'],(item_id,))
+        if not rows:
+            return {'extraction_status':'not_processed','display_policy':'link_only','original_text':None,
+                'text_chars':0,'content_version':None,'extraction_method':None,
+                'note':'این رکورد پیش از افزودن استخراج متن ثبت شده است.'}
+        block=rows[0]
+        # Only syndicated bodies are rendered in full; everything else stays a
+        # summary plus a link to the publisher.
+        if block['display_policy']!='full_syndicated':
+            block['original_text_withheld_reason']='display_policy:'+block['display_policy']
+        return block
+
+    def _translation_block(item_id):
+        rows=objects('''SELECT field,target_language,status,text,provider,model,content_version,source_chars,error,updated_at
+            FROM news_item_translations WHERE item_id=%s''',
+            ['field','target_language','status','text','provider','model','content_version','source_chars','error','updated_at'],(item_id,))
+        found={r['field']:r for r in rows}
+        for field in ('title','summary','body'):
+            found.setdefault(field,{'field':field,'target_language':'fa','status':'pending','text':None,
+                'provider':None,'model':None,'content_version':None,'source_chars':None,'error':None,'updated_at':None})
+        return found
+
+    def _media_block(item_id):
+        rows=objects('''SELECT media_id,kind,url,mime_type,byte_size,declared_width,declared_height,alt_text,position,
+            relevance,rejection_reason,discovery_method,verification_status,discovered_at
+            FROM news_item_media WHERE item_id=%s ORDER BY (relevance='article_image') DESC,position NULLS LAST,media_id''',
+            ['media_id','kind','url','mime_type','byte_size','declared_width','declared_height','alt_text','position','relevance','rejection_reason','discovery_method','verification_status','discovered_at'],(item_id,))
+        accepted=[r for r in rows if not r['relevance'].startswith('rejected')]
+        return {'images':[r for r in accepted if r['kind']=='image'],
+            'documents':[r for r in accepted if r['kind']=='document'],
+            'filtered_out':[{'url':r['url'],'relevance':r['relevance'],'rejection_reason':r['rejection_reason']} for r in rows if r['relevance'].startswith('rejected')],
+            'note':'تصاویر و اسناد از خود خوراک منبع استخراج شده‌اند و هنوز دانلود و راستی‌آزمایی نشده‌اند.'}
 
     @app.get('/api/v1/sources')
     def sources(page:int=Query(1,ge=1),page_size:int=Query(50,ge=1,le=100)):
@@ -339,6 +443,27 @@ def register_ops(app):
         r=q('SELECT run_id,started_at,finished_at,trigger_type,status,sources_planned,sources_attempted,sources_succeeded,sources_failed,http_requests,response_bytes,items_observed,items_inserted,duplicates,updates,rejected,skipped_locked FROM collection_runs WHERE run_id=%s',(run_id,))
         if not r:raise HTTPException(404,'collection_run_not_found')
         return {'run':dict(zip(['run_id','started_at','finished_at','trigger_type','status','sources_planned','sources_attempted','sources_succeeded','sources_failed','http_requests','response_bytes','items_observed','items_inserted','duplicates','updates','rejected','skipped_locked'],r[0])),'sources':objects('SELECT source_id,started_at,finished_at,status,http_status,response_bytes,observed,inserted,duplicates,rejected,error_class,error_message_sanitized,error_stage FROM source_run_results WHERE run_id=%s ORDER BY source_id',['source_id','started_at','finished_at','status','http_status','response_bytes','observed','inserted','duplicates','rejected','error_class','error_message_sanitized','error_stage'],(run_id,))}
+
+    @app.get('/api/v1/stats/content')
+    def content_stats():
+        """Honest per-field coverage: what exists, what is queued, what is absent."""
+        total=q('SELECT count(*) FROM news_items')[0][0]
+        body=dict(q("SELECT COALESCE(extraction_status,'not_processed'),count(*) FROM news_item_content GROUP BY 1"))
+        body['not_processed']=body.get('not_processed',0)+total-q('SELECT count(*) FROM news_item_content')[0][0]
+        policy=dict(q('SELECT display_policy,count(*) FROM news_item_content GROUP BY 1'))
+        translations={}
+        for field in ('title','summary','body'):
+            counts=dict(q('SELECT status,count(*) FROM news_item_translations WHERE field=%s AND target_language=%s GROUP BY 1',(field,'fa')))
+            counts['pending']=counts.get('pending',0)+total-sum(counts.values())
+            translations[field]=counts
+        media=dict(q('SELECT relevance,count(*) FROM news_item_media GROUP BY 1'))
+        items_with_image=q("SELECT count(DISTINCT item_id) FROM news_item_media WHERE relevance='article_image'")[0][0]
+        items_with_doc=q("SELECT count(DISTINCT item_id) FROM news_item_media WHERE kind='document'")[0][0]
+        return {'total_items':total,'body_text':body,'display_policy':policy,'translations_fa':translations,
+            'media_by_relevance':media,'items_with_article_image':items_with_image,
+            'items_with_document':items_with_doc,
+            'translation_provider':os.getenv('NEWS_TRANSLATION_PROVIDER') or 'none',
+            'method':'Counts of stored rows only. A pending field means no provider produced it yet; nothing is generated to fill a gap.'}
 
     @app.get('/api/v1/taxonomy')
     def taxonomy():return TAX

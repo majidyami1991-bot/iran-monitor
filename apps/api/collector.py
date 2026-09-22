@@ -10,6 +10,7 @@ from defusedxml import ElementTree as ET
 import psycopg
 from psycopg.types.json import Jsonb
 from ops import EXEC, REG, classify, DSN, database_json, canonical_json_dumps
+from content import extract as extract_content, display_policy, CONTENT_VERSION
 
 ROOT=Path('/app'); STATE=Path(os.getenv('COLLECTOR_STATE_DIR','/state'))
 MAX_BYTES=2*1024*1024;TIMEOUT=30;UA='IranMonitor/1.0 (bounded RSS monitoring; project news-feed collector)';VERSION='1.2.0'
@@ -53,7 +54,7 @@ def text(node,path):
 def content_hash(item):
     # Capture-time values are evidence, not story content; excluding them makes
     # the same item hash stable across naturally repeated feed reads.
-    stable={k:v for k,v in item.items() if k not in ('collected_at','fetched_at')}
+    stable={k:v for k,v in item.items() if k not in ('collected_at','fetched_at','content_html')}
     return hashlib.sha256(canonical_json_dumps(stable).encode('utf-8')).hexdigest()
 
 def safe_message(exc):
@@ -104,10 +105,14 @@ def parse(data,sid,received):
             if sidhash in seen:rejected+=1;continue
             seen.add(sidhash)
             candidates=[('content_encoded',text(n,'{http://purl.org/rss/1.0/modules/content/}encoded')),('description',text(n,'description')),('description',text(n,'{*}description')),('atom_summary',text(n,'{*}summary')),('atom_content',text(n,'{*}content'))]
-            source=None;summary=None
+            source=None;summary=None;content_html=None
             for kind,value in candidates:
                 summary=clean(value)
-                if summary:source=kind;break
+                if summary:source=kind;content_html=value;break
+            # The richest payload carries the body; a short description may coexist
+            # with a full content:encoded block, so keep the largest for extraction.
+            for kind,value in candidates:
+                if kind in ('content_encoded','atom_content') and value and len(value)>len(content_html or ''):content_html=value
             rawdate=text(n,'pubDate') or text(n,'{*}published') or text(n,'{*}updated') or text(n,'{*}date');published=None
             if rawdate:
                 try:
@@ -119,7 +124,7 @@ def parse(data,sid,received):
                     except ValueError:published=None
             guid=text(n,'guid') or text(n,'{*}id')
             language=n.attrib.get(xml_lang) or feed_language
-            items.append({'item_id':sidhash,'source_id':sid,'title':title,'canonical_url':canonical,'external_guid':guid,'published_at':published.isoformat() if published else None,'collected_at':received,'fetched_at':received,'summary_raw':summary,'summary_text':summary,'summary_source':source,'summary_available':bool(summary),'content_language':language.strip()[:64] if language and language.strip() else None,'classification':None,'topics':[]})
+            items.append({'item_id':sidhash,'source_id':sid,'title':title,'canonical_url':canonical,'external_guid':guid,'published_at':published.isoformat() if published else None,'collected_at':received,'fetched_at':received,'summary_raw':summary,'summary_text':summary,'summary_source':source,'summary_available':bool(summary),'content_html':content_html,'content_language':language.strip()[:64] if language and language.strip() else None,'classification':None,'topics':[]})
         except (ValueError,TypeError):rejected+=1
     return items,len(nodes),rejected
 def atomic_json(path,obj):
@@ -152,6 +157,37 @@ def read_checkpoint(path):
         raise ValueError('invalid_checkpoint_types')
     return data
 
+def store_content(c,item):
+    """Persist body text and declared media for one item from its feed payload.
+
+    Runs inside the caller's transaction and makes no network request: media rows
+    record what the feed declared, and stay `unverified` until a separate,
+    policy-aware pass checks them.
+    """
+    raw=item.get('content_html')
+    if not raw:
+        c.execute('''INSERT INTO news_item_content(item_id,original_language,original_text,text_chars,extraction_method,extraction_status,display_policy,source_url,content_sha256)
+            VALUES(%s,%s,NULL,0,'feed_payload','unavailable','link_only',%s,NULL)
+            ON CONFLICT(item_id) DO UPDATE SET extraction_status='unavailable',display_policy='link_only',updated_at=now()''',
+            (item['item_id'],item.get('content_language'),item['canonical_url']))
+        return 0
+    result=extract_content(raw,item_id=item['item_id'],base_url=item['canonical_url'],summary_source=item.get('summary_source'))
+    text=result['text'];policy=display_policy(item.get('summary_source'),text)
+    digest=hashlib.sha256((text or '').encode('utf-8')).hexdigest() if text else None
+    c.execute('''INSERT INTO news_item_content(item_id,content_version,original_language,original_text,text_chars,extraction_method,extraction_status,display_policy,source_url,content_sha256)
+        VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        ON CONFLICT(item_id) DO UPDATE SET original_text=EXCLUDED.original_text,text_chars=EXCLUDED.text_chars,
+        extraction_status=EXCLUDED.extraction_status,display_policy=EXCLUDED.display_policy,
+        content_sha256=EXCLUDED.content_sha256,updated_at=now()''',
+        (item['item_id'],CONTENT_VERSION,item.get('content_language'),text,len(text or ''),
+         'feed_'+(item.get('summary_source') or 'unknown'),result['status'],policy,item['canonical_url'],digest))
+    for m in result['media']:
+        c.execute('''INSERT INTO news_item_media(media_id,item_id,kind,url,mime_type,declared_width,declared_height,alt_text,position,relevance,rejection_reason,discovery_method,verification_status)
+            VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(media_id) DO NOTHING''',
+            (m['media_id'],m['item_id'],m['kind'],m['url'],m['mime_type'],m['declared_width'],m['declared_height'],
+             m['alt_text'],m['position'],m['relevance'],m['rejection_reason'],m['discovery_method'],m['verification_status']))
+    return len(result['media'])
+
 def _source_start(c,runid,sid,started):
     """Insert exactly one running result before the bounded request begins."""
     with c.transaction():
@@ -178,7 +214,7 @@ def _source_transition(c,runid,sid,*,status,finished,http_status=None,size=None,
 def _error_status(stage):
     if stage=='fetch':return 'failed_fetch'
     if stage=='xml_parsing':return 'failed_parse'
-    if stage in ('classification','normalization'):return 'failed_normalize'
+    if stage in ('classification','normalization','content_extraction'):return 'failed_normalize'
     return 'failed_finalize'
 
 def recover_pending_checkpoints():
@@ -235,12 +271,16 @@ def source_run(c,runid,source):
                 if previous:
                     if previous[0]==i['item_id'] and previous[1]==i['title'] and previous[2]==(datetime.fromisoformat(i['published_at']) if i['published_at'] else None) and previous[3]==i['summary_text']:duplicates+=1
                     else:updates+=1
+                    stage='content_extraction'
+                    if previous[0]==i['item_id']:store_content(c,i)
+                    stage='database_transaction'
                     continue
                 stage='content_hash';item_hash=content_hash(i);stage='database_insert'
                 c.execute('''INSERT INTO news_items(item_id,source_id,title,summary,canonical_url,external_guid,published_at,collected_at,fetched_at,summary_raw,summary_text,summary_source,summary_available,content_language,adapter_type,provenance_status,content_hash,classification,taxonomy_version,topics) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'rss','COMPLETE',%s,%s,%s,%s) ON CONFLICT DO NOTHING''',(i['item_id'],sid,i['title'],i['summary_text'],i['canonical_url'],i['external_guid'],i['published_at'],i['collected_at'],i['fetched_at'],i['summary_raw'],i['summary_text'],i['summary_source'],i['summary_available'],i['content_language'],item_hash,i['classification'],__import__('ops').TAX['version'],Jsonb(database_json(i['topics'],path='normalized_item.topics'))))
                 if c.execute('SELECT 1 FROM news_items WHERE item_id=%s',(i['item_id'],)).fetchone():
                     c.execute('INSERT INTO item_classifications(item_id,category_id,category_label,topics,taxonomy_version,method) SELECT %s,%s,%s,%s,%s,%s ON CONFLICT(item_id) DO NOTHING',(i['item_id'],cat['id'],cat['label'],Jsonb(database_json(i['topics'],path='classification.topics')),__import__('ops').TAX['version'],__import__('ops').TAX['method']))
                     c.execute("INSERT INTO news_item_provenance(item_id,source_id,feed_url,execution_reference,evidence_status,evidence_json) VALUES(%s,%s,%s,%s,'COMPLETE',%s) ON CONFLICT(item_id) DO NOTHING",(i['item_id'],sid,url,runid,Jsonb(database_json({'http_status':status,'response_sha256':digest,'received_at':i['collected_at'],'summary_source':i['summary_source']},path='provenance_payload'))))
+                    stage='content_extraction';store_content(c,i);stage='database_insert'
                     inserted+=1
                 else:duplicates+=1
             committed=datetime.now(timezone.utc)
