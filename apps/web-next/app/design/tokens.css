@@ -1,0 +1,105 @@
+/* Iran Monitor design tokens — single source for color, type, space, radius,
+   elevation and motion. Every component in app/design and app/components
+   reads from these; no other file should hard-code a hex color, a pixel
+   spacing value or a font-size. See docs/UI UX DESIGN SYSTEM.md. */
+
+:root {
+  color-scheme: dark;
+
+  /* --- Surfaces: four levels, darkest to lightest --- */
+  --surface-0: #0a0e14;   /* page background */
+  --surface-1: #0f151d;   /* sidebar, header */
+  --surface-2: #131b26;   /* cards, panels */
+  --surface-3: #1a2531;   /* raised elements within a panel: table header, input */
+  --surface-hover: #1e2b3a;
+
+  /* --- Borders --- */
+  --border-subtle: #1f2b38;
+  --border: #263544;
+  --border-strong: #34495c;
+
+  /* --- Text --- */
+  --text-primary: #eaf1f7;
+  --text-secondary: #a9bbcb;
+  --text-tertiary: #7891a3;
+  --text-disabled: #52697c;
+  --text-inverse: #06110f;
+
+  /* --- Brand accent: restrained teal, used for primary actions, active
+     nav state and chart accents. Not used decoratively (no glow/gradients). --- */
+  --accent: #2bb3a3;
+  --accent-strong: #3fd0bd;
+  --accent-soft: #12312d;
+  --accent-on: #eafffa;
+
+  /* --- Semantic status: every state in the product maps to exactly one of
+     these six. Never invent a seventh; never reuse one for the wrong meaning
+     (e.g. amber for a healthy state). --- */
+  --status-healthy: #34c979;
+  --status-healthy-bg: #10281c;
+  --status-fresh: #4d9eff;
+  --status-fresh-bg: #12233c;
+  --status-attention: #e0a83f;
+  --status-attention-bg: #302512;
+  --status-stopped: #8497a8;
+  --status-stopped-bg: #1c2731;
+  --status-error: #ec5f5f;
+  --status-error-bg: #331a1a;
+  --status-inactive: #56697a;
+  --status-inactive-bg: #171f27;
+
+  /* --- Type scale (px). Persian text reads comfortably a step larger than
+     Latin UI conventions at the same visual weight. --- */
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14.5px;
+  --text-md: 16px;
+  --text-lg: 19px;
+  --text-xl: 24px;
+  --text-2xl: 30px;
+  --text-3xl: 38px;
+
+  --line-tight: 1.35;
+  --line-normal: 1.7;
+  --line-loose: 2.0;
+
+  --weight-normal: 400;
+  --weight-medium: 550;
+  --weight-bold: 700;
+
+  /* --- Spacing scale (px), 4px base --- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 56px;
+
+  /* --- Radius --- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 999px;
+
+  /* --- Elevation: two levels only, both restrained. No neon glow. --- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.24);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.28);
+
+  /* --- Motion --- */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --duration-fast: 120ms;
+  --duration-normal: 200ms;
+
+  /* --- Layout --- */
+  --sidebar-width: 236px;
+  --sidebar-width-collapsed: 72px;
+  --header-height: 64px;
+  --content-max: 1680px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --duration-fast: 0ms; --duration-normal: 0ms; }
+}
