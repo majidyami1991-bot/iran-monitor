@@ -34,3 +34,5 @@ body{font-size:14px}.sidebar{width:224px;padding:22px 14px}.workspace{margin-rig
 .item-documents a{color:#6fdccb;overflow-wrap:anywhere}
 .coverage-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0}
 @media(max-width:600px){.item-title-fa{font-size:16px}.item-gallery{grid-template-columns:1fr}.coverage-grid{grid-template-columns:1fr}}
+
+.machine-tag{display:inline-block;vertical-align:middle;margin-inline-start:6px;padding:1px 7px;border-radius:999px;border:1px solid #6a5a34;background:#2b2618;color:#dcc58f;font-size:11px;line-height:1.7;font-weight:400}

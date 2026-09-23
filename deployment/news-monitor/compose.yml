@@ -53,6 +53,23 @@ services:
       retries: 3
       start_period: 30s
     networks: [news]
+  news-translate:
+    build: {context: ../.., dockerfile: apps/api/Dockerfile}
+    environment:
+      DATABASE_URL: postgresql://iran_monitor:${NEWS_DB_PASSWORD}@news-db:5432/iran_monitor
+      NEWS_TRANSLATION_PROVIDER: ${NEWS_TRANSLATION_PROVIDER:-none}
+      NEWS_TRANSLATION_API_KEY: ${NEWS_TRANSLATION_API_KEY:-}
+      NEWS_TRANSLATION_BASE_URL: ${NEWS_TRANSLATION_BASE_URL:-}
+      NEWS_TRANSLATION_MODEL: ${NEWS_TRANSLATION_MODEL:-}
+      NEWS_TRANSLATION_SLEEP_SECONDS: ${NEWS_TRANSLATION_SLEEP_SECONDS:-1.0}
+    command: [python, /app/translate_worker.py, --limit, "5", --dry-run]
+    depends_on: {news-db: {condition: service_healthy}}
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    profiles: [tools]
+    networks: [news]
   news-importer:
     build: {context: ../.., dockerfile: apps/api/Dockerfile}
     environment:

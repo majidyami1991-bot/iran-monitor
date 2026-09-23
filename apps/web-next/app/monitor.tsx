@@ -52,6 +52,9 @@ function FieldStatus({label,status}:{label:string;status?:string|null}){return <
 function statusMeaning(x?:string|null){return ({available:'این فیلد تولید و ذخیره شده است.',pending:'هنوز هیچ ارائه‌دهنده‌ای این فیلد را تولید نکرده است؛ متنی ساخته نشده است.',unavailable:'متن مبدأ برای تولید این فیلد وجود ندارد.',error:'تلاش برای تولید این فیلد با خطا مواجه شد.',not_processed:'این رکورد پیش از افزودن استخراج متن ثبت شده است.'} as Record<string,string>)[x||'']||'وضعیت ثبت نشده است.'}
 function SafeImage({url,alt}:{url:string;alt?:string|null}){const [broken,setBroken]=useState(false);if(broken)return <p className="vf-method">تصویر ثبت‌شده در دسترس نیست و جایگزینی ساخته نشده است.</p>;
  return <img className="item-image" src={url} alt={alt||''} loading="lazy" referrerPolicy="no-referrer" onError={()=>setBroken(true)}/>}
+// Machine translation is labelled wherever it is shown, so a reader can tell it
+// apart from text a person wrote or checked.
+function MachineTag(){return <span className="machine-tag" title="این متن با ترجمه ماشینی تولید شده و بازبینی انسانی نشده است.">ترجمه ماشینی</span>}
 function ItemCard({item:x,detail=false}:{item:Item;detail?:boolean}){const href=hostLink(x.canonical_url);
  const faSummary=x.translations?.summary?.text??x.summary_fa??null;const faStatus=x.translations?.summary?.status??x.summary_fa_status;
  const faTitle=x.translations?.title?.text??x.title_fa??null;const faTitleStatus=x.translations?.title?.status??x.title_fa_status;
@@ -59,8 +62,8 @@ function ItemCard({item:x,detail=false}:{item:Item;detail?:boolean}){const href=
  const lead=images[0]||(x.lead_image_url?{media_id:'lead',url:x.lead_image_url,alt_text:x.lead_image_alt||null}as any:null);
  return <article className="monitor-panel item-card"><div className="item-meta"><Link href={'/sources/'+x.source_id}>{x.source_name||x.hostname||'نام ثبت نشده'}</Link><b dir="ltr">{x.hostname}</b><span>{x.category||'طبقه‌بندی نشده'}</span><time>{stamp(x.published_at||x.fetched_at)}</time></div>
  <h2 dir={/[؀-ۿ]/.test(x.title)?'rtl':'ltr'}>{detail?x.title:<Link href={'/news/'+x.item_id}>{x.title}</Link>}</h2>
- {faTitle&&<p className="item-title-fa" dir="rtl">{faTitle}</p>}
- {faSummary?<p className="item-summary item-summary-fa" dir="rtl">{faSummary}</p>
+ {faTitle&&<p className="item-title-fa" dir="rtl">{faTitle} <MachineTag/></p>}
+ {faSummary?<p className="item-summary item-summary-fa" dir="rtl">{faSummary} <MachineTag/></p>
   :<p className="item-summary-state">خلاصه فارسی {fieldLabel(faStatus)} — متن انگلیسی زیر آمده است.</p>}
  {lead&&<SafeImage url={lead.url} alt={lead.alt_text}/>}
  <p className="item-summary" dir="ltr">{x.summary||(x.summary_available===false?'این منبع برای این خبر خلاصه‌ای در RSS منتشر نکرده است.':'خلاصه این رکورد تاریخی در زمان دریافت ذخیره نشده است.')}</p>
@@ -71,7 +74,7 @@ function ItemCard({item:x,detail=false}:{item:Item;detail?:boolean}){const href=
    {body?<div dir="ltr" className="item-body-text">{body.split('\n').filter(Boolean).map((p,i)=><p key={i}>{p}</p>)}</div>
     :<VfEmptyState title={x.content?.original_text_withheld_reason?'متن کامل در این پلتفرم نمایش داده نمی‌شود':'متن کامل برای این رکورد ذخیره نشده است'}>{x.content?.display_policy==='summary_only'?'منبع فقط خلاصه را در خوراک منتشر کرده است؛ برای متن کامل به نشانی اصلی مراجعه کنید.':x.content?.note||'این رکورد پیش از افزودن استخراج متن ثبت شده است و بازپردازش آن نیازمند دریافت دوباره خوراک است.'}</VfEmptyState>}
    {body&&<p className="vf-method">{fmt(x.content?.text_chars||0)} نویسه · روش استخراج: {x.content?.extraction_method||'ثبت نشده'} · سیاست نمایش: {fieldLabel(x.content?.display_policy)}</p>}</section>
-  <section className="item-body"><h3>ترجمه فارسی</h3>
+  <section className="item-body"><h3>ترجمه فارسی {x.translations?.body?.status==='available'&&<MachineTag/>}</h3>
    {x.translations?.body?.status==='available'&&x.translations.body.text?<div dir="rtl" className="item-body-text">{x.translations.body.text.split('\n').filter(Boolean).map((p,i)=><p key={i}>{p}</p>)}</div>
     :<VfEmptyState title={'ترجمه فارسی '+fieldLabel(x.translations?.body?.status||'pending')}>{x.translations?.body?.error?'خطای ثبت‌شده: '+x.translations.body.error:'هیچ ارائه‌دهنده ترجمه‌ای پیکربندی نشده است. تا پیکربندی، متنی تولید و ذخیره نمی‌شود.'}</VfEmptyState>}
    {x.translations?.body?.provider&&<p className="vf-method">ارائه‌دهنده: {x.translations.body.provider} · مدل: {x.translations.body.model} · نویسه مبدأ: {fmt(x.translations.body.source_chars||0)} · زمان: {stamp(x.translations.body.updated_at||null)}</p>}</section>
