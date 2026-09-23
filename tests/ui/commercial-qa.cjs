@@ -65,8 +65,11 @@ async function withPage(browser, viewport, fn) {
       await page.waitForSelector('.stat-grid', { timeout: 20000 });
       check('dashboard has no pilot/prototype wording', !(await page.locator('body').innerText()).includes('پایلوت فعال'));
       check('dashboard RTL', await page.locator('html').getAttribute('dir') === 'rtl');
-      await page.evaluate(() => document.fonts.ready);
-      check('dashboard Vazirmatn loads', await page.evaluate(() => document.fonts.check('16px Vazirmatn')));
+      const fontLoaded = await page.waitForFunction(
+        () => document.fonts.ready.then(() => document.fonts.check('16px Vazirmatn')),
+        { timeout: 15000 },
+      ).then((h) => h.jsonValue()).catch(() => false);
+      check('dashboard Vazirmatn loads', fontLoaded);
       check('dashboard no horizontal overflow', await noOverflow(page));
       await shoot(page, 'dashboard.png');
 

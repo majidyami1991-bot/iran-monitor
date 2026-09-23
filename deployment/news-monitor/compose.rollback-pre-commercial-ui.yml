@@ -1,0 +1,3 @@
+services:
+  news-web:
+    image: iran-monitor-news-news-web:rollback-pre-commercial-ui
