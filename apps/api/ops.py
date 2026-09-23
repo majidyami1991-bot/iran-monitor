@@ -261,15 +261,19 @@ def register_ops(app):
     def schema_migration():migrate()
 
     @app.get('/api/v1/news')
-    def news(search:str|None=None,source_id:str|None=None,category:str|None=None,topic:str|None=None,window:str='all',sort:str='newest',page:int=Query(1,ge=1),page_size:int=Query(30,ge=1,le=100)):
+    def news(search:str|None=None,source_id:str|None=None,category:str|None=None,topic:str|None=None,window:str='all',sort:str='newest',translation:str|None=None,has_image:bool|None=None,has_document:bool|None=None,page:int=Query(1,ge=1),page_size:int=Query(30,ge=1,le=100)):
         if window not in ('all','24h','7d','30d'):raise HTTPException(422,'invalid_window')
         if sort not in ('newest','oldest'):raise HTTPException(422,'invalid_sort')
+        if translation is not None and translation not in ('available','pending','unavailable','error'):raise HTTPException(422,'invalid_translation')
         clauses=[];args=[]
         if search:clauses.append("(n.title ILIKE %s OR COALESCE(n.summary_text,n.summary,'') ILIKE %s)");args += [f'%{search[:200]}%',f'%{search[:200]}%']
         if source_id:clauses.append('n.source_id=%s');args.append(source_id)
         if category:clauses.append('n.classification=%s');args.append(category[:100])
         if topic:clauses.append('n.topics @> %s::jsonb');args.append(json.dumps([topic[:100]],ensure_ascii=False))
         if window!='all':clauses.append("COALESCE(n.published_at,n.fetched_at)>=now()-(%s || ' hours')::interval AND COALESCE(n.published_at,n.fetched_at)<=now()");args.append({'24h':'24','7d':'168','30d':'720'}[window])
+        if translation:clauses.append("COALESCE((SELECT status FROM news_item_translations t WHERE t.item_id=n.item_id AND t.field='summary' AND t.target_language='fa'),'pending')=%s");args.append(translation)
+        if has_image is not None:clauses.append(("EXISTS" if has_image else "NOT EXISTS")+" (SELECT 1 FROM news_item_media m WHERE m.item_id=n.item_id AND m.relevance='article_image')")
+        if has_document is not None:clauses.append(("EXISTS" if has_document else "NOT EXISTS")+" (SELECT 1 FROM news_item_media m WHERE m.item_id=n.item_id AND m.kind='document')")
         where=' WHERE '+' AND '.join(clauses) if clauses else ''
         order='COALESCE(n.published_at,n.fetched_at) '+('ASC' if sort=='oldest' else 'DESC')+' NULLS LAST,n.item_id'
         total=q('SELECT count(*) FROM news_items n'+where,args)[0][0]
@@ -419,7 +423,7 @@ def register_ops(app):
     def ops_overview():
         r=q("""SELECT count(*),count(*) FILTER(WHERE COALESCE(published_at,fetched_at)>=now()-interval '24 hours' AND COALESCE(published_at,fetched_at)<=now()),count(*) FILTER(WHERE COALESCE(published_at,fetched_at)>=now()-interval '7 days' AND COALESCE(published_at,fetched_at)<=now()),count(*) FILTER(WHERE summary_available IS TRUE),count(*) FILTER(WHERE summary_available IS FALSE),count(*) FILTER(WHERE summary_available IS NULL),count(*) FILTER(WHERE published_at IS NULL),count(*) FILTER(WHERE classification='سایر'),count(*) FILTER(WHERE provenance_status='COMPLETE') FROM news_items""")[0]
         health=[health_for(x) for x in sources(page=1,page_size=100)['sources']]
-        last=q("SELECT run_id,started_at,finished_at,status,sources_succeeded,sources_failed,items_inserted,duplicates FROM collection_runs ORDER BY started_at DESC LIMIT 1")
+        last=objects("SELECT run_id,started_at,finished_at,status,sources_succeeded,sources_failed,items_inserted,duplicates FROM collection_runs ORDER BY started_at DESC LIMIT 1",['run_id','started_at','finished_at','status','sources_succeeded','sources_failed','items_inserted','duplicates'])
         return {'total_items':r[0],'items_24h':r[1],'items_7d':r[2],'summary_available':r[3],'summary_unavailable_known':r[4],'summary_status_unknown':r[5],'missing_publication_date':r[6],'uncategorized':r[7],'provenance_complete':r[8],'sources':len(health),'healthy_sources':health.count('healthy'),'not_run_sources':health.count('not_run'),'delayed_or_failed_sources':sum(x in ('degraded','failing','delayed') for x in health),'last_run':last[0] if last else None}
 
     @app.get('/api/v1/stats/timeline')

@@ -43,6 +43,16 @@ assert len(coverage['sources'])==coverage['registered'] and all(x['coverage_stat
 assert coverage['by_state'].get('not_covered',0)==36
 content=get('stats/content');assert content['total_items']==h['items'] and 'translations_fa' in content
 assert get('stats/overview')['total_items']==h['items']
+last_run=get('stats/overview')['last_run']
+assert last_run is None or (isinstance(last_run,dict) and 'finished_at' in last_run),'last_run must be an object, not a positional array'
+img=get('news?has_image=true&page_size=5');assert img['total']>=0 and all(len(x.get('lead_image_url') or '')>0 for x in img['items'])
+noimg=get('news?has_image=false&page_size=5');assert all(not x.get('lead_image_url') for x in noimg['items'])
+doc=get('news?has_document=true&page_size=1');assert doc['total']>=0
+for status in ('available','pending','unavailable'):
+    r=get('news?translation='+status+'&page_size=1');assert r['total']>=0,status
+try:get('news?translation=not-a-status')
+except urllib.error.HTTPError as e:assert e.code==422
+else:raise AssertionError('invalid_translation_filter_not_rejected')
 try:get('news?window=invalid')
 except urllib.error.HTTPError as e:assert e.code==422
 else:raise AssertionError('invalid_filter_not_rejected')
