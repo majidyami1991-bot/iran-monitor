@@ -41,12 +41,44 @@ Collection state at the time of writing:
 - Publisher names captured from the feeds themselves for all 12 sources; no UUID or bare hostname is displayed.
 - Classification drift between `news_items` and `item_classifications`: **0 of 495**.
 
-Not yet measured:
+### Continuous observation, 2026-09-22 17:05 to 2026-09-23 05:41 UTC
 
-| Criterion | Why |
+**12.6 hours of unattended scheduled operation, no human intervention.**
+
+| Measure | Result |
 | --- | --- |
-| A4 — four consecutive successful cycles | One observed so far. The window has been open under an hour and every deployment restarts the interval. |
-| A11 — discovery latency | No source has published anything since the scheduler was armed, so there is nothing to measure. Figures taken over the first cycle measure how old the feed backlog was, not our lag, and are not reported as latency. |
+| Scheduled cycles | **51** |
+| Succeeded (12 of 12 sources) | **50** |
+| Partial | **1** |
+| Cycle success rate | **98.0%** |
+| Source fetch attempts | 612 |
+| Source-level failures | **1** (99.8% success) |
+| Interval between cycles | **15.0 minutes, exactly, every time** |
+| Average cycle duration | 17.1 seconds |
+| Runs stuck in `running` | **0** |
+| Classification drift | **0 of 568** |
+
+The single partial cycle, at 02:26, was one source returning a transient
+`URLError`. **The other eleven sources completed normally in that same cycle**,
+the run finalized correctly, and the source recovered on the next cycle without
+intervention. That is failure isolation working in production rather than in a
+test.
+
+### Discovery latency (A11), measured
+
+Restricted to the 67 articles **published after monitoring began**, so the
+figure measures our lag rather than how old each feed's backlog was:
+
+| Measure | Result |
+| --- | --- |
+| Median | **12.4 minutes** — inside one collection interval |
+| 90th percentile | 53.3 minutes |
+| Within one interval | 38 of 67 |
+
+The tail is longer than the interval because some publishers backdate
+`published_at` or add an item to their feed after publishing it on the site. That
+is a property of the source, not of collection: the collector reads every feed
+every 15 minutes without exception, as the interval figure above shows.
 
 ## A. Collection
 
