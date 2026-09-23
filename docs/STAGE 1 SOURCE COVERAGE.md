@@ -4,7 +4,7 @@ Generated from `GET /api/v1/sources/coverage`, which reads the registry, the
 discovery evidence and the live database. Regenerate it after any change to the
 executable set rather than editing the tables by hand.
 
-Snapshot taken 2026-09-22 16:34 UTC.
+Snapshot taken 2026-09-23 05:57 UTC.
 
 ## The three counts are not interchangeable
 
@@ -12,7 +12,7 @@ Snapshot taken 2026-09-22 16:34 UTC.
 | --- | ---: | --- |
 | Registered | 62 | Canonical sources from the client's `sites.docx`. |
 | Executable | 12 | Has a validated, permitted collection path. |
-| Monitored | 11 | Has actually completed a successful fetch. |
+| Monitored | 12 | Has actually completed a successful fetch. |
 
 Reporting 62 as coverage would be wrong: 36 of those entries are X accounts
 with no authorised collection path, and 7 publishers refuse automated access.
@@ -35,22 +35,22 @@ with no authorised collection path, and 7 publishers refuse automated access.
 
 ## Active RSS sources (12)
 
-These produce the news flow. `Items` counts stored records; a source added recently may still show zero until its first cycle completes.
+These produce the news flow. `Items` counts stored records.
 
-| Host | Type | Feed URL | Items | Health | Last success (UTC) |
+| Publisher host | Type | Feed URL | Items | Health | Last success (UTC) |
 | --- | --- | --- | --- | --- | --- |
-| breakingdefense.com | news | `https://breakingdefense.com/feed/` | 31 | healthy | 2026-09-22T04:38:23 |
-| defence-blog.com | news | `https://defence-blog.com/feed/` | 30 | healthy | 2026-09-22T04:38:17 |
-| defence-industry.eu | news | `https://defence-industry.eu/feed/` | 30 | healthy | 2026-09-22T04:38:13 |
-| jcfa.org | think_tank | `https://jcfa.org/feed/` | 18 | healthy | 2026-09-22T04:38:10 |
-| mwi.westpoint.edu | think_tank | `https://mwi.westpoint.edu/feed/` | 10 | healthy | 2026-09-22T04:38:10 |
-| news.usni.org | think_tank | `https://news.usni.org/feed` | 35 | healthy | 2026-09-22T04:38:16 |
-| rusi.org | think_tank | `https://www.rusi.org/rss/whats-new.xml` | 0 | not_run | not yet |
-| www.airandspaceforces.com | news | `https://www.airandspaceforces.com/feed/` | 24 | healthy | 2026-09-22T04:38:22 |
-| www.edrmagazine.eu | news | `https://www.edrmagazine.eu/feed` | 21 | healthy | 2026-09-22T04:38:19 |
-| www.jfeed.com | news | `https://www.jfeed.com/feed` | 87 | healthy | 2026-09-22T04:38:13 |
-| www.missiledefenseadvocacy.org | news | `https://www.missiledefenseadvocacy.org/feed/` | 10 | healthy | 2026-09-22T04:38:14 |
-| www.twz.com | news | `https://www.twz.com/feed` | 56 | healthy | 2026-09-22T04:38:12 |
+| breakingdefense.com | news | `https://breakingdefense.com/feed/` | 39 | healthy | 2026-09-23T05:56:23 |
+| defence-blog.com | news | `https://defence-blog.com/feed/` | 40 | healthy | 2026-09-23T05:56:19 |
+| defence-industry.eu | news | `https://defence-industry.eu/feed/` | 50 | healthy | 2026-09-23T05:56:14 |
+| jcfa.org | think_tank | `https://jcfa.org/feed/` | 18 | healthy | 2026-09-23T05:56:09 |
+| mwi.westpoint.edu | think_tank | `https://mwi.westpoint.edu/feed/` | 11 | healthy | 2026-09-23T05:56:09 |
+| news.usni.org | think_tank | `https://news.usni.org/feed` | 39 | healthy | 2026-09-23T05:56:18 |
+| rusi.org | think_tank | `https://www.rusi.org/rss/whats-new.xml` | 60 | healthy | 2026-09-23T05:56:14 |
+| www.airandspaceforces.com | news | `https://www.airandspaceforces.com/feed/` | 29 | healthy | 2026-09-23T05:56:22 |
+| www.edrmagazine.eu | news | `https://www.edrmagazine.eu/feed` | 28 | healthy | 2026-09-23T05:56:21 |
+| www.jfeed.com | news | `https://www.jfeed.com/feed` | 182 | healthy | 2026-09-23T05:56:13 |
+| www.missiledefenseadvocacy.org | news | `https://www.missiledefenseadvocacy.org/feed/` | 10 | healthy | 2026-09-23T05:56:17 |
+| www.twz.com | news | `https://www.twz.com/feed` | 62 | healthy | 2026-09-23T05:56:12 |
 
 ## Sitemap candidates (5)
 
