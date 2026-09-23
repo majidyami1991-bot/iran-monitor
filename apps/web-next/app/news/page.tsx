@@ -1,3 +1,10 @@
-import {Suspense} from 'react';
-import Monitor from '../monitor';
-export default function Page(){return <Suspense fallback={<p className="loading" role="status">در حال دریافت داده از PostgreSQL…</p>}><Monitor mode="news"/></Suspense>}
+import { Suspense } from 'react';
+import { NewsStream } from './NewsStream';
+
+export default function Page() {
+  return (
+    <Suspense fallback={<p className="loading-fallback" role="status">در حال دریافت داده…</p>}>
+      <NewsStream />
+    </Suspense>
+  );
+}
