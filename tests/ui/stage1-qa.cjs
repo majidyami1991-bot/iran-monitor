@@ -8,11 +8,10 @@
  * All requests are confined to the local host; anything else is aborted.
  */
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
-const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'C:/Temp/iran-monitor-playwright-20260914T/node_modules/playwright');
+const { launchEdge } = require('./edge-launcher.cjs');
 
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:3001';
 const OUT = path.resolve(process.env.EVIDENCE_DIR || 'runtime/evidence/stage1-qa');
-const EDGE = process.env.EDGE_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 
 const results = [], errors = [], failed = [], shots = [], blockedResources = [];
 const check = (name, pass, detail) => { results.push({ name, pass: !!pass, detail: detail ?? null }); return !!pass; };
@@ -28,7 +27,7 @@ async function shoot(page, file, fullPage = false) {
 
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
-  const browser = await chromium.launch({ headless: true, executablePath: EDGE });
+  const { browser, close } = await launchEdge();
   try {
     const context = await browser.newContext({ locale: 'fa-IR', timezoneId: 'UTC' });
     await context.route('**/*', r => {
@@ -226,7 +225,7 @@ async function shoot(page, file, fullPage = false) {
   } catch (e) {
     results.push({ name: 'run completed without an exception', pass: false, detail: String(e && e.message) });
   } finally {
-    await browser.close();
+    await close();
     const manifest = shots.map(file => {
       const b = fs.readFileSync(path.join(OUT, file));
       return { file, width: b.readUInt32BE(16), height: b.readUInt32BE(20), sha256: crypto.createHash('sha256').update(b).digest('hex') };
