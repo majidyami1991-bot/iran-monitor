@@ -354,7 +354,7 @@ def register_ops(app):
             LEFT JOIN LATERAL (SELECT url,alt_text,verification_status FROM news_item_media m
                 WHERE m.item_id=n.item_id AND m.kind='image' AND m.relevance='article_image' LIMIT 1) img ON TRUE
             LEFT JOIN LATERAL (SELECT true has_document FROM news_item_media m
-                WHERE m.item_id=n.item_id AND m.kind='document' AND NOT m.relevance LIKE 'rejected%' LIMIT 1) doc ON TRUE
+                WHERE m.item_id=n.item_id AND m.kind='document' AND NOT m.relevance LIKE 'rejected%%' LIMIT 1) doc ON TRUE
             LEFT JOIN LATERAL (SELECT count(*) event_count FROM news_event_members em
                 WHERE em.item_id=n.item_id AND NOT em.manually_removed) ev ON TRUE
             '''+where+' ORDER BY '+order+' LIMIT %s OFFSET %s',args+[page_size,(page-1)*page_size])
