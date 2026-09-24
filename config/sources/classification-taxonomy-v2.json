@@ -1,0 +1,81 @@
+{
+  "version": "2.0.0",
+  "method": "Deterministic keyword rules over stored title, RSS summary and extracted body text only. Confidence is the count and specificity of distinct matched keywords, not a semantic or ML score. No causal claim or inference beyond the matched text.",
+  "supersedes": "1.0.0",
+  "fallback": {"id": "other", "label": "سایر"},
+  "categories": [
+    {
+      "id": "defense_security", "label": "دفاعی و امنیتی",
+      "keywords_en": ["military", "defense", "defence", "armed forces", "troops", "army", "combat", "weapon", "weapons", "security forces"],
+      "keywords_fa": ["نظامی", "دفاعی", "ارتش", "نیروهای مسلح", "رزمی", "امنیتی"],
+      "subtopics": [
+        {"id": "missile", "label": "موشکی",
+          "keywords_en": ["missile", "ballistic", "cruise missile", "icbm", "interceptor missile", "hypersonic"],
+          "keywords_fa": ["موشک", "بالستیک", "کروز", "ابرصوت"]},
+        {"id": "air_defense", "label": "پدافند هوایی",
+          "keywords_en": ["air defense", "air defence", "anti-air", "sam battery", "iron dome", "patriot battery"],
+          "keywords_fa": ["پدافند هوایی", "ضدهوایی"]},
+        {"id": "drone", "label": "پهپادی",
+          "keywords_en": ["drone", "uav", "unmanned aerial", "loitering munition", "quadcopter"],
+          "keywords_fa": ["پهپاد", "بدون سرنشین"]},
+        {"id": "air", "label": "هوایی",
+          "keywords_en": ["fighter jet", "air force", "squadron", "bomber aircraft", "airstrike", "sortie"],
+          "keywords_fa": ["جنگنده", "نیروی هوایی", "بمباران هوایی"]},
+        {"id": "naval", "label": "دریایی",
+          "keywords_en": ["navy", "naval", "warship", "destroyer", "frigate", "submarine", "aircraft carrier", "corvette"],
+          "keywords_fa": ["نیروی دریایی", "ناوشکن", "زیردریایی", "ناو"]},
+        {"id": "ground", "label": "زمینی",
+          "keywords_en": ["tank", "armored vehicle", "artillery", "infantry", "ground forces", "howitzer"],
+          "keywords_fa": ["تانک", "زرهی", "توپخانه", "پیاده‌نظام"]},
+        {"id": "cyber", "label": "سایبری",
+          "keywords_en": ["cyberattack", "cyber attack", "hacking", "malware", "ransomware", "cyber warfare", "data breach"],
+          "keywords_fa": ["سایبری", "هک", "بدافزار", "حمله سایبری"]}
+      ]
+    },
+    {
+      "id": "foreign_policy", "label": "سیاست خارجی",
+      "keywords_en": ["diplomacy", "diplomatic", "foreign ministry", "bilateral talks", "summit", "envoy", "ambassador", "foreign policy", "negotiations"],
+      "keywords_fa": ["دیپلماسی", "سیاست خارجی", "وزارت خارجه", "مذاکرات", "سفیر"]
+    },
+    {
+      "id": "regional_developments", "label": "تحولات منطقه‌ای",
+      "keywords_en": ["middle east", "gulf region", "regional tensions", "proxy war", "regional conflict"],
+      "keywords_fa": ["خاورمیانه", "منطقه", "تنش منطقه‌ای"]
+    },
+    {
+      "id": "technology_ai", "label": "فناوری و هوش مصنوعی",
+      "keywords_en": ["artificial intelligence", "machine learning", "autonomous system", "algorithm", "ai model", "generative ai"],
+      "keywords_fa": ["هوش مصنوعی", "فناوری", "یادگیری ماشین"]
+    },
+    {
+      "id": "nuclear", "label": "هسته‌ای",
+      "keywords_en": ["nuclear", "enrichment", "centrifuge", "iaea", "nuclear deal", "uranium", "nuclear reactor", "nuclear weapon"],
+      "keywords_fa": ["هسته‌ای", "غنی‌سازی", "سانتریفیوژ", "اورانیوم"]
+    },
+    {
+      "id": "sanctions_economy", "label": "تحریم و اقتصاد",
+      "keywords_en": ["sanctions", "sanctioned", "economic pressure", "trade embargo", "tariff", "central bank", "currency", "inflation"],
+      "keywords_fa": ["تحریم", "اقتصاد", "ارز", "تورم", "تعرفه"]
+    },
+    {
+      "id": "energy", "label": "انرژی",
+      "keywords_en": ["oil", "gas pipeline", "energy exports", "refinery", "opec", "crude oil", "lng", "petroleum"],
+      "keywords_fa": ["نفت", "گاز", "انرژی", "پالایشگاه"]
+    },
+    {
+      "id": "defense_industry", "label": "صنایع دفاعی",
+      "keywords_en": ["defense contractor", "defence contractor", "arms deal", "weapons manufacturer", "defense procurement", "arms sale", "production line", "lockheed", "boeing defense", "raytheon", "bae systems"],
+      "keywords_fa": ["صنایع دفاعی", "قرارداد تسلیحاتی", "تولید نظامی"]
+    },
+    {
+      "id": "exercises_operations", "label": "رزمایش و عملیات",
+      "keywords_en": ["military exercise", "joint exercise", "war games", "military operation", "combat operation", "training exercise", "maneuvers"],
+      "keywords_fa": ["رزمایش", "مانور", "عملیات نظامی"]
+    },
+    {
+      "id": "official_documents", "label": "اسناد و گزارش‌های رسمی",
+      "keywords_en": ["official report", "government report", "testimony", "congressional hearing", "white paper", "policy document", "annual report"],
+      "keywords_fa": ["گزارش رسمی", "سند رسمی", "استماع کنگره"]
+    }
+  ]
+}
