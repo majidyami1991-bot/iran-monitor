@@ -339,7 +339,7 @@ def register_ops(app):
     def schema_migration():migrate()
 
     @app.get('/api/v1/news')
-    def news(search:str|None=None,source_id:str|None=None,category:str|None=None,topic:str|None=None,window:str='all',sort:str='newest',translation:str|None=None,has_image:bool|None=None,has_document:bool|None=None,page:int=Query(1,ge=1),page_size:int=Query(30,ge=1,le=100)):
+    def news(search:str|None=None,source_id:str|None=None,category:str|None=None,topic:str|None=None,window:str='all',sort:str='newest',translation:str|None=None,has_image:bool|None=None,has_document:bool|None=None,has_event:bool|None=None,page:int=Query(1,ge=1),page_size:int=Query(30,ge=1,le=100)):
         if window not in ('all','24h','7d','30d'):raise HTTPException(422,'invalid_window')
         if sort not in ('newest','oldest'):raise HTTPException(422,'invalid_sort')
         if translation is not None and translation not in ('available','pending','unavailable','error'):raise HTTPException(422,'invalid_translation')
@@ -352,6 +352,7 @@ def register_ops(app):
         if translation:clauses.append("COALESCE((SELECT status FROM news_item_translations t WHERE t.item_id=n.item_id AND t.field='summary' AND t.target_language='fa'),'pending')=%s");args.append(translation)
         if has_image is not None:clauses.append(("EXISTS" if has_image else "NOT EXISTS")+" (SELECT 1 FROM news_item_media m WHERE m.item_id=n.item_id AND m.relevance='article_image')")
         if has_document is not None:clauses.append(("EXISTS" if has_document else "NOT EXISTS")+" (SELECT 1 FROM news_item_media m WHERE m.item_id=n.item_id AND m.kind='document')")
+        if has_event is not None:clauses.append(("EXISTS" if has_event else "NOT EXISTS")+" (SELECT 1 FROM news_event_members em WHERE em.item_id=n.item_id AND NOT em.manually_removed)")
         where=' WHERE '+' AND '.join(clauses) if clauses else ''
         order='COALESCE(n.published_at,n.fetched_at) '+('ASC' if sort=='oldest' else 'DESC')+' NULLS LAST,n.item_id'
         total=q('SELECT count(*) FROM news_items n'+where,args)[0][0]

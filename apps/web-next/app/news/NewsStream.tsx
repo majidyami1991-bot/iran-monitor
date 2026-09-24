@@ -14,15 +14,16 @@ const TRANSLATIONS: [string, string][] = [['', 'همه'], ['available', 'ترج�
 
 interface Filters {
   search: string; source_id: string; category: string; topic: string;
-  window: string; sort: string; translation: string; has_image: string; has_document: string;
+  window: string; sort: string; translation: string; has_image: string; has_document: string; has_event: string;
 }
-const EMPTY: Filters = { search: '', source_id: '', category: '', topic: '', window: 'all', sort: 'newest', translation: '', has_image: '', has_document: '' };
+const EMPTY: Filters = { search: '', source_id: '', category: '', topic: '', window: 'all', sort: 'newest', translation: '', has_image: '', has_document: '', has_event: '' };
 
 function filtersFromParams(sp: URLSearchParams): Filters {
   return {
     search: sp.get('search') || sp.get('q') || '', source_id: sp.get('source_id') || '', category: sp.get('category') || '',
     topic: sp.get('topic') || '', window: sp.get('window') || 'all', sort: sp.get('sort') || 'newest',
     translation: sp.get('translation') || '', has_image: sp.get('has_image') || '', has_document: sp.get('has_document') || '',
+    has_event: sp.get('has_event') || '',
   };
 }
 
@@ -50,7 +51,7 @@ export function NewsStream() {
   const { data, error, loading, reload } = useApi<{ items: NewsListItem[]; total: number }>(newsPath, [newsPath]);
 
   const sourcesQ = useApi<{ sources: { source_id: string; display_name: string }[] }>('sources?page_size=100');
-  const topicsQ = useApi<{ categories: { label: string; count: number }[] }>('stats/topics');
+  const topicsQ = useApi<{ categories: { label: string; count: number }[]; topics: { topic: string; count: number }[] }>('stats/topics');
 
   function applyFilters(next: Partial<Filters>) {
     const merged = { ...filters, ...next };
@@ -89,6 +90,12 @@ export function NewsStream() {
             {topicsQ.data?.categories.map((c) => <option key={c.label} value={c.label}>{c.label}</option>)}
           </select>
         </label>
+        <label className="field">زیرموضوع
+          <select value={filters.topic} onChange={(e) => applyFilters({ topic: e.target.value })}>
+            <option value="">همه زیرموضوع‌ها</option>
+            {topicsQ.data?.topics.map((t) => <option key={t.topic} value={t.topic}>{t.topic} ({fmt(t.count)})</option>)}
+          </select>
+        </label>
         <label className="field">بازه زمانی
           <select value={filters.window} onChange={(e) => applyFilters({ window: e.target.value })}>
             {WINDOWS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
@@ -107,6 +114,7 @@ export function NewsStream() {
         <div className="news-filters-toggles">
           <Chip active={filters.has_image === 'true'} onClick={() => applyFilters({ has_image: filters.has_image === 'true' ? '' : 'true' })}>دارای تصویر</Chip>
           <Chip active={filters.has_document === 'true'} onClick={() => applyFilters({ has_document: filters.has_document === 'true' ? '' : 'true' })}>دارای سند</Chip>
+          <Chip active={filters.has_event === 'true'} onClick={() => applyFilters({ has_event: filters.has_event === 'true' ? '' : 'true' })}>خبر خوشه‌ای (رویداد)</Chip>
         </div>
         <div className="news-filters-actions">
           <button type="submit" className="btn btn-primary">اعمال جست‌وجو</button>
