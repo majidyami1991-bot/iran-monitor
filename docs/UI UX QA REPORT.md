@@ -2,6 +2,23 @@
 
 Date: 2026-09-23. Every figure below is a live measurement, not an estimate.
 
+## Re-verification, 2026-09-24
+
+The client re-sent the same brief a day later. Rather than re-doing the work,
+the delivered state was checked fresh:
+
+| Check | Result |
+| --- | --- |
+| `commercial-qa.cjs` against production, 4 consecutive runs | **69/69 every time** |
+| Production UI | Confirmed serving the redesign (`shell-sidebar` markup present), 17h uptime, healthy |
+| Scheduled collection, last 24h | **95/96 cycles succeeded (99%)**, all recent cycles 12/12 sources |
+| OpenCTI | All 14 containers still running, untouched |
+| Unrelated projects (`mlw-*`, `plane-preview-*`) | Untouched |
+| Git tree | Clean; one small commit added (`6476a2b`) surfacing the real error message from the font-load check instead of swallowing it, after chasing an intermittent single-run failure down to cold-start timing rather than a real defect — documented rather than silently patched over |
+
+Nothing in this pass changed the delivered product. See below for what was
+built.
+
 ## 1. What was done, in order
 
 1. Visual audit of the running system at four viewports, eight pages — see
