@@ -142,6 +142,63 @@ CREATE TABLE IF NOT EXISTS news_item_media(
 CREATE INDEX IF NOT EXISTS news_item_media_item_idx ON news_item_media(item_id,relevance,position);
 CREATE INDEX IF NOT EXISTS news_item_translations_status_idx ON news_item_translations(status,field);
 CREATE INDEX IF NOT EXISTS news_item_content_status_idx ON news_item_content(extraction_status);
+
+-- Phase: content enrichment pilot. Additive only; nothing above is altered
+-- in a way that could lose data, and every ALTER is IF NOT EXISTS / guarded.
+ALTER TABLE news_item_content ADD COLUMN IF NOT EXISTS content_type text;
+ALTER TABLE news_item_content ADD COLUMN IF NOT EXISTS copyright_status text;
+ALTER TABLE news_item_content ADD COLUMN IF NOT EXISTS unavailable_reason text;
+ALTER TABLE news_item_translations ADD COLUMN IF NOT EXISTS input_text_sha256 text;
+ALTER TABLE news_item_translations ADD COLUMN IF NOT EXISTS quality_status text;
+ALTER TABLE news_item_translations ADD COLUMN IF NOT EXISTS human_reviewed boolean NOT NULL DEFAULT false;
+ALTER TABLE news_item_translations ADD COLUMN IF NOT EXISTS human_reviewed_at timestamptz;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS caption text;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS attribution text;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS copyright_status text;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS document_title text;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS security_status text;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS verified_mime text;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS verified_width integer;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS verified_height integer;
+ALTER TABLE item_classifications ADD COLUMN IF NOT EXISTS confidence real;
+ALTER TABLE item_classifications ADD COLUMN IF NOT EXISTS reason text;
+ALTER TABLE item_classifications ADD COLUMN IF NOT EXISTS human_locked boolean NOT NULL DEFAULT false;
+ALTER TABLE item_classifications ADD COLUMN IF NOT EXISTS human_edited_at timestamptz;
+CREATE TABLE IF NOT EXISTS news_events(
+  event_id text PRIMARY KEY,
+  title text NOT NULL,
+  first_published_at timestamptz,
+  last_updated_at timestamptz,
+  source_count integer NOT NULL DEFAULT 0,
+  member_count integer NOT NULL DEFAULT 0,
+  clustering_method text NOT NULL,
+  algorithm_version text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS news_event_members(
+  event_id text NOT NULL REFERENCES news_events(event_id),
+  item_id text NOT NULL REFERENCES news_items(item_id),
+  similarity_score real,
+  membership_reason jsonb,
+  manually_removed boolean NOT NULL DEFAULT false,
+  added_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY(event_id,item_id));
+CREATE INDEX IF NOT EXISTS news_event_members_item_idx ON news_event_members(item_id) WHERE NOT manually_removed;
+CREATE TABLE IF NOT EXISTS enrichment_jobs(
+  job_id text PRIMARY KEY,
+  item_id text NOT NULL REFERENCES news_items(item_id),
+  stage text NOT NULL,
+  status text NOT NULL DEFAULT 'pending',
+  attempts integer NOT NULL DEFAULT 0,
+  max_attempts integer NOT NULL DEFAULT 3,
+  last_error text,
+  locked_at timestamptz,
+  locked_by text,
+  available_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(item_id,stage));
+CREATE INDEX IF NOT EXISTS enrichment_jobs_pickup_idx ON enrichment_jobs(status,available_at);
 '''
 REGISTRY=_metadata('source-registry.json')
 READY=_metadata('rss-execution-readiness.json')

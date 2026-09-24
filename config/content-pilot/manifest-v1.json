@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-24T07:12:23.126463+00:00",
+  "target_count": 20,
+  "item_count": 20,
+  "source_count": 12,
+  "items": [
+    {
+      "item_id": "6578ee33bbf48c67ab473040f863443e8208d6b01200a1022b39b25a8325f6d3",
+      "source_id": "c1781f8f-c222-5fc4-99a9-5fcc73e5f537",
+      "canonical_url": "https://www.airandspaceforces.com/space-force-options-supply-chain-production-surge/",
+      "selection_reason": "has_document_link",
+      "source_name": "Air & Space Forces Magazine",
+      "baseline_content_sha256": "4d76168acb118a2c1c71780b922d410a65c7d1e94a413b9a6613af1c73344f7c"
+    },
+    {
+      "item_id": "d485d69a6e459432c69c1771a0ba350134932d8ffc25746109702ae395994e2a",
+      "source_id": "1c638686-e35b-53e9-959c-dc122aa9079f",
+      "canonical_url": "https://www.twz.com/sea/where-are-the-aircraft-carriers-september-23-2026",
+      "selection_reason": "has_document_link",
+      "source_name": "TWZ",
+      "baseline_content_sha256": "dfb087c7efedbf7a105909635517232887d835a45594b7c8ecfc7d1a29bca39b"
+    },
+    {
+      "item_id": "0472e4a707c778e67f42f3923a8ca350fce63c5c50e536e4f60e6a524ac4722a",
+      "source_id": "3bef586c-ca0d-5ee7-a837-beb5f31f510a",
+      "canonical_url": "https://www.jfeed.com/news-israel/tluw8h",
+      "selection_reason": "has_text",
+      "source_name": "JFeed",
+      "baseline_content_sha256": "dc56a73937136c13d96b94a0c2d84b083eb8ca60acff6a027b5197936b7899a5"
+    },
+    {
+      "item_id": "c5594589c0986584ae20e26dad24217189f57f8596b2c739dc611625e3f5feec",
+      "source_id": "854ac2a3-ba0c-5f95-a62b-6d296294960a",
+      "canonical_url": "https://defence-blog.com/north-korea-tests-a-guided-rocket-built-like-americas-gmlrs/",
+      "selection_reason": "has_image_candidate",
+      "source_name": "The Defence Blog – Military and Defense News",
+      "baseline_content_sha256": "202ab931dadad64be919eb396840f1fa819bbde0a9f3b584c91b3040b300474a"
+    },
+    {
+      "item_id": "f70940b885ce45f0a696bc38fadef3b64da0a920c1d8b5c060a7fd0cb5f831a4",
+      "source_id": "3bef586c-ca0d-5ee7-a837-beb5f31f510a",
+      "canonical_url": "https://www.jfeed.com/news-israel/tluw7k",
+      "selection_reason": "has_text",
+      "source_name": "JFeed",
+      "baseline_content_sha256": "c505fc15ad7887b22a5219274a2b5ecadaf9a8cd0c28a5245b2665a220f6fad5"
+    },
+    {
+      "item_id": "f6c47f7d1df6d68d3433675a808c149df6fb87b2901587c04b695ace4673000f",
+      "source_id": "854ac2a3-ba0c-5f95-a62b-6d296294960a",
+      "canonical_url": "https://defence-blog.com/canadas-first-f-35-fighter-jet-takes-flight-for-the-first-time/",
+      "selection_reason": "has_image_candidate",
+      "source_name": "The Defence Blog – Military and Defense News",
+      "baseline_content_sha256": "4300fa22b3c88e241373474de017a7e335cf4283c2785c40b68d992b40407a2f"
+    },
+    {
+      "item_id": "f2b469996d56e916ea2a1b9643a90ab289ee2574d9174f5fcfb3ee2c9b053dc6",
+      "source_id": "3bef586c-ca0d-5ee7-a837-beb5f31f510a",
+      "canonical_url": "https://www.jfeed.com/news-israel/tluvyo",
+      "selection_reason": "has_text",
+      "source_name": "JFeed",
+      "baseline_content_sha256": "0fc9c50cbde23156486538c413eeace64384ad3efc18a03d71ff4aa1401ee1cf"
+    },
+    {
+      "item_id": "3f7290df5696e38bd53bcac3d257b16427eb42c378e5b48418dd995aca2099d9",
+      "source_id": "854ac2a3-ba0c-5f95-a62b-6d296294960a",
+      "canonical_url": "https://defence-blog.com/russia-delivers-upgraded-su-57-stealth-fighters-to-its-air-force/",
+      "selection_reason": "has_image_candidate",
+      "source_name": "The Defence Blog – Military and Defense News",
+      "baseline_content_sha256": "f72b9778bb8f7f596f8d5e50802943272ff65ab170023c13efc87fb50c2a89d6"
+    },
+    {
+      "item_id": "93123e9d9df877199fc4594c5956272410a65397975d76ef96d67637ef47905d",
+      "source_id": "516b4133-492d-5c4d-b021-b1113c54b756",
+      "canonical_url": "https://defence-industry.eu/nspa-helps-sustain-raf-brize-norton-operations-during-major-runway-replacement-and-critical-airfield-infrastructure-upgrades/",
+      "selection_reason": "new_source_for_diversity",
+      "source_name": "Defence Industry Europe",
+      "baseline_content_sha256": "27e8a9bb176868fd810734a8b1ae409d268ba763f9c453af00afaad68b852da7"
+    },
+    {
+      "item_id": "7f2d345943d2b296204a0646c59ab68685dc1fe525fa885d4d16483008bed3c6",
+      "source_id": "1c638686-e35b-53e9-959c-dc122aa9079f",
+      "canonical_url": "https://www.twz.com/air/the-a-10-era-is-over-at-nellis-afb",
+      "selection_reason": "has_image_candidate",
+      "source_name": "TWZ",
+      "baseline_content_sha256": "bcea8ac16e60b84dca6fb19cf77f09da24c2b0af37e42eff26dcc025f5710158"
+    },
+    {
+      "item_id": "d244c1931d21d906bc42f8d10dfb3611f6c5f5fcaeaf8b73c5bfb6e3f321ae32",
+      "source_id": "70e9a720-f949-5641-a178-fb439bad0e5b",
+      "canonical_url": "https://news.usni.org/2026/09/23/three-louisiana-shipyards-are-vying-for-a-stake-in-navys-autonomous-future",
+      "selection_reason": "new_source_for_diversity",
+      "source_name": "USNI News",
+      "baseline_content_sha256": "5efc6abc235fab63a4dfc59bdc5a286ba1b5045c6abd85dbfd7ad642e5975ffb"
+    },
+    {
+      "item_id": "1e6d68cb38f7404647496ffa271c407e0fcfd8c54079f7e9c91458abaf59ebc2",
+      "source_id": "e4180227-092a-579e-b192-015a969d24f3",
+      "canonical_url": "https://breakingdefense.com/2026/09/the-still-formidable-f-16-will-be-even-more-capable-with-better-electronic-warfare/",
+      "selection_reason": "new_source_for_diversity",
+      "source_name": "Breaking Defense",
+      "baseline_content_sha256": "aaa0599aa7db595d2d5bbf1ab6fe5a3d35b5b32df36fbe36957113190fbe3e5d"
+    },
+    {
+      "item_id": "7c314946f813581406286e8b1ab7b310d834117f0a4ac47b9cdb5c6b01cf178f",
+      "source_id": "a7040487-3b56-54d0-aa0a-a86ee5eac297",
+      "canonical_url": "https://www.edrmagazine.eu/joint-navy-marine-corps-osprey-test-advances-future-fleet-anti-submarine-capability",
+      "selection_reason": "new_source_for_diversity",
+      "source_name": "EDR Magazine",
+      "baseline_content_sha256": "d8efbcc0839d1d0f1a91fcf13fb7cded12283cb62debbd956ddd046a1f179d14"
+    },
+    {
+      "item_id": "38cb65a0fded32838bcf669a0920b560db6afe2689745d0196832e4aca1f512c",
+      "source_id": "02125465-dc6c-5355-823c-989b485ed491",
+      "canonical_url": "https://jcfa.org/naza-is-only-the-beginning/",
+      "selection_reason": "new_source_for_diversity",
+      "source_name": "Jerusalem Center for Security and Foreign Affairs",
+      "baseline_content_sha256": "a5028184d9679c2bb02621ac0d8fc34df80c404dd077f6bc0ce235e140fca7c3"
+    },
+    {
+      "item_id": "713471487ed2c008181f9ea8c82e2d57547d9eaf05ff15dd5a83136718ee5c94",
+      "source_id": "07edfccb-57c6-5dc0-8ea3-7951798ec9e8",
+      "canonical_url": "https://mwi.westpoint.edu/the-drones-of-bannockburn-a-fourteenth-century-battles-bloody-lessons-for-taiwans-defense/",
+      "selection_reason": "new_source_for_diversity",
+      "source_name": "Modern War Institute",
+      "baseline_content_sha256": "58c912cdba860828bdb72700d8f6534c986883f0d270f2264f6ec1635a55546d"
+    },
+    {
+      "item_id": "0018e170e567a6045ab3beb2e6429ce038dea59d6222f323460578a84639d42a",
+      "source_id": "3d54f8e0-fb13-548a-96e4-06186515f114",
+      "canonical_url": "https://www.rusi.org/podcasts/global-security-briefing/episode-129-updating-how-we-think-about-korean-peninsula-security",
+      "selection_reason": "new_source_for_diversity",
+      "source_name": "RUSI: What's New",
+      "baseline_content_sha256": "ff8d8f6bfcc495a6928d89e3e39e9caebcc43ea5ab61d33be133991b8c3f5ee2"
+    },
+    {
+      "item_id": "159c8de1ca69501931fffa695ca59a1d1bde13f7dd074c7c5f5157ffecab0f48",
+      "source_id": "6efbeadb-ebe5-55da-9c78-f7f51a1a4860",
+      "canonical_url": "https://www.missiledefenseadvocacy.org/threat-news/uk-signals-progress-on-drone-sub-hunting-fleet-for-atlantic/",
+      "selection_reason": "new_source_for_diversity",
+      "source_name": "Missile Defense Advocacy Alliance",
+      "baseline_content_sha256": "c2902e21f0825362797889aed1a83b941e996685664975ee5cf018c14400bac7"
+    },
+    {
+      "item_id": "e0d1c8547bcaf146d3f4b9e2cc5d999e5e3885f8ba80f6e50830f4a834e56e89",
+      "source_id": "3bef586c-ca0d-5ee7-a837-beb5f31f510a",
+      "canonical_url": "https://www.jfeed.com/news-israel/tluvyd",
+      "selection_reason": "fill_to_target_count",
+      "source_name": "JFeed",
+      "baseline_content_sha256": "80b5869c69cfdf05a2ee10bed947235851f26a39ada17563754973cd09f4ac9f"
+    },
+    {
+      "item_id": "6d2342ba7a5078f571fb383e3c658c325eb856cc6468986cd52382640ae4bfdf",
+      "source_id": "3bef586c-ca0d-5ee7-a837-beb5f31f510a",
+      "canonical_url": "https://www.jfeed.com/news-israel/tluw6e",
+      "selection_reason": "fill_to_target_count",
+      "source_name": "JFeed",
+      "baseline_content_sha256": "95a1adddfc1a699d3ff592184d25f59264d85f544dd6edb602fb700ddbb26eba"
+    },
+    {
+      "item_id": "564ebad210df2c3b49161a39b989a1e02561939334c1f4a153056c460bbd3cf2",
+      "source_id": "3bef586c-ca0d-5ee7-a837-beb5f31f510a",
+      "canonical_url": "https://www.jfeed.com/news-israel/tluw6m",
+      "selection_reason": "fill_to_target_count",
+      "source_name": "JFeed",
+      "baseline_content_sha256": "cd947d9390bb55972f7b41097ba9145908817c78d7b0f1d31e1645911039c508"
+    }
+  ],
+  "candidate_event_pairs": [
+    {
+      "items": [
+        "f2b469996d56e916ea2a1b9643a90ab289ee2574d9174f5fcfb3ee2c9b053dc6",
+        "e0d1c8547bcaf146d3f4b9e2cc5d999e5e3885f8ba80f6e50830f4a834e56e89"
+      ],
+      "shared_words": [
+        "idf",
+        "terror"
+      ]
+    },
+    {
+      "items": [
+        "f2b469996d56e916ea2a1b9643a90ab289ee2574d9174f5fcfb3ee2c9b053dc6",
+        "564ebad210df2c3b49161a39b989a1e02561939334c1f4a153056c460bbd3cf2"
+      ],
+      "shared_words": [
+        "leiter",
+        "terror"
+      ]
+    },
+    {
+      "items": [
+        "e0d1c8547bcaf146d3f4b9e2cc5d999e5e3885f8ba80f6e50830f4a834e56e89",
+        "564ebad210df2c3b49161a39b989a1e02561939334c1f4a153056c460bbd3cf2"
+      ],
+      "shared_words": [
+        "over",
+        "terror"
+      ]
+    }
+  ],
+  "note": "Identifiers and reasons only. No article body is stored here; full text is subject to each source's republish policy and never enters Git."
+}
