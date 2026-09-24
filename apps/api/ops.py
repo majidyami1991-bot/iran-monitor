@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 import psycopg
 from fastapi import HTTPException, Query, Response
+import classify_v2 as cv
 
 DSN=os.environ['DATABASE_URL']
 INTERVAL=int(os.getenv('NEWS_COLLECTION_INTERVAL_SECONDS','900'))
@@ -269,20 +270,33 @@ def migrate():
         # whatever the table already held: a stale row must not survive because it
         # was written first. Keep the input identical to the collector's
         # (COALESCE(summary_text,summary)) so the two never disagree.
-        # Items already classified by the newer multi-level pipeline (classify_v2,
-        # run via the enrichment worker) carry taxonomy_version 2.x and a real
-        # confidence score. This v1 backfill must never downgrade those back to
-        # v1's single-label result on a routine restart — skip them here.
-        v2_classified={r[0] for r in c.execute("SELECT item_id FROM item_classifications WHERE taxonomy_version LIKE '2.%'").fetchall()}
-        rows=c.execute('SELECT item_id,title,COALESCE(summary_text,summary) FROM news_items ORDER BY item_id').fetchall()
+        # taxonomy v2.1.0 (classify_v2, multi-level with confidence and
+        # subtopics) is the production classifier for the whole corpus as of
+        # this phase — the old single-label v1 classify() no longer runs here.
+        # A human correction (human_locked) must never be overwritten by this
+        # routine backfill, which runs on every API startup.
+        locked={r[0] for r in c.execute('SELECT item_id FROM item_classifications WHERE human_locked').fetchall()}
+        # Use the richer extracted article body when available (same input
+        # enrichment_worker.process_classification uses) — not just the RSS
+        # summary — so this routine backfill never silently downgrades an
+        # item that was classified from fuller text. Real regression found
+        # live: 431 -> 378 security_defense items after a restart because this
+        # query used to read only news_items.summary.
+        rows=c.execute('''SELECT n.item_id,n.title,COALESCE(cn.original_text,n.summary_text,n.summary)
+            FROM news_items n LEFT JOIN news_item_content cn USING(item_id) ORDER BY n.item_id''').fetchall()
         for iid,title,summary in rows:
-            if iid in v2_classified:continue
-            cat,topics,ids=classify(title,summary)
-            c.execute('''INSERT INTO item_classifications(item_id,category_id,category_label,topics,taxonomy_version,method) VALUES(%s,%s,%s,%s,%s,%s)
+            if iid in locked:continue
+            r=cv.classify(title,summary)
+            evidence=list(dict.fromkeys(list(r.evidence)+[s['label'] for s in r.subtopics]))
+            c.execute('''INSERT INTO item_classifications(item_id,category_id,category_label,topics,taxonomy_version,method,confidence,reason) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT(item_id) DO UPDATE SET category_id=EXCLUDED.category_id,category_label=EXCLUDED.category_label,
-                topics=EXCLUDED.topics,taxonomy_version=EXCLUDED.taxonomy_version,method=EXCLUDED.method,classified_at=now()
+                topics=EXCLUDED.topics,taxonomy_version=EXCLUDED.taxonomy_version,method=EXCLUDED.method,
+                confidence=EXCLUDED.confidence,reason=EXCLUDED.reason,classified_at=now()
                 WHERE item_classifications.category_label IS DISTINCT FROM EXCLUDED.category_label
-                   OR item_classifications.topics IS DISTINCT FROM EXCLUDED.topics''',(iid,cat['id'],cat['label'],json.dumps(topics,ensure_ascii=False),TAX['version'],TAX['method']))
+                   OR item_classifications.topics IS DISTINCT FROM EXCLUDED.topics
+                   OR item_classifications.taxonomy_version IS DISTINCT FROM EXCLUDED.taxonomy_version''',
+                (iid,r.category_id,r.category_label,json.dumps(evidence,ensure_ascii=False),r.taxonomy_version,r.method,
+                 r.confidence,('matched: '+', '.join(evidence[:8])) if evidence else 'no keyword matched'))
         c.execute('''UPDATE news_items n SET classification=i.category_label,taxonomy_version=i.taxonomy_version,topics=i.topics FROM item_classifications i
             WHERE i.item_id=n.item_id AND (n.classification IS DISTINCT FROM i.category_label OR n.topics IS DISTINCT FROM i.topics OR n.taxonomy_version IS DISTINCT FROM i.taxonomy_version)''')
         # Phase 8A is backfilled only if complete sanitized per-source evidence exists.

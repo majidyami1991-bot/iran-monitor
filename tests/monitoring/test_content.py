@@ -74,11 +74,11 @@ def test_each_item_keeps_its_own_category_not_the_last_one_parsed():
     items, _observed, _rejected, _meta = collector.parse(xml, 's1', RECEIVED)
     categories = []
     for item in items:
-        cat, topics, _ = collector.classify(item['title'], item['summary_text'])
-        item['classification'] = cat['label']
-        item['category_id'] = cat['id']
-        item['topics'] = topics
-        categories.append(cat['id'])
+        r = collector.cv.classify(item['title'], item['summary_text'])
+        item['classification'] = r.category_label
+        item['category_id'] = r.category_id
+        item['topics'] = list(r.evidence)
+        categories.append(r.category_id)
     assert len(items) == 2
     # Each item must carry the category derived from its own text.
     for item, expected in zip(items, categories):

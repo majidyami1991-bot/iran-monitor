@@ -9,8 +9,9 @@ from urllib.request import Request, build_opener, ProxyHandler, HTTPRedirectHand
 from defusedxml import ElementTree as ET
 import psycopg
 from psycopg.types.json import Jsonb
-from ops import EXEC, REG, classify, DSN, database_json, canonical_json_dumps
+from ops import EXEC, REG, DSN, database_json, canonical_json_dumps
 from content import extract as extract_content, display_policy, CONTENT_VERSION
+import classify_v2 as cv
 
 ROOT=Path('/app'); STATE=Path(os.getenv('COLLECTOR_STATE_DIR','/state'))
 MAX_BYTES=2*1024*1024;TIMEOUT=30;UA='IranMonitor/1.0 (bounded RSS monitoring; project news-feed collector)';VERSION='1.2.0'
@@ -267,8 +268,11 @@ def source_run(c,runid,source):
         except Exception:feed_format='unknown'
         digest=hashlib.sha256(body).hexdigest();stage='classification'
         for item_index,item in enumerate(items):
-            cat,topics,_=classify(item['title'],item['summary_text'])
-            item['classification']=cat['label'];item['category_id']=cat['id'];item['topics']=topics
+            r=cv.classify(item['title'],item['summary_text'])
+            topics=list(dict.fromkeys(list(r.evidence)+[s['label'] for s in r.subtopics]))
+            item['classification']=r.category_label;item['category_id']=r.category_id;item['topics']=topics
+            item['classification_confidence']=r.confidence;item['classification_method']=r.method
+            item['taxonomy_version']=r.taxonomy_version
         stage='database_transaction'
         with c.transaction():
             for item_index,i in enumerate(items):
@@ -281,9 +285,11 @@ def source_run(c,runid,source):
                     stage='database_transaction'
                     continue
                 stage='content_hash';item_hash=content_hash(i);stage='database_insert'
-                c.execute('''INSERT INTO news_items(item_id,source_id,title,summary,canonical_url,external_guid,published_at,collected_at,fetched_at,summary_raw,summary_text,summary_source,summary_available,content_language,adapter_type,provenance_status,content_hash,classification,taxonomy_version,topics) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'rss','COMPLETE',%s,%s,%s,%s) ON CONFLICT DO NOTHING''',(i['item_id'],sid,i['title'],i['summary_text'],i['canonical_url'],i['external_guid'],i['published_at'],i['collected_at'],i['fetched_at'],i['summary_raw'],i['summary_text'],i['summary_source'],i['summary_available'],i['content_language'],item_hash,i['classification'],__import__('ops').TAX['version'],Jsonb(database_json(i['topics'],path='normalized_item.topics'))))
+                c.execute('''INSERT INTO news_items(item_id,source_id,title,summary,canonical_url,external_guid,published_at,collected_at,fetched_at,summary_raw,summary_text,summary_source,summary_available,content_language,adapter_type,provenance_status,content_hash,classification,taxonomy_version,topics) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'rss','COMPLETE',%s,%s,%s,%s) ON CONFLICT DO NOTHING''',(i['item_id'],sid,i['title'],i['summary_text'],i['canonical_url'],i['external_guid'],i['published_at'],i['collected_at'],i['fetched_at'],i['summary_raw'],i['summary_text'],i['summary_source'],i['summary_available'],i['content_language'],item_hash,i['classification'],i['taxonomy_version'],Jsonb(database_json(i['topics'],path='normalized_item.topics'))))
                 if c.execute('SELECT 1 FROM news_items WHERE item_id=%s',(i['item_id'],)).fetchone():
-                    c.execute('INSERT INTO item_classifications(item_id,category_id,category_label,topics,taxonomy_version,method) SELECT %s,%s,%s,%s,%s,%s ON CONFLICT(item_id) DO NOTHING',(i['item_id'],i['category_id'],i['classification'],Jsonb(database_json(i['topics'],path='classification.topics')),__import__('ops').TAX['version'],__import__('ops').TAX['method']))
+                    c.execute('''INSERT INTO item_classifications(item_id,category_id,category_label,topics,taxonomy_version,method,confidence,reason)
+                        SELECT %s,%s,%s,%s,%s,%s,%s,%s ON CONFLICT(item_id) DO NOTHING''',
+                        (i['item_id'],i['category_id'],i['classification'],Jsonb(database_json(i['topics'],path='classification.topics')),i['taxonomy_version'],i['classification_method'],i['classification_confidence'],('matched: '+', '.join(i['topics'][:8])) if i['topics'] else 'no keyword matched'))
                     c.execute("INSERT INTO news_item_provenance(item_id,source_id,feed_url,execution_reference,evidence_status,evidence_json) VALUES(%s,%s,%s,%s,'COMPLETE',%s) ON CONFLICT(item_id) DO NOTHING",(i['item_id'],sid,url,runid,Jsonb(database_json({'http_status':status,'response_sha256':digest,'received_at':i['collected_at'],'summary_source':i['summary_source']},path='provenance_payload'))))
                     stage='content_extraction';store_content(c,i);stage='database_insert'
                     inserted+=1
