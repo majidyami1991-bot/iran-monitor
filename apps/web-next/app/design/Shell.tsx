@@ -4,12 +4,13 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   Activity, Newspaper, Globe2, Hash, ChartNoAxesCombined, HeartPulse, Info,
-  Search, Menu, ChevronLeft, Radio, Link2,
+  Search, Menu, ChevronLeft, Radio, Link2, LayoutGrid,
 } from 'lucide-react';
 
 const NAV: [string, typeof Activity, string][] = [
   ['نمای عملیاتی', Activity, '/'],
   ['جریان اخبار', Newspaper, '/news'],
+  ['دسته‌بندی‌ها', LayoutGrid, '/categories'],
   ['موضوعات', Hash, '/topics'],
   ['رویدادها', Link2, '/events'],
   ['منابع', Globe2, '/sources'],

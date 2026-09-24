@@ -205,6 +205,7 @@ REGISTRY=_metadata('source-registry.json')
 READY=_metadata('rss-execution-readiness.json')
 CAPS=_metadata('collection-capabilities.json')
 TAX=_metadata('classification-taxonomy-v1.json')
+TAX2=_metadata('classification-taxonomy-v2.json')
 DISC=_metadata('feed-sitemap-discovery.json')
 EXEC={x['source_id']:x for x in READY if x.get('executable') is True}
 CAP={x['source_id']:x for x in CAPS}
@@ -681,7 +682,77 @@ def register_ops(app):
             'method':'Counts of stored rows only. A pending field means no provider produced it yet; nothing is generated to fill a gap.'}
 
     @app.get('/api/v1/taxonomy')
-    def taxonomy():return TAX
+    def taxonomy():return TAX2
+
+    @app.get('/api/v1/taxonomy/v1')
+    def taxonomy_v1():return TAX
+
+    @app.get('/api/v1/categories')
+    def categories(window:str='30d'):
+        if window not in ('24h','7d','30d','all'):raise HTTPException(422,'invalid_window')
+        time_clause="AND COALESCE(n.published_at,n.fetched_at)>=now()-interval '%s'"%{'24h':'24 hours','7d':'7 days','30d':'30 days'}.get(window,'100 years')
+        cat_ids=[c['id'] for c in TAX2['categories']]+[TAX2['fallback']['id']]
+        rows=[]
+        for cid in cat_ids:
+            meta=next((c for c in TAX2['categories'] if c['id']==cid),TAX2['fallback'])
+            total=q(f"SELECT count(*) FROM item_classifications c JOIN news_items n USING(item_id) WHERE c.category_id=%s {time_clause}",(cid,))[0][0]
+            prev=q(f"SELECT count(*) FROM item_classifications c JOIN news_items n USING(item_id) WHERE c.category_id=%s AND COALESCE(n.published_at,n.fetched_at)>=now()-interval '{{0}}'*2 AND COALESCE(n.published_at,n.fetched_at)<now()-interval '{{0}}'".format({'24h':'24 hours','7d':'7 days','30d':'30 days'}.get(window,'100 years')),(cid,))[0][0] if window!='all' else None
+            latest=q("SELECT max(COALESCE(n.published_at,n.fetched_at)) FROM item_classifications c JOIN news_items n USING(item_id) WHERE c.category_id=%s",(cid,))[0][0]
+            sources=q("SELECT count(DISTINCT n.source_id) FROM item_classifications c JOIN news_items n USING(item_id) WHERE c.category_id=%s",(cid,))[0][0]
+            sparkline=q(f"""SELECT date_trunc('day',COALESCE(n.published_at,n.fetched_at))::date d,count(*)::int n
+                FROM item_classifications c JOIN news_items n USING(item_id)
+                WHERE c.category_id=%s AND COALESCE(n.published_at,n.fetched_at)>=now()-interval '14 days' GROUP BY 1 ORDER BY 1""",(cid,))
+            rows.append({'id':cid,'label':meta['label'],'subtopic_count':len(meta.get('subtopics') or []),
+                'count':total,'previous_count':prev,'active_sources':sources,'latest_item_at':latest,
+                'sparkline':sparkline,'is_fallback':cid==TAX2['fallback']['id']})
+        total_all=sum(r['count'] for r in rows) or 1
+        for r in rows:r['percent']=round(100*r['count']/total_all,1)
+        rows.sort(key=lambda r:(-r['count']))
+        return {'window':window,'categories':rows,'total_items':total_all}
+
+    @app.get('/api/v1/categories/{category_id}')
+    def category_detail(category_id:str,window:str='30d'):
+        meta=next((c for c in TAX2['categories'] if c['id']==category_id),None)
+        is_other=category_id==TAX2['fallback']['id']
+        if not meta and not is_other:raise HTTPException(404,'category_not_found')
+        label=TAX2['fallback']['label'] if is_other else meta['label']
+        total=q('SELECT count(*) FROM item_classifications WHERE category_id=%s',(category_id,))[0][0]
+        timeline=q("""SELECT date_trunc('day',COALESCE(n.published_at,n.fetched_at))::date d,count(*)::int n
+            FROM item_classifications c JOIN news_items n USING(item_id)
+            WHERE c.category_id=%s AND COALESCE(n.published_at,n.fetched_at)>=now()-interval '90 days' GROUP BY 1 ORDER BY 1""",(category_id,))
+        sources=q("""SELECT COALESCE(NULLIF(s.display_name,''),s.hostname) name,count(*)::int n
+            FROM item_classifications c JOIN news_items n USING(item_id) JOIN sources s ON s.source_id=n.source_id
+            WHERE c.category_id=%s GROUP BY 1 ORDER BY 2 DESC LIMIT 8""",(category_id,))
+        subtopics=[]
+        if meta:
+            for sub in (meta.get('subtopics') or []):
+                cnt=q("SELECT count(*) FROM item_classifications WHERE category_id=%s AND topics @> %s::jsonb",
+                    (category_id,json.dumps([sub['label']],ensure_ascii=False)))[0][0]
+                subtopics.append({'id':sub['id'],'label':sub['label'],'count':cnt})
+            subtopics.sort(key=lambda s:-s['count'])
+        events=objects("""SELECT DISTINCT e.event_id,e.title,e.member_count FROM news_events e
+            JOIN news_event_members em USING(event_id) JOIN item_classifications c ON c.item_id=em.item_id
+            WHERE c.category_id=%s ORDER BY e.member_count DESC LIMIT 5""",
+            ['event_id','title','member_count'],(category_id,))
+        latest=objects("""SELECT n.item_id,n.title,n.published_at,COALESCE(NULLIF(s.display_name,''),s.hostname) source_name,c.confidence
+            FROM item_classifications c JOIN news_items n USING(item_id) JOIN sources s ON s.source_id=n.source_id
+            WHERE c.category_id=%s ORDER BY COALESCE(n.published_at,n.fetched_at) DESC LIMIT 20""",
+            ['item_id','title','published_at','source_name','confidence'],(category_id,))
+        review_sample=None
+        if is_other:
+            review_sample=objects("""SELECT n.item_id,n.title,COALESCE(NULLIF(s.display_name,''),s.hostname) source_name,n.published_at
+                FROM item_classifications c JOIN news_items n USING(item_id) JOIN sources s ON s.source_id=n.source_id
+                WHERE c.category_id='other' ORDER BY COALESCE(n.published_at,n.fetched_at) DESC LIMIT 30""",
+                ['item_id','title','source_name','published_at'])
+        return {'id':category_id,'label':label,'is_fallback':is_other,'total_items':total,
+            'taxonomy_version':TAX2['version'],'timeline':timeline,'main_sources':sources,
+            'subtopics':subtopics,'key_events':events,'latest_items':latest,
+            'other_explanation':('این دسته آخرین راه طبقه‌بندی است: خبرهایی که با هیچ‌یک از کلیدواژه‌های '
+                'دسته‌های تعریف‌شده مطابقت نداشتند اینجا قرار می‌گیرند. برخی از این خبرها واقعاً بی‌ربط به '
+                'حوزه دفاعی-امنیتی و ژئوپلیتیک هستند (مثلاً اخبار سرگرمی یا حوادث محلی)؛ برخی دیگر ممکن است '
+                'به قواعد طبقه‌بندی بیشتری نیاز داشته باشند. نمونه زیر برای بازبینی انسانی ارائه شده است.'
+                ) if is_other else None,
+            'review_sample':review_sample}
 
     @app.get('/api/v1/health')
     def health_detail():return {'status':'ok','database':'ready','items':q('SELECT count(*) FROM news_items')[0][0],'sources':q('SELECT count(*) FROM sources')[0][0],'scheduler_enabled':collection_status()['scheduler_enabled']}
