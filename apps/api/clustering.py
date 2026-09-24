@@ -25,8 +25,13 @@ _GENERIC_CAPITALIZED = frozenset((
     'is', 'are', 'was', 'were', 'be', 'as', 'it', 'its', 'his', 'her', 'their', 'this', 'that',
     'idf', 'us', 'u.s', 'uk', 'un', 'eu', 'nato', 'ai', 'uav', 'uavs', 'ceo', 'gdp', 'vs',
     'israel', 'israeli', 'iran', 'iranian', 'gaza', 'hamas', 'military', 'terror', 'terrorist',
-    'attack', 'war', 'defense', 'defence', 'news', 'report', 'reports', 'says', 'said',
+    'attack', 'war', 'defense', 'defence', 'news', 'report', 'reports', 'reporter', 'says', 'said',
     'new', 'first', 'after', 'over', 'amid', 'as', 'why', 'how', 'what', 'who', 'watch',
+    # Recurring names/roles common enough across this domain's headlines that sharing them
+    # alone proves nothing (found live: two unrelated Netanyahu-criticism stories from two
+    # different reporters on two different topics scored 0.596 and would have merged on
+    # "netanyahu"+"reporter" alone — see test_generic_person_name_and_role_word_do_not_cluster).
+    'netanyahu', 'correspondent', 'spokesman', 'spokesperson', 'minister', 'president',
 ))
 _STOPWORDS = _GENERIC_CAPITALIZED | frozenset((
     'has', 'have', 'had', 'will', 'would', 'could', 'should', 'not', 'no', 'yes',
@@ -47,13 +52,21 @@ def _title_jaccard(a, b):
     return len(inter) / len(union), inter
 
 
-def _distinctive_tokens(title, body):
+def _distinctive_tokens(title):
     """Proper-noun-shaped words: capitalized, not sentence-initial-only
     common words, not a known generic/domain acronym. A crude but effective
     and fully explainable stand-in for named-entity recognition — no NER
     model is in the offline wheelhouse and one is not justified for this
-    pilot's scale."""
-    text = (title or '') + ' ' + (body or '')[:2000]
+    pilot's scale.
+
+    Title only, deliberately. Body text was tried first and pulled in
+    publisher boilerplate — a byline like "Dylan Malyasov" or a site credit
+    line repeated verbatim across every article from one outlet — as "shared
+    entities" between completely unrelated stories, which chained through
+    union-find into one 17-of-20-item supercluster in a real run against the
+    pilot. Titles are short, purpose-written and essentially boilerplate-free,
+    so they stay the only source for this signal."""
+    text = title or ''
     tokens = set()
     for word in re.findall(r"[A-Z][a-zA-Z'-]{2,}", text):
         low = word.casefold()
@@ -92,7 +105,7 @@ class ItemFeatures:
     @staticmethod
     def build(item_id, title, text, published_at, category_id, canonical_url, external_guid=None):
         return ItemFeatures(item_id, title or '', text or '', published_at, category_id,
-                             canonical_url, external_guid, _distinctive_tokens(title, text))
+                             canonical_url, external_guid, _distinctive_tokens(title))
 
 
 @dataclass

@@ -8,7 +8,7 @@ FROM runtime-deps AS test
 ENV DATABASE_URL=postgresql://offline_test:offline_test@127.0.0.1:1/collector_test
 COPY apps/collector/test-wheelhouse /test-wheelhouse
 RUN pip install --no-index --find-links=/test-wheelhouse --no-cache-dir pytest==8.4.1 iniconfig==2.1.0 packaging==25.0 pluggy==1.6.0 pygments==2.19.2
-COPY apps/api/main.py apps/api/ops.py apps/api/collector.py apps/api/health.py apps/api/content.py apps/api/translate.py apps/api/translate_worker.py apps/api/net_guard.py apps/api/image_verify.py apps/api/document_verify.py apps/api/article_extract.py apps/api/classify_v2.py apps/api/clustering.py ./
+COPY apps/api/main.py apps/api/ops.py apps/api/collector.py apps/api/health.py apps/api/content.py apps/api/translate.py apps/api/translate_worker.py apps/api/net_guard.py apps/api/image_verify.py apps/api/document_verify.py apps/api/article_extract.py apps/api/classify_v2.py apps/api/clustering.py apps/api/enrichment_worker.py ./
 COPY apps/api/repair_stuck_run.py ./repair_stuck_run.py
 COPY apps/api/iran_monitor_collector ./iran_monitor_collector
 COPY config/sources/rss-execution-readiness.json config/sources/source-registry.json config/sources/collection-capabilities.json config/sources/classification-taxonomy-v1.json config/sources/classification-taxonomy-v2.json config/sources/feed-sitemap-discovery.json ./sources/
@@ -18,7 +18,7 @@ FROM runtime-deps AS runtime-final
 ARG GIT_REVISION=unknown
 ARG BUILD_TIMESTAMP_UTC=unknown
 LABEL org.opencontainers.image.title="Iran Monitor news collector" org.opencontainers.image.version="1.2.0" org.opencontainers.image.revision="$GIT_REVISION" org.opencontainers.image.created="$BUILD_TIMESTAMP_UTC" org.opencontainers.image.source="local://Iran-monitor"
-COPY apps/api/main.py apps/api/ops.py apps/api/collector.py apps/api/health.py apps/api/content.py apps/api/translate.py apps/api/translate_worker.py apps/api/net_guard.py apps/api/image_verify.py apps/api/document_verify.py apps/api/article_extract.py apps/api/classify_v2.py apps/api/clustering.py ./
+COPY apps/api/main.py apps/api/ops.py apps/api/collector.py apps/api/health.py apps/api/content.py apps/api/translate.py apps/api/translate_worker.py apps/api/net_guard.py apps/api/image_verify.py apps/api/document_verify.py apps/api/article_extract.py apps/api/classify_v2.py apps/api/clustering.py apps/api/enrichment_worker.py ./
 COPY apps/api/iran_monitor_collector ./iran_monitor_collector
 COPY apps/api/web ./web
 COPY config/sources/rss-execution-readiness.json config/sources/source-registry.json config/sources/collection-capabilities.json config/sources/classification-taxonomy-v1.json config/sources/classification-taxonomy-v2.json config/sources/feed-sitemap-discovery.json ./sources/

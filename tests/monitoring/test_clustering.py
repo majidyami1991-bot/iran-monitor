@@ -89,6 +89,45 @@ def test_three_articles_about_the_same_event_form_one_cluster_not_pairs():
     assert set(clusters[0]['members']) == {'x1', 'x2', 'x3'}
 
 
+def test_shared_author_byline_in_body_text_does_not_create_a_false_cluster():
+    # Real defect found against the live pilot: entity extraction originally
+    # scanned title + body text, and a repeated author byline / site credit
+    # line ("Dylan Malyasov", "NewsAviation") that two unrelated articles from
+    # the same publisher both happen to carry was read as a "shared entity",
+    # chaining 17 of 20 unrelated pilot items into one supercluster through
+    # union-find. Entity extraction is title-only specifically because of this.
+    byline = 'By Dylan Malyasov for NewsAviation. Photo: Sep 12. '
+    a = cl.ItemFeatures.build('a1', 'Canada receives its first F-35 fighter jet',
+                               byline + 'The jet flew for the first time this week.', T0, 'defense', 'https://example.com/a1')
+    b = cl.ItemFeatures.build('a2', 'North Korea tests a new guided rocket',
+                               byline + 'State media released footage of the launch.', T0, 'defense', 'https://example.com/a2')
+    pair = cl.score_pair(a, b)
+    assert pair.score < cl.CLUSTER_THRESHOLD
+    assert 'malyasov' not in pair.reasons['shared_entities']
+    assert 'newsaviation' not in pair.reasons['shared_entities']
+
+
+def test_generic_person_name_and_role_word_do_not_cluster():
+    # Real defect found against the live pilot, one level subtler than the byline
+    # bug above: after fixing entity extraction to be title-only, a 3-member
+    # cluster still chained in a second, unrelated story. "Channel 12 Reporter
+    # Mocks Netanyahu Over Injured Terror Victim Neriyah Leiter" correctly
+    # matched a follow-up about Leiter's medical condition (shared "leiter"),
+    # but had also matched "Reporter Slams Netanyahu: He Thinks We're All
+    # Idiots" — a same-morning story from a DIFFERENT reporter on a DIFFERENT
+    # outlet about a completely unrelated Netanyahu scheduling remark, sharing
+    # only "netanyahu" and "reporter". Both are common enough in this domain's
+    # headlines (a recurring name, a generic role word) to require excluding
+    # them explicitly, same as 'idf'/'israel'/'hamas' already are.
+    a = mk('leiter_mock', 'Channel 12 Reporter Mocks Netanyahu Over Injured Terror Victim Neriyah Leiter',
+           hours_offset=0, category='diplomacy')
+    b = mk('unrelated_slam', "Reporter Slams Netanyahu: He Thinks We're All Idiots",
+           hours_offset=-0.5, category='diplomacy')
+    pair = cl.score_pair(a, b)
+    assert pair.score < cl.CLUSTER_THRESHOLD
+    assert pair.reasons['shared_entities'] == []
+
+
 def test_singleton_items_with_no_match_are_not_returned_as_clusters():
     items = [mk('solo1', 'A unique story about wheat prices'),
              mk('solo2', 'A unique story about coral reefs', -1)]

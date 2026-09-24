@@ -25,6 +25,22 @@ SUMMARY_SYSTEM = (
     'happened, who is involved and when. Keep all names, numbers and dates exactly as given. '
     'State uncertainty that the source states. Use only facts present in the supplied text; '
     'never infer or add background. Return only the Persian summary.')
+SHORT_SUMMARY_SYSTEM = (
+    'You write a short Persian (Farsi) news-card summary of a defence/geopolitics story, for '
+    'a monitoring product. Write 40 to 70 Persian words in one or two sentences answering '
+    '"what happened": the main actor, the event, and the immediate result. Keep every name, '
+    'number, date and unit exactly as given. Do not analyze, speculate or predict — state only '
+    'what the supplied text itself says. Return only the Persian summary, no heading.')
+LONG_SUMMARY_SYSTEM = (
+    'You write a detailed Persian (Farsi) summary of a defence/geopolitics news article, for a '
+    'monitoring product\'s article page. Write 120 to 220 Persian words including necessary '
+    'context from the supplied text. Keep every name and number exact. Clearly separate '
+    'established fact from claims — attribute each claim to whoever the source says made it '
+    '("according to...", "X claimed..."). Use only the supplied text; never infer, add '
+    'background the text does not contain, or predict what happens next. Return only the '
+    'Persian summary, no heading.')
+SHORT_SUMMARY_WORDS = (40, 70)
+LONG_SUMMARY_WORDS = (120, 220)
 
 
 class ProviderError(RuntimeError):
@@ -138,29 +154,66 @@ def _looks_persian(text):
     return persian >= max(8, len(text.strip()) * 0.2)
 
 
+_SYSTEM_BY_KIND = {
+    'translation': TRANSLATE_SYSTEM, 'summary': SUMMARY_SYSTEM,
+    'short_summary': SHORT_SUMMARY_SYSTEM, 'long_summary': LONG_SUMMARY_SYSTEM,
+}
+_WORD_RANGE_BY_KIND = {'short_summary': SHORT_SUMMARY_WORDS, 'long_summary': LONG_SUMMARY_WORDS}
+
+
+def input_hash(text):
+    import hashlib
+    return hashlib.sha256((text or '').encode('utf-8')).hexdigest()
+
+
+def _quality_status(kind, output):
+    """A cheap, honest sanity check — not a claim of translation accuracy,
+    which this system cannot verify. Flags only gross, mechanically
+    detectable problems: a summary wildly outside its requested word budget."""
+    word_range = _WORD_RANGE_BY_KIND.get(kind)
+    if not word_range:
+        return 'ok'
+    words = len(output.split())
+    lo, hi = word_range
+    if words < lo * 0.4 or words > hi * 1.8:
+        return 'suspect'
+    return 'ok'
+
+
 def run_task(provider, kind, text):
     """Execute one translation or summary. Returns a status dict, never raises.
 
     Statuses: `available` with text, `pending` when no provider is configured,
     `unavailable` when there is no source text, `error` with a sanitized reason.
+    `kind`: 'translation' | 'summary' | 'short_summary' | 'long_summary'.
+    Every result carries `input_text_sha256` of the exact text that was (or
+    would have been) sent, so a caller can skip re-running unchanged work —
+    real idempotency, not merely overwrite-on-conflict.
     """
+    digest = input_hash(text)
     if not text or not text.strip():
         return {'status': 'unavailable', 'text': None, 'error': 'no_source_text',
-                'provider': provider.name, 'model': provider.model}
+                'provider': provider.name, 'model': provider.model,
+                'input_text_sha256': digest, 'quality_status': None}
     if isinstance(provider, NullProvider):
         return {'status': 'pending', 'text': None, 'error': None,
-                'provider': None, 'model': None}
-    system = TRANSLATE_SYSTEM if kind == 'translation' else SUMMARY_SYSTEM
+                'provider': None, 'model': None,
+                'input_text_sha256': digest, 'quality_status': None}
+    system = _SYSTEM_BY_KIND.get(kind, SUMMARY_SYSTEM)
     started = time.monotonic()
     try:
         output = provider.complete(system, text[:MAX_INPUT_CHARS])
     except ProviderError as exc:
         return {'status': 'error', 'text': None, 'error': _redact(str(exc)),
-                'provider': provider.name, 'model': provider.model}
+                'provider': provider.name, 'model': provider.model,
+                'input_text_sha256': digest, 'quality_status': None}
     if not _looks_persian(output):
         return {'status': 'error', 'text': None, 'error': 'output_not_persian',
-                'provider': provider.name, 'model': provider.model}
-    return {'status': 'available', 'text': output.strip(), 'error': None,
+                'provider': provider.name, 'model': provider.model,
+                'input_text_sha256': digest, 'quality_status': None}
+    output = output.strip()
+    return {'status': 'available', 'text': output, 'error': None,
             'provider': provider.name, 'model': provider.model,
             'latency_ms': int((time.monotonic() - started) * 1000),
-            'source_chars': min(len(text), MAX_INPUT_CHARS)}
+            'source_chars': min(len(text), MAX_INPUT_CHARS),
+            'input_text_sha256': digest, 'quality_status': _quality_status(kind, output)}
