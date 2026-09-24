@@ -288,6 +288,21 @@ table.data-table { width: 100%; border-collapse: collapse; text-align: right; fo
 .dash-coverage-row strong { color: var(--text-primary); }
 .dash-topic-row:hover { color: var(--accent-strong); }
 @media (max-width: 1100px) { .dash-grid { grid-template-columns: 1fr; } }
+.brief-section { margin-bottom: var(--space-5); }
+.brief-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); }
+.brief-head h2 { font-size: var(--text-md); font-weight: var(--weight-medium); color: var(--text-primary); display: flex; align-items: center; gap: var(--space-2); }
+.brief-change { font-size: var(--text-sm); }
+.brief-change.up { color: var(--positive, #34d399); }
+.brief-change.down { color: var(--text-tertiary); }
+.brief-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4); }
+@media (max-width: 1100px) { .brief-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .brief-grid { grid-template-columns: 1fr; } }
+.brief-card { background: var(--surface-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); min-height: 100%; }
+.brief-card-title { font-size: var(--text-xs); color: var(--text-tertiary); display: flex; align-items: center; gap: var(--space-2); }
+.brief-card-row { display: flex; justify-content: space-between; gap: var(--space-2); font-size: var(--text-sm); color: var(--text-secondary); padding: 4px 0; border-bottom: 1px solid var(--border-subtle); }
+.brief-card-row:last-child { border-bottom: none; }
+.brief-card-row:hover { color: var(--accent-strong); }
+.brief-card-empty { font-size: var(--text-xs); color: var(--text-tertiary); }
 
 /* =============================== Charts =================================== */
 .chart-box { height: 220px; width: 100%; min-width: 0; }
