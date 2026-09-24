@@ -368,8 +368,64 @@ def register_ops(app):
         item['content']=_content_block(item_id)
         item['translations']=_translation_block(item_id)
         item['media']=_media_block(item_id)
+        item['classification_detail']=_classification_block(item_id)
+        item['events']=_item_events_block(item_id)
         item['provenance']=objects('SELECT feed_url,execution_reference,evidence_status,evidence_json FROM news_item_provenance WHERE item_id=%s',['feed_url','execution_reference','evidence_status','evidence_json'],(item_id,))
         return item
+
+    def _classification_block(item_id):
+        """Confidence, matched evidence and human-correction state; absent
+        (not zero-filled) when no row exists yet — never a fabricated score."""
+        rows=objects('''SELECT category_id,category_label,topics,taxonomy_version,method,confidence,reason,
+            human_locked,human_edited_at,classified_at FROM item_classifications WHERE item_id=%s''',
+            ['category_id','category_label','topics','taxonomy_version','method','confidence','reason','human_locked','human_edited_at','classified_at'],(item_id,))
+        return rows[0] if rows else {'category_id':None,'category_label':None,'topics':[],'taxonomy_version':None,
+            'method':None,'confidence':None,'reason':None,'human_locked':False,'human_edited_at':None,'classified_at':None,
+            'note':'این خبر هنوز طبقه‌بندی نشده است.'}
+
+    def _item_events_block(item_id):
+        return objects('''SELECT e.event_id,e.title,e.member_count,e.source_count,e.first_published_at,
+            e.last_updated_at,em.similarity_score,em.membership_reason
+            FROM news_event_members em JOIN news_events e USING(event_id)
+            WHERE em.item_id=%s AND NOT em.manually_removed ORDER BY e.member_count DESC''',
+            ['event_id','title','member_count','source_count','first_published_at','last_updated_at','similarity_score','membership_reason'],(item_id,))
+
+    @app.patch('/api/v1/news/{item_id}/classification')
+    def correct_classification(item_id:str,category_id:str=Query(...),category_label:str=Query(...)):
+        """Human correction. Locks the item so a future re-cluster/re-classify
+        run never silently overwrites a person's decision (rerun-persistent)."""
+        if not q('SELECT 1 FROM news_items WHERE item_id=%s',(item_id,)):raise HTTPException(404,'news_item_not_found')
+        with psycopg.connect(DSN) as c:
+            c.execute('''INSERT INTO item_classifications(item_id,category_id,category_label,topics,taxonomy_version,method,human_locked,human_edited_at)
+                VALUES(%s,%s,%s,'[]'::jsonb,COALESCE((SELECT taxonomy_version FROM item_classifications WHERE item_id=%s),'2.0.0'),'human_correction',true,now())
+                ON CONFLICT(item_id) DO UPDATE SET category_id=EXCLUDED.category_id,category_label=EXCLUDED.category_label,
+                human_locked=true,human_edited_at=now(),method='human_correction',classified_at=now()''',
+                (item_id,category_id[:100],category_label[:200],item_id))
+            c.execute('UPDATE news_items SET classification=%s WHERE item_id=%s',(category_label[:200],item_id))
+        return _classification_block(item_id)
+
+    @app.get('/api/v1/events')
+    def events(page:int=Query(1,ge=1),page_size:int=Query(30,ge=1,le=100)):
+        total=q('SELECT count(*) FROM news_events')[0][0]
+        rows=objects('''SELECT event_id,title,member_count,source_count,first_published_at,last_updated_at,
+            clustering_method,algorithm_version FROM news_events ORDER BY last_updated_at DESC LIMIT %s OFFSET %s''',
+            ['event_id','title','member_count','source_count','first_published_at','last_updated_at','clustering_method','algorithm_version'],
+            (page_size,(page-1)*page_size))
+        return {'events':rows,'total':total,'page':page,'page_size':page_size}
+
+    @app.get('/api/v1/events/{event_id}')
+    def event_detail(event_id:str):
+        rows=objects('''SELECT event_id,title,member_count,source_count,first_published_at,last_updated_at,
+            clustering_method,algorithm_version FROM news_events WHERE event_id=%s''',
+            ['event_id','title','member_count','source_count','first_published_at','last_updated_at','clustering_method','algorithm_version'],(event_id,))
+        if not rows:raise HTTPException(404,'event_not_found')
+        event=rows[0]
+        event['members']=objects('''SELECT n.item_id,n.title,n.published_at,n.canonical_url,s.hostname,
+            em.similarity_score,em.membership_reason
+            FROM news_event_members em JOIN news_items n USING(item_id) JOIN sources s ON s.source_id=n.source_id
+            WHERE em.event_id=%s AND NOT em.manually_removed ORDER BY n.published_at ASC NULLS LAST''',
+            ['item_id','title','published_at','canonical_url','hostname','similarity_score','membership_reason'],(event_id,))
+        return event
 
     def _content_block(item_id):
         """Body text plus an explicit extraction status; never a fabricated field."""
