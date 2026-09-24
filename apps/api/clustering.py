@@ -128,7 +128,13 @@ def score_pair(a: ItemFeatures, b: ItemFeatures) -> 'PairScore | None':
 
     jaccard, shared_title_words = _title_jaccard(a.title, b.title)
     shared_entities = a.distinctive & b.distinctive
-    entity_score = min(1.0, 0.45 * len(shared_entities))
+    # A single shared distinctive entity (e.g. an uncommon surname) must be
+    # able to cross the threshold together with same-day timing alone, without
+    # depending on category agreement: real classification of two articles
+    # about the same event can legitimately land in different categories (one
+    # emphasizing the attack, the other the diplomatic angle), so requiring
+    # topic_score too would make clustering hostage to an unrelated system.
+    entity_score = min(1.0, 0.6 * len(shared_entities))
     topic_score = 1.0 if (a.category_id and a.category_id == b.category_id) else 0.0
 
     total = 0.5 * entity_score + 0.3 * jaccard + 0.1 * time_score + 0.1 * topic_score

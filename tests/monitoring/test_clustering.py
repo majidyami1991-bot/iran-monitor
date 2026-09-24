@@ -128,6 +128,27 @@ def test_generic_person_name_and_role_word_do_not_cluster():
     assert pair.reasons['shared_entities'] == []
 
 
+def test_shared_distinctive_entity_clusters_even_when_categories_disagree():
+    # Real defect found running the pilot's classification stage against
+    # production: the two Leiter articles above are unambiguously the same
+    # event, but the multi-level classifier put one in 'defense_security' and
+    # the other in 'foreign_policy' (one emphasizes the attack, the other the
+    # ambassador/diplomatic angle) — a legitimate disagreement between two
+    # independently-classified articles, not a clustering bug. Requiring
+    # same_category alongside a single shared surname pushed the true match
+    # below threshold (0.355 < 0.42) in production even though the offline
+    # calibration test above passed, because that test hardcodes matching
+    # categories. Entity weight was raised so a real distinctive-entity match
+    # does not depend on the classifier's independent category agreement.
+    a = mk('leiter1', 'IDF Reservist Neriya Leiter Fighting for His Life After Terror Attack',
+           hours_offset=0, category='foreign_policy')
+    b = mk('leiter2', 'Channel 12 Reporter Mocks Netanyahu Over Injured Terror Victim Neriyah Leiter',
+           hours_offset=-1, category='defense_security')
+    pair = cl.score_pair(a, b)
+    assert pair.score >= cl.CLUSTER_THRESHOLD
+    assert pair.reasons['same_category'] is False
+
+
 def test_singleton_items_with_no_match_are_not_returned_as_clusters():
     items = [mk('solo1', 'A unique story about wheat prices'),
              mk('solo2', 'A unique story about coral reefs', -1)]

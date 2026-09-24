@@ -269,8 +269,14 @@ def migrate():
         # whatever the table already held: a stale row must not survive because it
         # was written first. Keep the input identical to the collector's
         # (COALESCE(summary_text,summary)) so the two never disagree.
+        # Items already classified by the newer multi-level pipeline (classify_v2,
+        # run via the enrichment worker) carry taxonomy_version 2.x and a real
+        # confidence score. This v1 backfill must never downgrade those back to
+        # v1's single-label result on a routine restart — skip them here.
+        v2_classified={r[0] for r in c.execute("SELECT item_id FROM item_classifications WHERE taxonomy_version LIKE '2.%'").fetchall()}
         rows=c.execute('SELECT item_id,title,COALESCE(summary_text,summary) FROM news_items ORDER BY item_id').fetchall()
         for iid,title,summary in rows:
+            if iid in v2_classified:continue
             cat,topics,ids=classify(title,summary)
             c.execute('''INSERT INTO item_classifications(item_id,category_id,category_label,topics,taxonomy_version,method) VALUES(%s,%s,%s,%s,%s,%s)
                 ON CONFLICT(item_id) DO UPDATE SET category_id=EXCLUDED.category_id,category_label=EXCLUDED.category_label,
