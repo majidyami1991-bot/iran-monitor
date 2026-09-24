@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { ShieldCheck, Image as ImageIcon } from 'lucide-react';
+import { ShieldCheck, Image as ImageIcon, FileText, Link2, Languages } from 'lucide-react';
 import type { NewsListItem } from './news-types';
 import { fmtRelative, isPersian, safeUrl, sourceColor } from '../design/format';
 import { Badge, SourceMark } from '../design/ui';
@@ -48,6 +48,10 @@ export function NewsCard({ item, now }: { item: NewsListItem; now: number }) {
         )}
         <footer className="news-card-footer">
           {item.category && <Badge>{item.category}</Badge>}
+          {item.content_status === 'succeeded' && <Badge tone="muted" title="متن کامل استخراج شده"><FileText size={11} /> متن کامل</Badge>}
+          {faStatus === 'available' && <Badge tone="muted" title="ترجمه فارسی موجود است"><Languages size={11} /> ترجمه</Badge>}
+          {item.has_document && <Badge tone="muted" title="سند مرتبط موجود است"><FileText size={11} /> سند</Badge>}
+          {!!item.event_count && <Badge tone="accent" title="بخشی از یک رویداد شناسایی‌شده"><Link2 size={11} /> رویداد ({item.event_count})</Badge>}
           <span className="news-card-provenance"><ShieldCheck size={12} />{item.provenance_status === 'COMPLETE' ? 'منشأ کامل' : 'منشأ ناقص'}</span>
           <Link href={href} className="news-card-detail">جزئیات</Link>
           {safeUrl(item.canonical_url) && <a href={safeUrl(item.canonical_url)} target="_blank" rel="noopener noreferrer">منبع اصلی</a>}

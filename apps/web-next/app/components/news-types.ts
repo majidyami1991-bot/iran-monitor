@@ -33,6 +33,8 @@ export interface NewsListItem {
   content_status?: string;
   display_policy?: string;
   text_chars?: number;
+  has_document?: boolean;
+  event_count?: number;
 }
 
 export interface ContentField {
@@ -68,11 +70,38 @@ export interface MediaItem {
   verification_status: string;
 }
 
+export interface ClassificationDetail {
+  category_id: string | null;
+  category_label: string | null;
+  topics: string[];
+  taxonomy_version: string | null;
+  method: string | null;
+  confidence: number | null;
+  reason: string | null;
+  human_locked: boolean;
+  human_edited_at: string | null;
+  classified_at: string | null;
+  note?: string;
+}
+
+export interface EventMembership {
+  event_id: string;
+  title: string;
+  member_count: number;
+  source_count: number;
+  first_published_at: string | null;
+  last_updated_at: string | null;
+  similarity_score: number | null;
+  membership_reason: { shared_entities?: string[]; total?: number } | null;
+}
+
 export interface NewsDetailItem extends Omit<NewsListItem, 'source_category'> {
   source_url?: string | null;
   feed_url?: string | null;
   content?: ContentField;
   translations?: Record<string, TranslationField>;
   media?: { images: MediaItem[]; documents: MediaItem[]; filtered_out: { url: string; relevance: string; rejection_reason: string | null }[]; note?: string };
+  classification_detail?: ClassificationDetail;
+  events?: EventMembership[];
   provenance?: { feed_url: string; execution_reference: string; evidence_status: string; evidence_json: unknown }[];
 }

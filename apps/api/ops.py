@@ -345,15 +345,20 @@ def register_ops(app):
             COALESCE(n.fetched_at,n.collected_at) fetched_at,n.first_seen_at,n.classification,n.topics,
             n.taxonomy_version,n.provenance_status,COALESCE(NULLIF(s.display_name,''),s.hostname),s.hostname,s.source_type,s.category,
             ts.status,ts.text,tt.status,tt.text,img.url,img.alt_text,img.verification_status,
-            COALESCE(cn.extraction_status,'not_processed'),COALESCE(cn.display_policy,'link_only'),COALESCE(cn.text_chars,0)
+            COALESCE(cn.extraction_status,'not_processed'),COALESCE(cn.display_policy,'link_only'),COALESCE(cn.text_chars,0),
+            COALESCE(doc.has_document,false),COALESCE(ev.event_count,0)
             FROM news_items n JOIN sources s USING(source_id)
             LEFT JOIN news_item_translations ts ON ts.item_id=n.item_id AND ts.field='summary' AND ts.target_language='fa'
             LEFT JOIN news_item_translations tt ON tt.item_id=n.item_id AND tt.field='title' AND tt.target_language='fa'
             LEFT JOIN news_item_content cn ON cn.item_id=n.item_id
             LEFT JOIN LATERAL (SELECT url,alt_text,verification_status FROM news_item_media m
                 WHERE m.item_id=n.item_id AND m.kind='image' AND m.relevance='article_image' LIMIT 1) img ON TRUE
+            LEFT JOIN LATERAL (SELECT true has_document FROM news_item_media m
+                WHERE m.item_id=n.item_id AND m.kind='document' AND NOT m.relevance LIKE 'rejected%' LIMIT 1) doc ON TRUE
+            LEFT JOIN LATERAL (SELECT count(*) event_count FROM news_event_members em
+                WHERE em.item_id=n.item_id AND NOT em.manually_removed) ev ON TRUE
             '''+where+' ORDER BY '+order+' LIMIT %s OFFSET %s',args+[page_size,(page-1)*page_size])
-        keys=['item_id','source_id','title','summary','summary_source','summary_available','content_language','canonical_url','external_guid','published_at','fetched_at','first_seen_at','category','topics','taxonomy_version','provenance_status','source_name','hostname','source_type','source_category','summary_fa_status','summary_fa','title_fa_status','title_fa','lead_image_url','lead_image_alt','lead_image_verification','content_status','display_policy','text_chars']
+        keys=['item_id','source_id','title','summary','summary_source','summary_available','content_language','canonical_url','external_guid','published_at','fetched_at','first_seen_at','category','topics','taxonomy_version','provenance_status','source_name','hostname','source_type','source_category','summary_fa_status','summary_fa','title_fa_status','title_fa','lead_image_url','lead_image_alt','lead_image_verification','content_status','display_policy','text_chars','has_document','event_count']
         items=[dict(zip(keys,r)) for r in rows]
         for x in items:
             x['summary_fa_status']=x['summary_fa_status'] or 'pending'

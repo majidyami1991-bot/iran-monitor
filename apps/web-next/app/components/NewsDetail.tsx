@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { ShieldCheck, ExternalLink, FileText } from 'lucide-react';
+import { ShieldCheck, ExternalLink, FileText, Link2 } from 'lucide-react';
 import type { NewsDetailItem } from './news-types';
 import { fmtDateTime, isPersian, safeUrl, sourceColor } from '../design/format';
 import { Badge, EmptyState, FieldStatus, SourceMark, Tabs } from '../design/ui';
@@ -25,6 +25,8 @@ export function NewsDetail({ item }: { item: NewsDetailItem }) {
   const bodyFa = item.translations?.body;
   const content = item.content;
   const bodyAvailable = content?.display_policy === 'full_syndicated' && content.original_text;
+  const events = item.events || [];
+  const classification = item.classification_detail;
 
   return (
     <article>
@@ -64,6 +66,7 @@ export function NewsDetail({ item }: { item: NewsDetailItem }) {
         ['original', 'متن اصلی'],
         ['media', `تصاویر و اسناد${images.length + documents.length ? ' (' + (images.length + documents.length) + ')' : ''}`],
         ['evidence', 'منشأ و شواهد'],
+        ['coverage', `پوشش رویداد${events.length ? ' (' + events.length + ')' : ''}`],
       ]} />
 
       <div className="news-detail-panel">
@@ -129,10 +132,40 @@ export function NewsDetail({ item }: { item: NewsDetailItem }) {
             <p>شناسه فنی خبر: <span className="mono">{item.item_id}</span></p>
             <p>شناسه منبع: <span className="mono">{item.source_id}</span></p>
             {item.feed_url && <p>خوراک منبع: <span className="mono" dir="ltr">{item.feed_url}</span></p>}
+            {classification?.category_label && (
+              <p>
+                طبقه‌بندی: {classification.category_label}
+                {classification.confidence != null && <Badge tone="muted">اطمینان {(classification.confidence * 100).toFixed(0)}٪</Badge>}
+                {classification.human_locked && <Badge tone="accent">اصلاح‌شده توسط کاربر</Badge>}
+              </p>
+            )}
+            {classification?.topics && classification.topics.length > 0 && (
+              <p>شواهد طبقه‌بندی: {classification.topics.join('، ')}</p>
+            )}
             {safeUrl(item.canonical_url) && (
               <p><a href={safeUrl(item.canonical_url)} target="_blank" rel="noopener noreferrer" className="btn btn-secondary">مشاهده منبع اصلی <ExternalLink size={14} /></a></p>
             )}
           </div>
+        )}
+        {tab === 'coverage' && (
+          events.length ? (
+            <ul className="news-detail-documents">
+              {events.map((ev) => (
+                <li key={ev.event_id}>
+                  <Link2 size={15} />
+                  <Link href={'/events/' + encodeURIComponent(ev.event_id)} dir="rtl">{ev.title}</Link>
+                  <span>{ev.member_count} خبر از {ev.source_count} منبع</span>
+                  {ev.membership_reason?.shared_entities?.length ? (
+                    <Badge tone="muted">اشتراک: {ev.membership_reason.shared_entities.join('، ')}</Badge>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState title="این خبر به رویداد مشترکی متصل نشده">
+              خوشه‌بندی رویداد بر اساس نام‌های خاص مشترک و بازه زمانی نزدیک انجام می‌شود؛ نبود پیوند به معنای نادرست بودن خبر نیست.
+            </EmptyState>
+          )
         )}
       </div>
     </article>
