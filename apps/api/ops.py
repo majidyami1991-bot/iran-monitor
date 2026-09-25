@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 import psycopg
 from fastapi import HTTPException, Query, Response
 import classify_v2 as cv
+import ai_gateway as aig
 
 DSN=os.environ['DATABASE_URL']
 INTERVAL=int(os.getenv('NEWS_COLLECTION_INTERVAL_SECONDS','900'))
@@ -200,6 +201,37 @@ CREATE TABLE IF NOT EXISTS enrichment_jobs(
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(item_id,stage));
 CREATE INDEX IF NOT EXISTS enrichment_jobs_pickup_idx ON enrichment_jobs(status,available_at);
+
+-- AI Gateway: audit log (every call, success or not) and response cache
+-- (keyed so a provider or prompt-version change is a cache miss, never a
+-- silent reuse of another provider's or prompt version's output).
+CREATE TABLE IF NOT EXISTS ai_requests_log(
+  request_id bigserial PRIMARY KEY,
+  task_type text NOT NULL,
+  provider text,
+  model text,
+  prompt_version text NOT NULL,
+  content_sha256 text NOT NULL,
+  status text NOT NULL,
+  latency_ms integer,
+  tokens_in integer,
+  tokens_out integer,
+  estimated_cost_usd numeric(12,6),
+  cache_hit boolean NOT NULL DEFAULT false,
+  error text,
+  created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS ai_requests_log_created_idx ON ai_requests_log(created_at);
+CREATE INDEX IF NOT EXISTS ai_requests_log_task_idx ON ai_requests_log(task_type,status);
+
+CREATE TABLE IF NOT EXISTS ai_response_cache(
+  content_sha256 text NOT NULL,
+  task_type text NOT NULL,
+  prompt_version text NOT NULL,
+  provider text NOT NULL,
+  model text NOT NULL DEFAULT '',
+  response_json jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY(content_sha256,task_type,prompt_version,provider,model));
 '''
 REGISTRY=_metadata('source-registry.json')
 READY=_metadata('rss-execution-readiness.json')
@@ -684,6 +716,39 @@ def register_ops(app):
 
     @app.get('/api/v1/taxonomy')
     def taxonomy():return TAX2
+
+    @app.get('/api/v1/ai/provider-status')
+    def ai_provider_status():
+        """Never exposes AI_API_KEY. Reports what would happen if an AI-
+        assisted feature were invoked right now — mode, provider, per-task
+        model, and whether the circuit breaker is currently open — without
+        actually calling anything."""
+        cfg=aig.load_config()
+        breaker=aig._BREAKERS.get(cfg.provider if cfg.mode==aig.Mode.EXTERNAL_PROVIDER else cfg.mode.value)
+        return {'mode':cfg.mode.value,'provider':cfg.provider if cfg.mode==aig.Mode.EXTERNAL_PROVIDER else None,
+            'models':cfg.models,'timeout_seconds':cfg.timeout_seconds,'max_concurrency':cfg.max_concurrency,
+            'daily_budget_usd':cfg.daily_budget_usd,'api_key_configured':bool(cfg.api_key),
+            'circuit_open':bool(breaker and breaker.is_open),
+            'prompt_versions':aig.LATEST_PROMPT_VERSION,
+            'note':'AI_API_KEY is never included in this response.'}
+
+    @app.get('/api/v1/ai/cost-usage')
+    def ai_cost_usage(days:int=Query(7,ge=1,le=90)):
+        rows=objects(f'''SELECT date_trunc('day',created_at)::date d,task_type,provider,
+            count(*)::int requests,count(*) FILTER(WHERE status='available')::int succeeded,
+            count(*) FILTER(WHERE cache_hit)::int cache_hits,
+            COALESCE(sum(tokens_in),0)::bigint tokens_in,COALESCE(sum(tokens_out),0)::bigint tokens_out,
+            COALESCE(sum(estimated_cost_usd),0)::float cost_usd
+            FROM ai_requests_log WHERE created_at>=now()-(%s||' days')::interval
+            GROUP BY 1,2,3 ORDER BY 1 DESC,3''',
+            ['date','task_type','provider','requests','succeeded','cache_hits','tokens_in','tokens_out','cost_usd'],(days,))
+        today=q('''SELECT COALESCE(sum(estimated_cost_usd),0)::float FROM ai_requests_log
+            WHERE created_at>=date_trunc('day',now())''')[0][0]
+        errors=objects('''SELECT status,count(*)::int n FROM ai_requests_log
+            WHERE created_at>=now()-interval '7 days' AND status NOT IN ('available','cached') GROUP BY 1 ORDER BY 2 DESC''',
+            ['status','count'])
+        return {'window_days':days,'rows':rows,'spent_today_usd':today,
+            'daily_budget_usd':aig.load_config().daily_budget_usd,'recent_non_success_statuses':errors}
 
     @app.get('/api/v1/taxonomy/v1')
     def taxonomy_v1():return TAX
