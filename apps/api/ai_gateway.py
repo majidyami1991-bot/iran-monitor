@@ -32,7 +32,7 @@ from enum import Enum
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener, ProxyHandler
 
-TASK_TYPES = ('translation', 'summary', 'classification', 'signal_analysis', 'scenario')
+TASK_TYPES = ('translation', 'summary', 'classification', 'signal_analysis', 'scenario', 'key_point_extraction')
 
 
 class Mode(str, Enum):
@@ -62,10 +62,37 @@ PROMPTS = {
         'the source hedges, keep the hedge. Return only JSON: {"text": "<translation>"}.'
     ),
     ('summary', '1.0.0'): (
-        'You summarise defence and geopolitics news into Persian for an intelligence '
-        'monitoring dashboard, using only facts present in the supplied text — never '
-        'infer or add background. State uncertainty the source states. Return only '
+        'You write a 2-4 sentence Persian (Farsi) summary of defence and geopolitics '
+        'news for an intelligence monitoring dashboard, using only facts present in '
+        'the supplied text — never infer or add background. State uncertainty the '
+        'source states. If the text does not contain enough information to summarise '
+        'faithfully, return {"text": ""} rather than inventing content. Return only '
         'JSON: {"text": "<Persian summary>"}.'
+    ),
+    ('summary', 'executive-1.0.0'): (
+        'You write a single Persian (Farsi) sentence — a one-line executive summary — '
+        'of a defence/geopolitics news item, stating only the single most important '
+        'fact from the supplied text. Never infer, never add background, never '
+        'speculate. If the text does not support a confident one-line summary, return '
+        '{"text": ""}. Return only JSON: {"text": "<one Persian sentence>"}.'
+    ),
+    ('summary', 'why-it-matters-1.0.0'): (
+        'You write one short Persian (Farsi) sentence answering "why does this '
+        'matter?" for a defence/geopolitics intelligence monitoring reader, using '
+        'only implications and context that the supplied text itself states or '
+        'directly supports — never speculate about broader significance the text '
+        'does not itself claim. If the text does not support a confident answer, '
+        'return {"text": ""}. Return only JSON: {"text": "<one Persian sentence>"}.'
+    ),
+    ('key_point_extraction', '0.1.0'): (
+        'Extract at most 5 key points (in Persian/Farsi) from the supplied defence/'
+        'geopolitics news text. Every point must be directly supported by an exact, '
+        'verbatim, contiguous span copied from the supplied text (in its original '
+        'language) as evidence — never paraphrase the evidence span, never cite a '
+        'span that does not literally appear in the text. If fewer than 5 points are '
+        'well-supported, return fewer. If none are well-supported, return an empty '
+        'list. Return only JSON: {"points": [{"text": "<Persian key point>", '
+        '"evidence_span": "<verbatim quote from the source text>"}]}.'
     ),
     ('classification', '1.0.0'): (
         'Classify the supplied defence/geopolitics text into exactly one category '
@@ -102,8 +129,15 @@ def prompt_for(task_type, version=None):
 
 LATEST_PROMPT_VERSION = {
     'translation': '1.0.0', 'summary': '1.0.0', 'classification': '1.0.0',
-    'signal_analysis': '0.1.0', 'scenario': '0.1.0',
+    'signal_analysis': '0.1.0', 'scenario': '0.1.0', 'key_point_extraction': '0.1.0',
 }
+# Not every task type's own prompts map 1:1 with "the one default" — an
+# executive summary is deliberately a distinct, explicitly-requested prompt
+# version of the *same* task_type ('summary') and schema ({"text": str}), not
+# a separate task type, since the output shape is identical. A caller that
+# wants it must pass prompt_version=EXECUTIVE_SUMMARY_PROMPT_VERSION.
+EXECUTIVE_SUMMARY_PROMPT_VERSION = 'executive-1.0.0'
+WHY_IT_MATTERS_PROMPT_VERSION = 'why-it-matters-1.0.0'
 
 # --------------------------------------------------------------------------- output schemas
 # Minimal, explicit per-task-type validation. A response missing a required
@@ -115,6 +149,7 @@ _SCHEMAS = {
     'classification': {'category_id': str, 'confidence': (int, float), 'subtopics': list},
     'signal_analysis': {'title': str, 'explanation': str, 'alternative_explanations': list},
     'scenario': {'title': str, 'narrative': str, 'confirming_indicators': list, 'disconfirming_indicators': list},
+    'key_point_extraction': {'points': list},
 }
 
 

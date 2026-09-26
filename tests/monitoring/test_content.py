@@ -3,7 +3,6 @@ import datetime
 
 import collector
 import content
-import translate
 
 RECEIVED = datetime.datetime(2026, 9, 22, 12, 0, tzinfo=datetime.timezone.utc)
 
@@ -216,66 +215,8 @@ def test_media_count_is_bounded():
     assert len(extract(html)['media']) <= content.MAX_MEDIA_PER_ITEM
 
 
-def test_no_provider_configured_yields_pending_and_never_invented_text(monkeypatch):
-    monkeypatch.delenv('NEWS_TRANSLATION_PROVIDER', raising=False)
-    provider = translate.build_provider()
-    result = translate.run_task(provider, 'translation', 'Some English text.')
-    assert result['status'] == 'pending'
-    assert result['text'] is None
-
-
-def test_missing_source_text_is_unavailable():
-    result = translate.run_task(translate.NullProvider(), 'translation', '')
-    assert result['status'] == 'unavailable'
-    assert result['error'] == 'no_source_text'
-
-
-def test_unknown_provider_name_falls_back_to_null(monkeypatch):
-    monkeypatch.setenv('NEWS_TRANSLATION_PROVIDER', 'not-a-provider')
-    assert isinstance(translate.build_provider(), translate.NullProvider)
-
-
-def test_provider_named_without_a_key_falls_back_to_null(monkeypatch):
-    monkeypatch.setenv('NEWS_TRANSLATION_PROVIDER', 'openai')
-    monkeypatch.delenv('NEWS_TRANSLATION_API_KEY', raising=False)
-    assert isinstance(translate.build_provider(), translate.NullProvider)
-
-
-def test_english_output_is_rejected_so_an_untranslated_echo_never_ships():
-    class Echo(translate.Provider):
-        name = 'echo'
-        model = 'echo-1'
-
-        def complete(self, system, user):
-            return user
-
-    result = translate.run_task(Echo(), 'translation', 'The Air Force said on 12 March.')
-    assert result['status'] == 'error'
-    assert result['error'] == 'output_not_persian'
-
-
-def test_persian_output_is_accepted():
-    class Fa(translate.Provider):
-        name = 'fa'
-        model = 'fa-1'
-
-        def complete(self, system, user):
-            return 'نیروی هوایی در ۱۲ مارس ۲۰۲۶ اعلام کرد.'
-
-    result = translate.run_task(Fa(), 'translation', 'The Air Force said on 12 March 2026.')
-    assert result['status'] == 'available'
-    assert 'نیروی هوایی' in result['text']
-
-
-def test_provider_errors_are_sanitized_of_key_material():
-    class Boom(translate.Provider):
-        name = 'boom'
-        model = 'b'
-
-        def complete(self, system, user):
-            raise translate.ProviderError('bad key sk-abcdef0123456789 rejected')
-
-    result = translate.run_task(Boom(), 'translation', 'text')
-    assert result['status'] == 'error'
-    assert 'sk-abcdef0123456789' not in result['error']
-    assert '[REDACTED]' in result['error']
+# Translation/summary behavior itself is no longer tested here: translate.py
+# was retired this phase in favor of ai_gateway.py + content_intelligence.py
+# (provider-not-configured handling, echo/placeholder rejection, and API-key
+# redaction now live in tests/monitoring/test_ai_gateway.py,
+# test_content_validator.py and test_content_intelligence.py).

@@ -22,7 +22,8 @@ import classify_v2 as cv
 import clustering as cl
 import document_verify as dv
 import image_verify as iv
-import translate as tr
+import ai_gateway as gw
+import content_intelligence as ci
 
 DSN = os.environ['DATABASE_URL']
 STAGES = ('extraction', 'media', 'translation', 'classification', 'clustering')
@@ -215,45 +216,136 @@ def _verify_one_document(media_id, url):
 
 
 # --------------------------------------------------------------------------- translation
+_SUMMARY_KIND_FUNCS = {
+    'summary': ci.summarize_news,
+    'executive_summary': ci.generate_executive_summary,
+    'why_it_matters': ci.generate_why_it_matters,
+}
+
+
+def _persist_translation_field(item_id, field, text, result):
+    """Writes the append-only history row first (never overwritten, never
+    deleted — the real versioned record), then upserts the fast-read
+    "current" pointer row. A human-reviewed row is never touched by either
+    write, matching the existing human-in-the-loop guarantee."""
+    with psycopg.connect(DSN, autocommit=True) as c:
+        locked = c.execute('''SELECT human_reviewed, content_version FROM news_item_translations
+            WHERE item_id=%s AND field=%s AND target_language='fa' ''', (item_id, field)).fetchone()
+        if locked and locked[0]:
+            return 'skipped_human_reviewed'
+        new_version = (locked[1] + 1) if locked else 1
+        validation = result.get('validation') or {}
+        quality_score = validation.get('quality_score')
+        quality_flags = validation.get('flags') or []
+        if result['status'] not in ('available', 'cached'):
+            review_status = 'not_applicable'
+        elif validation and not validation.get('passed', True):
+            review_status = 'needs_review'
+        else:
+            review_status = 'pending_review'
+        quality_status_legacy = None if not validation else ('ok' if validation.get('passed') else 'suspect')
+
+        c.execute('''INSERT INTO news_item_translation_history(item_id,field,target_language,content_version,
+            status,text,provider,model,prompt_version,input_text_sha256,quality_score,quality_flags,latency_ms,error)
+            VALUES(%s,%s,'fa',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+            (item_id, field, new_version, result['status'], result['text'], result.get('provider'), result.get('model'),
+             result.get('prompt_version'), result.get('content_hash'), quality_score, Jsonb(quality_flags),
+             result.get('latency_ms'), result.get('error')))
+
+        c.execute('''INSERT INTO news_item_translations(item_id,field,target_language,status,text,provider,model,
+            content_version,source_chars,latency_ms,error,input_text_sha256,quality_status,
+            prompt_version,quality_score,quality_flags,review_status)
+            VALUES(%s,%s,'fa',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT(item_id,field,target_language) DO UPDATE SET status=EXCLUDED.status,text=EXCLUDED.text,
+            provider=EXCLUDED.provider,model=EXCLUDED.model,content_version=EXCLUDED.content_version,
+            source_chars=EXCLUDED.source_chars,latency_ms=EXCLUDED.latency_ms,error=EXCLUDED.error,
+            input_text_sha256=EXCLUDED.input_text_sha256,quality_status=EXCLUDED.quality_status,
+            prompt_version=EXCLUDED.prompt_version,quality_score=EXCLUDED.quality_score,
+            quality_flags=EXCLUDED.quality_flags,review_status=EXCLUDED.review_status,
+            superseded_at=NULL,updated_at=now()
+            WHERE news_item_translations.human_reviewed IS NOT TRUE''',
+            (item_id, field, result['status'], result['text'], result.get('provider'), result.get('model'),
+             new_version, len(text or ''), result.get('latency_ms'), result.get('error'),
+             result.get('content_hash'), quality_status_legacy,
+             result.get('prompt_version'), quality_score, Jsonb(quality_flags), review_status))
+    return f"{result['status']}"
+
+
+def _persist_key_points(item_id, source_text, kp_result):
+    with psycopg.connect(DSN, autocommit=True) as c:
+        prev_version = c.execute('''SELECT COALESCE(max(content_version),0) FROM content_key_points
+            WHERE item_id=%s''', (item_id,)).fetchone()[0]
+        new_version = prev_version + 1
+        if kp_result['status'] not in ('available', 'cached') or not kp_result['points']:
+            return f"{kp_result['status']}:0_points"
+        c.execute('UPDATE content_key_points SET superseded_at=now() WHERE item_id=%s AND superseded_at IS NULL', (item_id,))
+        published = 0
+        for point in kp_result['points']:
+            if not point.get('evidence_verified'):
+                continue  # fabricated-evidence points are never published, only logged in the AI Gateway audit trail
+            c.execute('''INSERT INTO content_key_points(item_id,point_index,text_fa,evidence_span,evidence_verified,
+                source_field,confidence,provider,model,prompt_version,content_version)
+                VALUES(%s,%s,%s,%s,true,'original_text',%s,%s,%s,%s,%s)
+                ON CONFLICT(item_id,point_index,content_version) DO NOTHING''',
+                (item_id, point['index'], point['text'], point['evidence_span'],
+                 point['validation'].get('quality_score'), kp_result.get('provider'), kp_result.get('model'),
+                 kp_result.get('prompt_version'), new_version))
+            published += 1
+    return f"{kp_result['status']}:{published}_of_{len(kp_result['points'])}_points_published"
+
+
 def process_translation(item_id):
     item = _fetch_item(item_id)
     if not item:
         return 'item_not_found'
     body = item['original_text'] if item['display_policy'] == 'full_syndicated' or item['extraction_status'] == 'available' else None
-    fields = {
-        'title': ('translation', item['title']),
-        'summary': ('short_summary', body or item['summary']),
-        'long_summary': ('long_summary', body or item['summary']),
-        'body': ('translation', body),
-    }
-    provider = tr.build_provider()
+    summary_source = body or item['summary']
+    gateway = gw.build_default_gateway(DSN)
     outcomes = []
-    for field, (kind, text) in fields.items():
+
+    for field, text, fn in (
+        ('title', item['title'], lambda t: ci.translate_to_persian(t, gateway=gateway)),
+        ('body', body, lambda t: ci.translate_to_persian(t, gateway=gateway)),
+    ):
+        if not text:
+            outcomes.append(f'{field}:no_source_text')
+            continue
+        digest = gw.content_hash('translation', text, gw.LATEST_PROMPT_VERSION['translation'])
         existing = q('''SELECT status,input_text_sha256,human_reviewed FROM news_item_translations
             WHERE item_id=%s AND field=%s AND target_language='fa' ''', (item_id, field))
-        digest = tr.input_hash(text)
         if existing:
             status, prev_hash, human_reviewed = existing[0]
             if human_reviewed:
-                outcomes.append(f'{field}:skipped_human_reviewed')
-                continue
+                outcomes.append(f'{field}:skipped_human_reviewed'); continue
             if status == 'available' and prev_hash == digest:
-                outcomes.append(f'{field}:unchanged_skip')
-                continue
-        result = tr.run_task(provider, kind, text)
-        with psycopg.connect(DSN, autocommit=True) as c:
-            c.execute('''INSERT INTO news_item_translations(item_id,field,target_language,status,text,provider,model,
-                content_version,source_chars,latency_ms,error,input_text_sha256,quality_status)
-                VALUES(%s,%s,'fa',%s,%s,%s,%s,1,%s,%s,%s,%s,%s)
-                ON CONFLICT(item_id,field,target_language) DO UPDATE SET status=EXCLUDED.status,text=EXCLUDED.text,
-                provider=EXCLUDED.provider,model=EXCLUDED.model,source_chars=EXCLUDED.source_chars,
-                latency_ms=EXCLUDED.latency_ms,error=EXCLUDED.error,input_text_sha256=EXCLUDED.input_text_sha256,
-                quality_status=EXCLUDED.quality_status,updated_at=now()
-                WHERE news_item_translations.human_reviewed IS NOT TRUE''',
-                (item_id, field, result['status'], result['text'], result.get('provider'), result.get('model'),
-                 result.get('source_chars'), result.get('latency_ms'), result.get('error'),
-                 result['input_text_sha256'], result.get('quality_status')))
-        outcomes.append(f"{field}:{result['status']}")
+                outcomes.append(f'{field}:unchanged_skip'); continue
+        result = fn(text)
+        outcomes.append(f'{field}:{_persist_translation_field(item_id, field, text, result)}')
+
+    for field, summary_fn in _SUMMARY_KIND_FUNCS.items():
+        if not summary_source:
+            outcomes.append(f'{field}:no_source_text'); continue
+        prompt_version = {'summary': gw.LATEST_PROMPT_VERSION['summary'],
+                           'executive_summary': gw.EXECUTIVE_SUMMARY_PROMPT_VERSION,
+                           'why_it_matters': gw.WHY_IT_MATTERS_PROMPT_VERSION}[field]
+        digest = gw.content_hash('summary', summary_source, prompt_version)
+        existing = q('''SELECT status,input_text_sha256,human_reviewed FROM news_item_translations
+            WHERE item_id=%s AND field=%s AND target_language='fa' ''', (item_id, field))
+        if existing:
+            status, prev_hash, human_reviewed = existing[0]
+            if human_reviewed:
+                outcomes.append(f'{field}:skipped_human_reviewed'); continue
+            if status == 'available' and prev_hash == digest:
+                outcomes.append(f'{field}:unchanged_skip'); continue
+        result = summary_fn(summary_source, gateway=gateway)
+        outcomes.append(f'{field}:{_persist_translation_field(item_id, field, summary_source, result)}')
+
+    if summary_source:
+        kp_result = ci.extract_key_points(summary_source, gateway=gateway)
+        outcomes.append(f'key_points:{_persist_key_points(item_id, summary_source, kp_result)}')
+    else:
+        outcomes.append('key_points:no_source_text')
+
     return '; '.join(outcomes)
 
 

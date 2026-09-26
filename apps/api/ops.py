@@ -232,6 +232,65 @@ CREATE TABLE IF NOT EXISTS ai_response_cache(
   response_json jsonb NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY(content_sha256,task_type,prompt_version,provider,model));
+
+-- Content Intelligence: additive columns on the existing per-field
+-- translation table (never a new copy of original_title/original_language/
+-- original_summary/original_content_excerpt — those already live on
+-- news_items and news_item_content and stay untouched; see
+-- docs/CONTENT INTELLIGENCE ARCHITECTURE.md "Data model" for the mapping).
+ALTER TABLE news_item_translations ADD COLUMN IF NOT EXISTS prompt_version text;
+ALTER TABLE news_item_translations ADD COLUMN IF NOT EXISTS quality_score real;
+ALTER TABLE news_item_translations ADD COLUMN IF NOT EXISTS quality_flags jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE news_item_translations ADD COLUMN IF NOT EXISTS review_status text NOT NULL DEFAULT 'not_applicable';
+ALTER TABLE news_item_translations ADD COLUMN IF NOT EXISTS reviewed_by text;
+ALTER TABLE news_item_translations ADD COLUMN IF NOT EXISTS superseded_at timestamptz;
+
+-- Append-only history: the "current" row above may be updated in place (as
+-- it already was before this phase, for fast reads), but every generation
+-- attempt is also recorded here and never deleted or overwritten — this is
+-- the actual versioned record the brief requires. Re-running a task inserts
+-- a new content_version here and stamps the *previous* current row's
+-- superseded_at above; nothing is destroyed.
+CREATE TABLE IF NOT EXISTS news_item_translation_history(
+  history_id bigserial PRIMARY KEY,
+  item_id text NOT NULL REFERENCES news_items(item_id),
+  field text NOT NULL,
+  target_language text NOT NULL DEFAULT 'fa',
+  content_version integer NOT NULL,
+  status text NOT NULL,
+  text text,
+  provider text,
+  model text,
+  prompt_version text,
+  input_text_sha256 text,
+  quality_score real,
+  quality_flags jsonb NOT NULL DEFAULT '[]'::jsonb,
+  latency_ms integer,
+  error text,
+  generated_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS news_item_translation_history_item_idx ON news_item_translation_history(item_id,field,target_language,content_version);
+
+-- Key points: a new concept (not a duplicate of anything existing), one row
+-- per extracted point, each carrying its own evidence span so a reviewer
+-- (or an automated check) can verify the point against the source text
+-- rather than trusting it blindly.
+CREATE TABLE IF NOT EXISTS content_key_points(
+  point_id bigserial PRIMARY KEY,
+  item_id text NOT NULL REFERENCES news_items(item_id),
+  point_index integer NOT NULL,
+  text_fa text NOT NULL,
+  evidence_span text,
+  evidence_verified boolean NOT NULL DEFAULT false,
+  source_field text NOT NULL DEFAULT 'original_text',
+  confidence real,
+  provider text,
+  model text,
+  prompt_version text,
+  content_version integer NOT NULL DEFAULT 1,
+  superseded_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(item_id,point_index,content_version));
+CREATE INDEX IF NOT EXISTS content_key_points_item_idx ON content_key_points(item_id) WHERE superseded_at IS NULL;
 '''
 REGISTRY=_metadata('source-registry.json')
 READY=_metadata('rss-execution-readiness.json')

@@ -230,6 +230,37 @@ def test_logger_receives_every_result_including_failures():
     assert seen[0].status == 'error'
 
 
+def test_key_point_extraction_valid_response_is_available():
+    adapter = FakeAdapter('{"points": [{"text": "نکته یک", "evidence_span": "quote one"}]}')
+    g = make_gateway(gw.Mode.EXTERNAL_PROVIDER, adapter=adapter)
+    result = g.run(gw.GatewayRequest('key_point_extraction', 'Some source text with quote one in it.'))
+    assert result.status == 'available'
+    assert result.payload['points'][0]['text'] == 'نکته یک'
+
+
+def test_key_point_extraction_rejects_non_list_points():
+    adapter = FakeAdapter('{"points": "not a list"}')
+    g = make_gateway(gw.Mode.EXTERNAL_PROVIDER, adapter=adapter)
+    result = g.run(gw.GatewayRequest('key_point_extraction', 'Some text'))
+    assert result.status == 'invalid_response'
+
+
+def test_executive_summary_prompt_version_is_a_distinct_prompt_from_the_default_summary():
+    default_prompt = gw.prompt_for('summary')
+    executive_prompt = gw.prompt_for('summary', gw.EXECUTIVE_SUMMARY_PROMPT_VERSION)
+    assert default_prompt != executive_prompt
+    assert 'one' in executive_prompt.lower() or 'single' in executive_prompt.lower()
+
+
+def test_explicit_prompt_version_changes_the_cache_key():
+    adapter = FakeAdapter('{"text": "خلاصه یک خطی"}')
+    cache = MemoryCache()
+    g = make_gateway(gw.Mode.EXTERNAL_PROVIDER, adapter=adapter, cache=cache)
+    g.run(gw.GatewayRequest('summary', 'Hello world', prompt_version=gw.EXECUTIVE_SUMMARY_PROMPT_VERSION))
+    g.run(gw.GatewayRequest('summary', 'Hello world'))  # default version, same content
+    assert adapter.calls == 2  # different prompt version -> different content_hash -> no cache reuse
+
+
 def test_prompt_registry_has_a_version_for_every_task_type():
     for task_type in gw.TASK_TYPES:
         assert task_type in gw.LATEST_PROMPT_VERSION

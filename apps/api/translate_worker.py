@@ -14,7 +14,8 @@ from datetime import datetime, timezone
 
 import psycopg
 
-from translate import build_provider, run_task, NullProvider
+import ai_gateway as gw
+import content_intelligence as ci
 
 FIELDS = ('title', 'summary', 'body')
 BODY_MAX_CHARS = int(os.getenv('NEWS_TRANSLATION_BODY_MAX_CHARS', '12000'))
@@ -59,16 +60,25 @@ def source_text(item, field):
     return (item['body'] or '')[:BODY_MAX_CHARS] or None
 
 
-def record(conn, item_id, field, version, result):
+def record(conn, item_id, field, version, text, result):
+    from psycopg.types.json import Jsonb
+    validation = result.get('validation') or {}
+    quality_score = validation.get('quality_score')
+    quality_flags = validation.get('flags') or []
     conn.execute('''INSERT INTO news_item_translations
-        (item_id,field,target_language,status,text,provider,model,content_version,source_chars,latency_ms,error)
-        VALUES(%s,%s,'fa',%s,%s,%s,%s,%s,%s,%s,%s)
+        (item_id,field,target_language,status,text,provider,model,content_version,source_chars,latency_ms,error,
+         input_text_sha256,prompt_version,quality_score,quality_flags)
+        VALUES(%s,%s,'fa',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         ON CONFLICT(item_id,field,target_language) DO UPDATE SET
         status=EXCLUDED.status,text=EXCLUDED.text,provider=EXCLUDED.provider,model=EXCLUDED.model,
         content_version=EXCLUDED.content_version,source_chars=EXCLUDED.source_chars,
-        latency_ms=EXCLUDED.latency_ms,error=EXCLUDED.error,updated_at=now()''',
+        latency_ms=EXCLUDED.latency_ms,error=EXCLUDED.error,input_text_sha256=EXCLUDED.input_text_sha256,
+        prompt_version=EXCLUDED.prompt_version,quality_score=EXCLUDED.quality_score,
+        quality_flags=EXCLUDED.quality_flags,updated_at=now()
+        WHERE news_item_translations.human_reviewed IS NOT TRUE''',
         (item_id, field, result['status'], result['text'], result.get('provider'), result.get('model'),
-         version, result.get('source_chars'), result.get('latency_ms'), result.get('error')))
+         version, len(text or ''), result.get('latency_ms'), result.get('error'),
+         result.get('content_hash'), result.get('prompt_version'), quality_score, Jsonb(quality_flags)))
 
 
 def main(argv=None):
@@ -87,10 +97,10 @@ def main(argv=None):
         print(json.dumps({'status': 'error', 'error': 'no_valid_fields'}))
         return 2
 
-    provider = build_provider()
-    configured = not isinstance(provider, NullProvider)
-    report = {'started_at': datetime.now(timezone.utc).isoformat(), 'provider': provider.name,
-              'model': provider.model, 'provider_configured': configured, 'fields': list(fields),
+    gateway = gw.build_default_gateway(os.environ['DATABASE_URL'])
+    configured = gateway.config.mode == gw.Mode.EXTERNAL_PROVIDER
+    report = {'started_at': datetime.now(timezone.utc).isoformat(), 'provider': gateway.adapter.name,
+              'mode': gateway.config.mode.value, 'provider_configured': configured, 'fields': list(fields),
               'limit': args.limit, 'dry_run': args.dry_run,
               'processed': 0, 'available': 0, 'errors': 0, 'skipped_no_source_text': 0, 'items': []}
 
@@ -100,8 +110,8 @@ def main(argv=None):
         report['candidates'] = len(items)
 
         if not configured:
-            report['status'] = 'no_provider_configured'
-            report['note'] = ('Set NEWS_TRANSLATION_PROVIDER and NEWS_TRANSLATION_API_KEY to enable. '
+            report['status'] = 'provider_not_configured'
+            report['note'] = ('Set AI_PROVIDER and AI_API_KEY to enable. '
                               'No text was written; every field stays pending.')
             print(json.dumps(report, ensure_ascii=False, indent=2))
             return 0
@@ -118,13 +128,17 @@ def main(argv=None):
             entry = {'item_id': item['item_id'], 'fields': {}}
             for field in item['missing']:
                 text = source_text(item, field)
-                kind = 'summary' if field == 'summary' else 'translation'
-                result = run_task(provider, kind, text)
-                record(conn, item['item_id'], field, item['content_version'], result)
+                if field == 'summary':
+                    result = ci.summarize_news(text, gateway=gateway)
+                else:
+                    result = ci.translate_to_persian(text, gateway=gateway)
+                record(conn, item['item_id'], field, item['content_version'], text, result)
                 entry['fields'][field] = result['status']
                 report['processed'] += 1
                 if result['status'] == 'available':
                     report['available'] += 1
+                elif result['status'] == 'error' and result.get('error') == 'no_source_text':
+                    report['skipped_no_source_text'] += 1
                 elif result['status'] == 'error':
                     report['errors'] += 1
                 elif result['status'] == 'unavailable':
