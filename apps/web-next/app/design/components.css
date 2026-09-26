@@ -225,6 +225,12 @@ table.data-table { width: 100%; border-collapse: collapse; text-align: right; fo
 .news-detail-text p { font-size: var(--text-base); color: var(--text-secondary); line-height: var(--line-loose); margin-bottom: var(--space-4); overflow-wrap: anywhere; }
 .news-detail-text-ltr { text-align: left; }
 .news-detail-provider { font-size: var(--text-xs) !important; color: var(--text-tertiary) !important; border-top: 1px solid var(--border-subtle); padding-top: var(--space-3); display: flex; align-items: center; gap: var(--space-2); }
+.news-detail-why-matters { font-size: var(--text-sm); color: var(--accent-strong); background: var(--accent-soft); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-3); line-height: var(--line-normal); }
+.news-detail-executive-summary { font-size: var(--text-md); color: var(--text-primary); font-weight: var(--weight-medium); margin-bottom: var(--space-4); line-height: var(--line-normal); }
+.news-detail-key-points { margin-bottom: var(--space-5); }
+.news-detail-key-points strong { display: block; margin-bottom: var(--space-2); color: var(--text-primary); }
+.news-detail-key-points ul { display: grid; gap: var(--space-2); padding-inline-start: 1.2em; list-style: disc; }
+.news-detail-key-points li { font-size: var(--text-sm); color: var(--text-secondary); line-height: var(--line-normal); }
 .news-detail-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--space-3); }
 .news-detail-gallery img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); }
 .news-detail-documents { display: grid; gap: var(--space-2); }

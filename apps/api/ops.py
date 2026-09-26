@@ -484,6 +484,9 @@ def register_ops(app):
         item['media']=_media_block(item_id)
         item['classification_detail']=_classification_block(item_id)
         item['events']=_item_events_block(item_id)
+        item['key_points']=objects('''SELECT point_index,text_fa,evidence_span,evidence_verified,confidence
+            FROM content_key_points WHERE item_id=%s AND superseded_at IS NULL ORDER BY point_index''',
+            ['point_index','text_fa','evidence_span','evidence_verified','confidence'],(item_id,))
         item['provenance']=objects('SELECT feed_url,execution_reference,evidence_status,evidence_json FROM news_item_provenance WHERE item_id=%s',['feed_url','execution_reference','evidence_status','evidence_json'],(item_id,))
         return item
 
@@ -562,8 +565,10 @@ def register_ops(app):
             FROM news_item_translations WHERE item_id=%s''',
             ['field','target_language','status','text','provider','model','content_version','source_chars','error','updated_at'],(item_id,))
         found={r['field']:r for r in rows}
-        for field in ('title','summary','body'):
-            found.setdefault(field,{'field':field,'target_language':'fa','status':'pending','text':None,
+        cfg_mode=aig.load_config().mode
+        default_status='not_generated' if cfg_mode in (aig.Mode.EXTERNAL_PROVIDER,aig.Mode.LOCAL) else 'provider_not_configured'
+        for field in ('title','summary','body','executive_summary','why_it_matters'):
+            found.setdefault(field,{'field':field,'target_language':'fa','status':default_status,'text':None,
                 'provider':None,'model':None,'content_version':None,'source_chars':None,'error':None,'updated_at':None})
         return found
 

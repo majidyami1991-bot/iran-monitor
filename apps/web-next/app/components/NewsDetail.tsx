@@ -23,6 +23,9 @@ export function NewsDetail({ item }: { item: NewsDetailItem }) {
   const titleFa = item.translations?.title;
   const summaryFa = item.translations?.summary;
   const bodyFa = item.translations?.body;
+  const executiveSummaryFa = item.translations?.executive_summary;
+  const whyItMattersFa = item.translations?.why_it_matters;
+  const keyPoints = item.key_points || [];
   const content = item.content;
   const bodyAvailable = content?.display_policy === 'full_syndicated' && content.original_text;
   const events = item.events || [];
@@ -71,21 +74,45 @@ export function NewsDetail({ item }: { item: NewsDetailItem }) {
 
       <div className="news-detail-panel">
         {tab === 'translation' && (
-          bodyFa?.status === 'available' && bodyFa.text ? (
-            <div dir="rtl" className="news-detail-text">
-              {bodyFa.text.split('\n').filter(Boolean).map((p, i) => <p key={i}>{p}</p>)}
-              <p className="news-detail-provider">ارائه‌دهنده: {bodyFa.provider} · مدل: {bodyFa.model} <span className="machine-tag">ترجمه ماشینی</span></p>
-            </div>
-          ) : summaryFa?.status === 'available' && summaryFa.text ? (
-            <div dir="rtl" className="news-detail-text">
-              <p>{summaryFa.text} <span className="machine-tag">ترجمه ماشینی</span></p>
-              <p className="chart-caption">ترجمه کامل متن هنوز تولید نشده؛ فقط خلاصه فارسی در دسترس است.</p>
-            </div>
-          ) : (
-            <EmptyState title="ترجمه فارسی هنوز آماده نیست">
-              {bodyFa?.error ? `خطای ثبت‌شده: ${bodyFa.error}` : 'ارائه‌دهنده ترجمه هنوز فعال نشده است؛ تا فعال‌سازی متنی تولید نمی‌شود.'}
-            </EmptyState>
-          )
+          <>
+            {(whyItMattersFa?.status === 'available' && whyItMattersFa.text) && (
+              <p className="news-detail-why-matters" dir="rtl"><strong>چرا مهم است؟</strong> {whyItMattersFa.text} <span className="machine-tag">ترجمه ماشینی</span></p>
+            )}
+            {(executiveSummaryFa?.status === 'available' && executiveSummaryFa.text) && (
+              <p className="news-detail-executive-summary" dir="rtl"><strong>خلاصه مدیریتی:</strong> {executiveSummaryFa.text} <span className="machine-tag">ترجمه ماشینی</span></p>
+            )}
+            {keyPoints.length > 0 && (
+              <div className="news-detail-key-points" dir="rtl">
+                <strong>نکات کلیدی</strong>
+                <ul>
+                  {keyPoints.map((kp) => (
+                    <li key={kp.point_index} title={'شاهد: ' + kp.evidence_span}>
+                      {kp.text_fa}
+                      {!kp.evidence_verified && <Badge tone="error">شاهد تأییدنشده</Badge>}
+                    </li>
+                  ))}
+                </ul>
+                <span className="machine-tag">ترجمه ماشینی</span>
+              </div>
+            )}
+            {bodyFa?.status === 'available' && bodyFa.text ? (
+              <div dir="rtl" className="news-detail-text">
+                {bodyFa.text.split('\n').filter(Boolean).map((p, i) => <p key={i}>{p}</p>)}
+                <p className="news-detail-provider">ارائه‌دهنده: {bodyFa.provider} · مدل: {bodyFa.model} <span className="machine-tag">ترجمه ماشینی</span></p>
+              </div>
+            ) : summaryFa?.status === 'available' && summaryFa.text ? (
+              <div dir="rtl" className="news-detail-text">
+                <p>{summaryFa.text} <span className="machine-tag">ترجمه ماشینی</span></p>
+                <p className="chart-caption">ترجمه کامل متن هنوز تولید نشده؛ فقط خلاصه فارسی در دسترس است.</p>
+              </div>
+            ) : !keyPoints.length && !(executiveSummaryFa?.status === 'available') && !(whyItMattersFa?.status === 'available') ? (
+              <EmptyState title={bodyFa?.status === 'provider_not_configured' ? 'ارائه‌دهنده ترجمه تنظیم نشده است' : 'ترجمه فارسی هنوز آماده نیست'}>
+                {bodyFa?.status === 'provider_not_configured'
+                  ? 'ارائه‌دهنده هوش مصنوعی فعال نیست؛ تا پیکربندی، متنی تولید نمی‌شود.'
+                  : (bodyFa?.error ? `خطای ثبت‌شده: ${bodyFa.error}` : 'این خبر هنوز در صف پردازش قرار نگرفته است.')}
+              </EmptyState>
+            ) : null}
+          </>
         )}
         {tab === 'original' && (
           bodyAvailable ? (

@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   Activity, Newspaper, Globe2, Hash, ChartNoAxesCombined, HeartPulse, Info,
-  Search, Menu, ChevronLeft, Radio, Link2, LayoutGrid,
+  Search, Menu, ChevronLeft, Radio, Link2, LayoutGrid, ClipboardCheck,
 } from 'lucide-react';
 
 const NAV: [string, typeof Activity, string][] = [
@@ -13,6 +13,7 @@ const NAV: [string, typeof Activity, string][] = [
   ['دسته‌بندی‌ها', LayoutGrid, '/categories'],
   ['موضوعات', Hash, '/topics'],
   ['رویدادها', Link2, '/events'],
+  ['بازبینی محتوا', ClipboardCheck, '/review/content'],
   ['منابع', Globe2, '/sources'],
   ['تحلیل آماری', ChartNoAxesCombined, '/analytics'],
   ['وضعیت پایش', HeartPulse, '/monitoring'],

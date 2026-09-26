@@ -1,0 +1,26 @@
+{
+  "version": "1.0.0",
+  "created_at": "2026-09-26",
+  "purpose": "Versioned, sanitized evaluation set for Content Intelligence. Contains only public news headlines (no full article bodies, no copyrighted content, no PII) and hand-written generic Persian sentences.",
+  "acceptance_thresholds": {
+    "language_detection_accuracy": 0.95,
+    "note": "Recorded before running the evaluation, per the brief's explicit rule against issuing a PASS after the fact without a pre-committed threshold."
+  },
+  "language_detection_cases": [
+    {"text": "Türkiye follows Ukraine, adapts anti-tank missile against drones", "expected": "en"},
+    {"text": "Netherlands to build anti-drone laser with Australia's EOS", "expected": "en"},
+    {"text": "Hundreds of Thousands Rally in Iran in Biggest Show of Defiance Since War Began", "expected": "en"},
+    {"text": "Iran's Revolutionary Guards Mobilize One Million Citizens", "expected": "en"},
+    {"text": "Radiation Levels Rose 80-Fold: Russia Attacked Ukraine With Uranium-Equipped Drones", "expected": "en"},
+    {"text": "U.S. Targets Regime's Revenue Stream Hitting Five Iranian Oil Tankers", "expected": "en"},
+    {"text": "Congressional Report on Potential TBIs, Mental Health Risks in Naval Aviation", "expected": "en"},
+    {"text": "U.S. Department of State approves $425 million MH-60R Seahawk sale to bolster Denmark's homeland defense", "expected": "en"},
+    {"text": "این یک متن نمونه فارسی درباره تحولات منطقه‌ای است.", "expected": "fa"},
+    {"text": "نیروی هوایی اسرائیل در تاریخ ۱۵ مارس ۲۰۲۶ نزدیک مرز حمله کرد.", "expected": "fa"},
+    {"text": "ناتو این اقدام را محکوم کرد و خواستار آرامش شد.", "expected": "fa"},
+    {"text": "مقامات سه کشته و دو و نیم میلیون دلار خسارت را تأیید کردند.", "expected": "fa"},
+    {"text": "وزارت خارجه بیانیه‌ای در خصوص تحریم‌های جدید صادر کرد.", "expected": "fa"},
+    {"text": "", "expected": "unknown"},
+    {"text": "12345 67890 !!! ???", "expected": "unknown"}
+  ]
+}

@@ -89,12 +89,16 @@ const FIELD_LABEL: Record<string, string> = {
   available: 'موجود', pending: 'در صف', unavailable: 'ناموجود',
   error: 'خطا', not_processed: 'پردازش‌نشده', summary_only: 'فقط خلاصه',
   full_syndicated: 'متن کامل', link_only: 'فقط پیوند',
+  not_generated: 'تولید نشده', provider_not_configured: 'ارائه‌دهنده تنظیم نشده',
+  needs_review: 'نیازمند بازبینی', pending_review: 'در صف بازبینی',
+  approved: 'تأییدشده', rejected: 'ردشده', not_applicable: '—',
 };
 const FIELD_TONE: Record<string, 'accent' | 'default' | 'muted' | 'error'> = {
-  available: 'accent', full_syndicated: 'accent',
-  pending: 'default', summary_only: 'default',
+  available: 'accent', full_syndicated: 'accent', approved: 'accent',
+  pending: 'default', summary_only: 'default', pending_review: 'default',
   unavailable: 'muted', not_processed: 'muted', link_only: 'muted',
-  error: 'error',
+  not_generated: 'muted', provider_not_configured: 'muted', not_applicable: 'muted',
+  error: 'error', rejected: 'error', needs_review: 'error',
 };
 export function FieldStatus({ label, status, title }: { label: string; status?: string | null; title?: string }) {
   const key = status || 'unavailable';

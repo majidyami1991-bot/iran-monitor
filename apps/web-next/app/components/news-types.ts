@@ -95,6 +95,14 @@ export interface EventMembership {
   membership_reason: { shared_entities?: string[]; total?: number } | null;
 }
 
+export interface KeyPoint {
+  point_index: number;
+  text_fa: string;
+  evidence_span: string;
+  evidence_verified: boolean;
+  confidence: number | null;
+}
+
 export interface NewsDetailItem extends Omit<NewsListItem, 'source_category'> {
   source_url?: string | null;
   feed_url?: string | null;
@@ -103,5 +111,6 @@ export interface NewsDetailItem extends Omit<NewsListItem, 'source_category'> {
   media?: { images: MediaItem[]; documents: MediaItem[]; filtered_out: { url: string; relevance: string; rejection_reason: string | null }[]; note?: string };
   classification_detail?: ClassificationDetail;
   events?: EventMembership[];
+  key_points?: KeyPoint[];
   provenance?: { feed_url: string; execution_reference: string; evidence_status: string; evidence_json: unknown }[];
 }
