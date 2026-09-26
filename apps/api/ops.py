@@ -11,6 +11,7 @@ import psycopg
 from fastapi import HTTPException, Query, Response
 import classify_v2 as cv
 import ai_gateway as aig
+import enrichment_worker as ew
 
 DSN=os.environ['DATABASE_URL']
 INTERVAL=int(os.getenv('NEWS_COLLECTION_INTERVAL_SECONDS','900'))
@@ -243,6 +244,7 @@ ALTER TABLE news_item_translations ADD COLUMN IF NOT EXISTS quality_score real;
 ALTER TABLE news_item_translations ADD COLUMN IF NOT EXISTS quality_flags jsonb NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE news_item_translations ADD COLUMN IF NOT EXISTS review_status text NOT NULL DEFAULT 'not_applicable';
 ALTER TABLE news_item_translations ADD COLUMN IF NOT EXISTS reviewed_by text;
+ALTER TABLE news_item_translations ADD COLUMN IF NOT EXISTS reviewed_at timestamptz;
 ALTER TABLE news_item_translations ADD COLUMN IF NOT EXISTS superseded_at timestamptz;
 
 -- Append-only history: the "current" row above may be updated in place (as
@@ -808,6 +810,138 @@ def register_ops(app):
             ['status','count'])
         return {'window_days':days,'rows':rows,'spent_today_usd':today,
             'daily_budget_usd':aig.load_config().daily_budget_usd,'recent_non_success_statuses':errors}
+
+    # Aliases at the exact paths the Content Intelligence phase brief names;
+    # both point at the same handler as the AI Gateway phase's own endpoints
+    # above, so there is exactly one implementation to keep correct.
+    app.get('/api/v1/ai/status')(ai_provider_status)
+    app.get('/api/v1/ai/usage')(ai_cost_usage)
+
+    _TRANSLATION_FIELDS=('title','body','summary','executive_summary','why_it_matters')
+
+    def _content_intelligence_block(item_id):
+        rows=objects(f'''SELECT field,status,text,provider,model,prompt_version,content_version,
+            quality_score,quality_flags,review_status,reviewed_by,reviewed_at,human_reviewed,
+            superseded_at,updated_at FROM news_item_translations
+            WHERE item_id=%s AND target_language='fa' ''',
+            ['field','status','text','provider','model','prompt_version','content_version','quality_score',
+             'quality_flags','review_status','reviewed_by','reviewed_at','human_reviewed','superseded_at','updated_at'],
+            (item_id,))
+        by_field={r['field']:r for r in rows}
+        for field in _TRANSLATION_FIELDS:
+            by_field.setdefault(field,{'field':field,'status':'not_generated','text':None,'provider':None,
+                'model':None,'prompt_version':None,'content_version':None,'quality_score':None,'quality_flags':[],
+                'review_status':'not_applicable','reviewed_by':None,'reviewed_at':None,'human_reviewed':False,
+                'superseded_at':None,'updated_at':None})
+        key_points=objects('''SELECT point_id,point_index,text_fa,evidence_span,evidence_verified,confidence,
+            provider,model,prompt_version,content_version,created_at FROM content_key_points
+            WHERE item_id=%s AND superseded_at IS NULL ORDER BY point_index''',
+            ['point_id','point_index','text_fa','evidence_span','evidence_verified','confidence',
+             'provider','model','prompt_version','content_version','created_at'],(item_id,))
+        return by_field,key_points
+
+    @app.get('/api/v1/news/{item_id}/content-intelligence')
+    def content_intelligence_detail(item_id:str):
+        rows=q('SELECT n.title,n.content_language,COALESCE(n.summary_text,n.summary) FROM news_items n WHERE n.item_id=%s',(item_id,))
+        if not rows:raise HTTPException(404,'news_item_not_found')
+        title,content_language,summary=rows[0]
+        content_row=q('SELECT original_text,original_language FROM news_item_content WHERE item_id=%s',(item_id,))
+        original_text=content_row[0][0] if content_row else None
+        original_language=(content_row[0][1] if content_row else None) or content_language
+        by_field,key_points=_content_intelligence_block(item_id)
+        classification=q('SELECT category_label,topics FROM item_classifications WHERE item_id=%s',(item_id,))
+        return {
+            'item_id':item_id,
+            # Deliberately not duplicated columns — see docs/CONTENT INTELLIGENCE
+            # ARCHITECTURE.md "Data model": these are read live from news_items /
+            # news_item_content, never copied, and are immutable from this API.
+            'original_title':title,'original_language':original_language,
+            'original_summary':summary,'original_content_excerpt':(original_text or '')[:2000] or None,
+            'translation':{f:by_field[f] for f in ('title','body') if f in by_field},
+            'summary':by_field.get('summary'),'executive_summary':by_field.get('executive_summary'),
+            'why_it_matters':by_field.get('why_it_matters'),'key_points':key_points,
+            'topics':{'category':classification[0][0] if classification else None,
+                      'entities':classification[0][1] if classification else []},
+        }
+
+    @app.get('/api/v1/review/content')
+    def review_content_queue(status:str|None=Query(None),source_id:str|None=None,
+            min_quality_score:float|None=None,field:str|None=None,
+            page:int=Query(1,ge=1),page_size:int=Query(30,ge=1,le=100)):
+        valid_statuses=('pending_review','needs_review','approved','rejected','not_applicable')
+        if status is not None and status not in valid_statuses:raise HTTPException(422,'invalid_status')
+        clauses=["t.target_language='fa'","t.status IN ('available','cached')"]
+        args=[]
+        clauses.append('t.review_status=%s');args.append(status or 'needs_review')
+        if source_id:clauses.append('n.source_id=%s');args.append(source_id)
+        if field:clauses.append('t.field=%s');args.append(field)
+        if min_quality_score is not None:clauses.append('t.quality_score>=%s');args.append(min_quality_score)
+        where=' WHERE '+' AND '.join(clauses)
+        total=q(f'SELECT count(*) FROM news_item_translations t JOIN news_items n USING(item_id){where}',args)[0][0]
+        rows=objects(f'''SELECT t.item_id,n.title,t.field,t.text,t.provider,t.model,t.prompt_version,
+            t.quality_score,t.quality_flags,t.review_status,t.reviewed_by,t.reviewed_at,t.updated_at,
+            COALESCE(NULLIF(s.display_name,''),s.hostname) source_name
+            FROM news_item_translations t JOIN news_items n USING(item_id) JOIN sources s ON s.source_id=n.source_id
+            {where} ORDER BY t.updated_at DESC LIMIT %s OFFSET %s''',
+            ['item_id','title','field','text','provider','model','prompt_version','quality_score','quality_flags',
+             'review_status','reviewed_by','reviewed_at','updated_at','source_name'],
+            args+[page_size,(page-1)*page_size])
+        return {'items':rows,'total':total,'page':page,'page_size':page_size,'status_filter':status or 'needs_review'}
+
+    def _require_translation_row(item_id,field):
+        row=q('''SELECT 1 FROM news_item_translations WHERE item_id=%s AND field=%s AND target_language='fa' ''',(item_id,field))
+        if not row:raise HTTPException(404,'translation_row_not_found')
+
+    @app.post('/api/v1/review/content/{item_id}/approve')
+    def review_approve(item_id:str,field:str=Query(...),reviewed_by:str=Query(...)):
+        _require_translation_row(item_id,field)
+        with psycopg.connect(DSN) as c:
+            c.execute('''UPDATE news_item_translations SET review_status='approved',reviewed_by=%s,
+                reviewed_at=now(),human_reviewed=true,human_reviewed_at=now()
+                WHERE item_id=%s AND field=%s AND target_language='fa' ''',(reviewed_by,item_id,field))
+        return {'item_id':item_id,'field':field,'review_status':'approved','reviewed_by':reviewed_by}
+
+    @app.post('/api/v1/review/content/{item_id}/reject')
+    def review_reject(item_id:str,field:str=Query(...),reviewed_by:str=Query(...),reason:str=Query(...)):
+        _require_translation_row(item_id,field)
+        with psycopg.connect(DSN) as c:
+            c.execute('''UPDATE news_item_translations SET review_status='rejected',reviewed_by=%s,
+                reviewed_at=now(),human_reviewed=true,human_reviewed_at=now(),
+                quality_flags=quality_flags||%s::jsonb
+                WHERE item_id=%s AND field=%s AND target_language='fa' ''',
+                (reviewed_by,json.dumps([f'human_rejected: {reason[:200]}'],ensure_ascii=False),item_id,field))
+        return {'item_id':item_id,'field':field,'review_status':'rejected','reviewed_by':reviewed_by,'reason':reason}
+
+    @app.post('/api/v1/review/content/{item_id}/edit')
+    def review_edit(item_id:str,field:str=Query(...),reviewed_by:str=Query(...),text:str=Query(...)):
+        _require_translation_row(item_id,field)
+        if field not in _TRANSLATION_FIELDS:raise HTTPException(422,'invalid_field')
+        with psycopg.connect(DSN,autocommit=True) as c:
+            version=c.execute('''SELECT content_version FROM news_item_translations
+                WHERE item_id=%s AND field=%s AND target_language='fa' ''',(item_id,field)).fetchone()
+            new_version=(version[0] or 1)+1
+            c.execute('''INSERT INTO news_item_translation_history(item_id,field,target_language,content_version,
+                status,text,provider,model,prompt_version) VALUES(%s,%s,'fa',%s,'available',%s,'human',NULL,NULL)''',
+                (item_id,field,new_version,text))
+            c.execute('''UPDATE news_item_translations SET text=%s,status='available',provider='human',model=NULL,
+                content_version=%s,review_status='approved',reviewed_by=%s,reviewed_at=now(),
+                human_reviewed=true,human_reviewed_at=now(),updated_at=now()
+                WHERE item_id=%s AND field=%s AND target_language='fa' ''',
+                (text,new_version,reviewed_by,item_id,field))
+        return {'item_id':item_id,'field':field,'review_status':'approved','reviewed_by':reviewed_by,'text':text}
+
+    @app.post('/api/v1/review/content/{item_id}/regenerate')
+    def review_regenerate(item_id:str,field:str=Query(...)):
+        if field not in _TRANSLATION_FIELDS:raise HTTPException(422,'invalid_field')
+        with psycopg.connect(DSN) as c:
+            c.execute('''UPDATE news_item_translations SET human_reviewed=false
+                WHERE item_id=%s AND field=%s AND target_language='fa' ''',(item_id,field))
+        cfg=aig.load_config()
+        if cfg.mode!=aig.Mode.EXTERNAL_PROVIDER and cfg.mode!=aig.Mode.LOCAL:
+            return {'item_id':item_id,'field':field,'status':'provider_not_configured',
+                'note':'No AI provider is configured; regeneration was not attempted and no text was written.'}
+        outcome=ew.process_translation(item_id)
+        return {'item_id':item_id,'field':field,'status':'regeneration_attempted','worker_outcome':outcome}
 
     @app.get('/api/v1/taxonomy/v1')
     def taxonomy_v1():return TAX
