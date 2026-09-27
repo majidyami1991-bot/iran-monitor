@@ -250,6 +250,33 @@ def _redact(text):
     return re.sub(r'\s+', ' ', text)[:200]
 
 
+def _classify_http_status(code):
+    """OpenRouter (and most OpenAI-compatible providers) error classification
+    — used only by adapters that opt in via _post_json's classify_error
+    argument, so this never changes the generic http_<code> behavior other
+    adapters already rely on."""
+    if code == 400:
+        return 'request_invalid'
+    if code == 401:
+        return 'authentication_failed'
+    if code == 402:
+        return 'insufficient_credits'
+    if code == 403:
+        return 'provider_forbidden'
+    if code == 404:
+        return 'request_invalid'  # e.g. an unknown model slug
+    if code == 408:
+        return 'transient_timeout'
+    if code == 429:
+        return 'rate_limited'
+    if 500 <= code < 600:
+        return 'provider_unavailable'
+    return f'http_{code}'
+
+
+_RETRYABLE_CLASSES = ('transient_timeout', 'rate_limited', 'provider_unavailable')
+
+
 class OpenAICompatibleAdapter(Adapter):
     name = 'openai_compatible'
 
@@ -310,12 +337,110 @@ class LocalModelAdapter(OpenAICompatibleAdapter):
         self.api_key, self.base, self.model, self.timeout = (api_key or 'local'), base_url.rstrip('/'), model, timeout
 
 
+class OpenRouterAdapter(Adapter):
+    """https://openrouter.ai — an OpenAI-compatible chat-completions
+    endpoint that proxies many underlying model providers. Kept as its own
+    adapter (not reused from OpenAICompatibleAdapter) because it needs
+    OpenRouter-specific HTTP status classification (notably 402 for
+    insufficient account credit, which standard OpenAI-compatible servers
+    don't define) and a single bounded retry for genuinely transient
+    failures only — behavior that must never leak into the generic
+    OpenAICompatibleAdapter other deployments rely on.
+
+    No `HTTP-Referer` header is sent: this deployment has no public URL to
+    honestly report, and OpenRouter's own docs list it as optional
+    (attribution-only, purely cosmetic on OpenRouter's own site) — sending a
+    fabricated one would violate this project's standing rule against
+    inventing values. `X-Title` is sent since a fixed, true product name
+    ("Iran Monitor") is not fabricated data.
+    """
+    name = 'openrouter'
+    _MAX_RETRY_AFTER_SECONDS = 5  # never let a provider's Retry-After stall a pilot run
+
+    def __init__(self, api_key, base_url, model, timeout):
+        if not api_key:
+            raise GatewayError('provider_api_key_missing')
+        self.api_key = api_key
+        self.base = (base_url or 'https://openrouter.ai/api/v1').rstrip('/')
+        self.model = model
+        self.timeout = timeout
+        self.total_retries = 0  # observable by callers (e.g. translate_worker's report); never affects behavior
+
+    def complete(self, system, user):
+        try:
+            return self._call_once(system, user)
+        except GatewayError as exc:
+            reason = str(exc).split(':', 1)[0]
+            if reason not in _RETRYABLE_CLASSES:
+                raise
+            self.total_retries += 1
+            time.sleep(min(getattr(exc, 'retry_after_seconds', 1) or 1, self._MAX_RETRY_AFTER_SECONDS))
+            return self._call_once(system, user)  # exactly one retry; a second failure propagates as-is
+
+    def _call_once(self, system, user):
+        opener = build_opener(ProxyHandler())
+        headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {self.api_key}', 'X-Title': 'Iran Monitor'}
+        body = json.dumps({
+            'model': self.model, 'temperature': 0, 'response_format': {'type': 'json_object'},
+            'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}],
+        }, ensure_ascii=False).encode('utf-8')
+        request = Request(f'{self.base}/chat/completions', data=body, headers=headers)
+        try:
+            with opener.open(request, timeout=self.timeout) as response:
+                data = json.loads(response.read().decode('utf-8'))
+        except HTTPError as exc:
+            detail = ''
+            try:
+                detail = exc.read()[:200].decode('utf-8', 'replace')
+            except Exception:
+                pass
+            reason = _classify_http_status(exc.code)
+            err = GatewayError(f'{reason}:{_redact(detail)}')
+            retry_after = exc.headers.get('Retry-After') if getattr(exc, 'headers', None) else None
+            try:
+                err.retry_after_seconds = float(retry_after) if retry_after else None
+            except ValueError:
+                err.retry_after_seconds = None
+            raise err from exc
+        except TimeoutError as exc:
+            raise GatewayError(f'transient_timeout:{_redact(str(exc))}') from exc
+        except (URLError, ValueError) as exc:
+            raise GatewayError(f'{type(exc).__name__}:{_redact(str(exc))}') from exc
+        try:
+            text = data['choices'][0]['message']['content'].strip()
+            usage = data.get('usage', {})
+            return AdapterResponse(text, usage.get('prompt_tokens'), usage.get('completion_tokens'))
+        except (KeyError, IndexError, AttributeError, TypeError) as exc:
+            raise GatewayError('unexpected_response_shape') from exc
+
+
 ADAPTER_REGISTRY = {
     'openai_compatible': OpenAICompatibleAdapter,
     'openai': OpenAICompatibleAdapter,
     'azure_openai': AzureOpenAIAdapter,
     'anthropic': AnthropicAdapter,
+    'openrouter': OpenRouterAdapter,
 }
+
+# Models this project has actually reviewed and approved for use, per
+# provider. build_adapter() never substitutes an unlisted model for a listed
+# one — an unapproved AI_MODEL_* value is a configuration error to fix, not
+# something this code silently works around. See docs/AI PROVIDER
+# CONFIGURATION.md and docs/OPENROUTER PROVIDER ADAPTER.md.
+APPROVED_MODELS = {
+    'anthropic': {'claude-sonnet-5', 'claude-haiku-4-5'},
+    'openrouter': {'anthropic/claude-haiku-4.5', 'anthropic/claude-sonnet-5'},
+}
+
+
+def model_is_approved(provider, model):
+    """True if `model` is on this project's reviewed allowlist for
+    `provider`, or if that provider has no allowlist defined (e.g. `local`,
+    where the model is whatever the operator's own self-hosted server
+    exposes). Never used to pick a substitute — only to gate whether a call
+    should be attempted at all."""
+    allowlist = APPROVED_MODELS.get(provider)
+    return True if allowlist is None else model in allowlist
 
 # One breaker per adapter *name*, shared across requests in this process —
 # a run of failures against one provider must not need a fresh gateway
@@ -339,6 +464,11 @@ def _breaker_for(name):
 _PRICE_PER_MILLION_TOKENS_USD = {
     'claude-sonnet-5': (2.0, 10.0), 'claude-haiku-4-5': (1.0, 5.0),
     'gpt-4o-mini': (0.15, 0.6), 'gpt-4o': (2.5, 10.0),
+    # OpenRouter model slugs (provider-prefixed) — same underlying model
+    # pricing as the direct-Anthropic entries above, listed separately
+    # because the slug string itself differs ("anthropic/claude-..." vs
+    # "claude-...") and this table is matched by prefix, not by identity.
+    'anthropic/claude-haiku-4.5': (1.0, 5.0), 'anthropic/claude-sonnet-5': (2.0, 10.0),
 }
 
 
@@ -408,7 +538,8 @@ def build_adapter(config: GatewayConfig) -> Adapter:
 
 
 def _default_base_url(provider):
-    return {'anthropic': 'https://api.anthropic.com/v1', 'azure_openai': ''}.get(provider, 'https://api.openai.com/v1')
+    return {'anthropic': 'https://api.anthropic.com/v1', 'azure_openai': '',
+            'openrouter': 'https://openrouter.ai/api/v1'}.get(provider, 'https://api.openai.com/v1')
 
 
 # --------------------------------------------------------------------------- concurrency limiter
@@ -511,7 +642,7 @@ class AIGateway:
             return self._finish(GatewayResult('error', None, self.adapter.name, self._model_for(request.task_type),
                                                 prompt_version, request.task_type, digest, error='max_concurrency_wait_timeout'))
         try:
-            if isinstance(self.adapter, (OpenAICompatibleAdapter, AnthropicAdapter)):
+            if isinstance(self.adapter, (OpenAICompatibleAdapter, AnthropicAdapter, OpenRouterAdapter)):
                 self.adapter.model = self._model_for(request.task_type) or self.adapter.model
             response = self.adapter.complete(system, request.content)
         except GatewayError as exc:
