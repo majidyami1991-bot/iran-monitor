@@ -16,6 +16,7 @@ import psycopg
 
 import ai_gateway as gw
 import content_intelligence as ci
+import enrichment_worker as ew
 
 FIELDS = ('title', 'summary', 'body')
 BODY_MAX_CHARS = int(os.getenv('NEWS_TRANSLATION_BODY_MAX_CHARS', '12000'))
@@ -64,25 +65,17 @@ def source_text(item, field):
     return (item['body'] or '')[:BODY_MAX_CHARS] or None
 
 
-def record(conn, item_id, field, version, text, result):
-    from psycopg.types.json import Jsonb
-    validation = result.get('validation') or {}
-    quality_score = validation.get('quality_score')
-    quality_flags = validation.get('flags') or []
-    conn.execute('''INSERT INTO news_item_translations
-        (item_id,field,target_language,status,text,provider,model,content_version,source_chars,latency_ms,error,
-         input_text_sha256,prompt_version,quality_score,quality_flags)
-        VALUES(%s,%s,'fa',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-        ON CONFLICT(item_id,field,target_language) DO UPDATE SET
-        status=EXCLUDED.status,text=EXCLUDED.text,provider=EXCLUDED.provider,model=EXCLUDED.model,
-        content_version=EXCLUDED.content_version,source_chars=EXCLUDED.source_chars,
-        latency_ms=EXCLUDED.latency_ms,error=EXCLUDED.error,input_text_sha256=EXCLUDED.input_text_sha256,
-        prompt_version=EXCLUDED.prompt_version,quality_score=EXCLUDED.quality_score,
-        quality_flags=EXCLUDED.quality_flags,updated_at=now()
-        WHERE news_item_translations.human_reviewed IS NOT TRUE''',
-        (item_id, field, result['status'], result['text'], result.get('provider'), result.get('model'),
-         version, len(text or ''), result.get('latency_ms'), result.get('error'),
-         result.get('content_hash'), result.get('prompt_version'), quality_score, Jsonb(quality_flags)))
+def record(item_id, field, text, result):
+    """Delegates to enrichment_worker's single persistence implementation —
+    append-only history row first, then the fast-read current row, with
+    review_status set from validation (needs_review on a failed check,
+    pending_review on a pass, not_applicable when nothing was generated) and
+    the human_reviewed lock respected. translate_worker used to carry its
+    own, simpler INSERT here that wrote no history row and never set
+    review_status at all; a second, diverging persistence path for the same
+    table is exactly how that kind of gap reappears, so this calls the one
+    real implementation instead of maintaining a second one."""
+    return ew._persist_translation_field(item_id, field, text, result)
 
 
 def main(argv=None):
@@ -140,8 +133,18 @@ def main(argv=None):
                               'prompt_version': None, 'content_hash': None, 'latency_ms': None, 'error': None,
                               'validation': None}
                 else:
+                    digest = gw.content_hash('translation', text, gw.LATEST_PROMPT_VERSION['translation'])
+                    existing = conn.execute('''SELECT status,input_text_sha256,human_reviewed
+                        FROM news_item_translations WHERE item_id=%s AND field=%s AND target_language='fa' ''',
+                        (item['item_id'], field)).fetchone()
+                    if existing and existing[2]:
+                        entry['fields'][field] = 'skipped_human_reviewed'
+                        continue
+                    if existing and existing[0] == 'available' and existing[1] == digest:
+                        entry['fields'][field] = 'unchanged_skip'
+                        continue
                     result = ci.translate_to_persian(text, gateway=gateway)
-                record(conn, item['item_id'], field, item['content_version'], text, result)
+                record(item['item_id'], field, text, result)
                 entry['fields'][field] = result['status']
                 report['processed'] += 1
                 if result['status'] == 'available':
