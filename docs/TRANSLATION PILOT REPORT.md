@@ -6,6 +6,40 @@ This report covers Stage B only: proving the real, end-to-end path
 PostgreSQL → API → UI → review queue` for title and summary translation of
 up to 20 items.
 
+## Continuation (2026-09-27, commit `acfea29`)
+
+A resume was authorized to attempt the actual pilot invocation. A fresh
+baseline was recorded, the manifest from `runtime/evidence/translation-pilot/`
+was re-validated **live against production** (recomputed every title/summary
+`content_hash`, re-checked every item still exists): **0/20 stale, 0 items
+with an existing successful translation** — the manifest was reused as-is,
+no rebuild needed (`MANIFEST_REUSED=true`, `MANIFEST_REBUILT=false`,
+`STALE_CANDIDATE_COUNT=0`).
+
+The read-only provider gate check was re-run and **still fails**: `.env` was
+checked for the *names/presence* of `AI_PROVIDER` and `AI_API_KEY` only —
+neither is set, and no value was read, printed, or logged at any point.
+`GET /api/v1/ai/provider-status` independently confirms
+`api_key_configured: false`. Per this stage's own rule, the run stopped
+**before any provider call** — full gate detail in
+`runtime/evidence/translation-pilot/dry-run-report-v2.json`.
+
+**A second real defect was found and fixed during this continuation's
+read-only architecture re-check** (before any provider call, exactly as
+required): `translate_worker.py`'s `record()` wrote only the fast-read
+current row via its own hand-rolled `INSERT` — it never wrote an append-only
+`news_item_translation_history` row, and never set `review_status` at all
+(it would have stayed at the column default `not_applicable` forever,
+regardless of whether validation passed). `enrichment_worker.py` already
+had the correct implementation (`_persist_translation_field`); rather than
+fix the duplicate logic in two places, `translate_worker.py` now calls that
+one implementation directly. 222/222 offline tests still pass. See commit
+`acfea29`.
+
+**Outcome of this continuation: still `BLOCKED_PROVIDER_NOT_CONFIGURED`.**
+Nothing else in §§1–8 below changes; they're preserved as the original
+Stage B record.
+
 ## Outcome: BLOCKED_PROVIDER_NOT_CONFIGURED
 
 No Anthropic API key is configured anywhere in this environment. Per this
