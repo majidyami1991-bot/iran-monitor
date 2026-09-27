@@ -55,8 +55,12 @@ def source_text(item, field):
     if field == 'title':
         return item['title']
     if field == 'summary':
-        # Summarise the fullest text available; fall back to the feed summary.
-        return (item['body'] or item['summary'] or '')[:BODY_MAX_CHARS] or None
+        # A literal translation of the source's own summary field only —
+        # never composed from body text. Mixing "translate the real summary"
+        # with "summarize the article" under one field/task would misrepresent
+        # translated_summary_fa as a faithful rendering of original_summary
+        # when it was actually an AI-authored rewrite of different material.
+        return item['summary'] or None
     return (item['body'] or '')[:BODY_MAX_CHARS] or None
 
 
@@ -128,8 +132,13 @@ def main(argv=None):
             entry = {'item_id': item['item_id'], 'fields': {}}
             for field in item['missing']:
                 text = source_text(item, field)
-                if field == 'summary':
-                    result = ci.summarize_news(text, gateway=gateway)
+                if field == 'summary' and not text:
+                    # Never invent a summary from other material when the
+                    # source didn't provide one — record the honest reason
+                    # and skip, rather than falling back to the article body.
+                    result = {'status': 'source_summary_missing', 'text': None, 'provider': None, 'model': None,
+                              'prompt_version': None, 'content_hash': None, 'latency_ms': None, 'error': None,
+                              'validation': None}
                 else:
                     result = ci.translate_to_persian(text, gateway=gateway)
                 record(conn, item['item_id'], field, item['content_version'], text, result)
@@ -137,6 +146,8 @@ def main(argv=None):
                 report['processed'] += 1
                 if result['status'] == 'available':
                     report['available'] += 1
+                elif result['status'] == 'source_summary_missing':
+                    report['skipped_no_source_text'] += 1
                 elif result['status'] == 'error' and result.get('error') == 'no_source_text':
                     report['skipped_no_source_text'] += 1
                 elif result['status'] == 'error':

@@ -18,6 +18,17 @@ services:
     command: uvicorn main:app --host 0.0.0.0 --port 3000
     environment:
       DATABASE_URL: postgresql://iran_monitor:${NEWS_DB_PASSWORD}@news-db:5432/iran_monitor
+      AI_PROVIDER: ${AI_PROVIDER:-disabled}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL_TRANSLATION: ${AI_MODEL_TRANSLATION:-}
+      AI_MODEL_SUMMARY: ${AI_MODEL_SUMMARY:-}
+      AI_MODEL_CLASSIFICATION: ${AI_MODEL_CLASSIFICATION:-}
+      AI_MODEL_SIGNAL_ANALYSIS: ${AI_MODEL_SIGNAL_ANALYSIS:-}
+      AI_MODEL_SCENARIO: ${AI_MODEL_SCENARIO:-}
+      AI_REQUEST_TIMEOUT: ${AI_REQUEST_TIMEOUT:-60}
+      AI_MAX_CONCURRENCY: ${AI_MAX_CONCURRENCY:-3}
+      AI_DAILY_BUDGET_LIMIT: ${AI_DAILY_BUDGET_LIMIT:-}
     volumes:
       - ../../runtime/live-rss/phase-8a:/ops-evidence:ro
       - news-collector-state:/state:ro
@@ -57,10 +68,14 @@ services:
     build: {context: ../.., dockerfile: apps/api/Dockerfile}
     environment:
       DATABASE_URL: postgresql://iran_monitor:${NEWS_DB_PASSWORD}@news-db:5432/iran_monitor
-      NEWS_TRANSLATION_PROVIDER: ${NEWS_TRANSLATION_PROVIDER:-none}
-      NEWS_TRANSLATION_API_KEY: ${NEWS_TRANSLATION_API_KEY:-}
-      NEWS_TRANSLATION_BASE_URL: ${NEWS_TRANSLATION_BASE_URL:-}
-      NEWS_TRANSLATION_MODEL: ${NEWS_TRANSLATION_MODEL:-}
+      AI_PROVIDER: ${AI_PROVIDER:-disabled}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL_TRANSLATION: ${AI_MODEL_TRANSLATION:-}
+      AI_MODEL_SUMMARY: ${AI_MODEL_SUMMARY:-}
+      AI_REQUEST_TIMEOUT: ${AI_REQUEST_TIMEOUT:-60}
+      AI_MAX_CONCURRENCY: ${AI_MAX_CONCURRENCY:-3}
+      AI_DAILY_BUDGET_LIMIT: ${AI_DAILY_BUDGET_LIMIT:-}
       NEWS_TRANSLATION_SLEEP_SECONDS: ${NEWS_TRANSLATION_SLEEP_SECONDS:-1.0}
     command: [python, /app/translate_worker.py, --limit, "5", --dry-run]
     depends_on: {news-db: {condition: service_healthy}}
