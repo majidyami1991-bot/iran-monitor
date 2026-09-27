@@ -55,10 +55,19 @@ Switching modes is an environment change. No call site's code changes.
 `Adapter` is the minimal interface (`complete(system, user) -> AdapterResponse`).
 Shipped adapters: `OpenAICompatibleAdapter`, `AzureOpenAIAdapter` (same wire
 shape, kept as a distinct name for audit clarity), `AnthropicAdapter`,
-`LocalModelAdapter` (OpenAI-compatible, no key required by default),
-`DisabledAdapter` (used for both `disabled` and `deterministic` modes —
-always raises `provider_not_configured` if ever called directly, though
-`AIGateway.run()` never lets it be called in those modes).
+`OpenRouterAdapter` (also OpenAI-compatible wire shape, kept distinct for its
+own HTTP status classification, single bounded retry, and headers — see
+`docs/OPENROUTER PROVIDER ADAPTER.md` for the full contract), `LocalModelAdapter`
+(OpenAI-compatible, no key required by default), `DisabledAdapter` (used for
+both `disabled` and `deterministic` modes — always raises
+`provider_not_configured` if ever called directly, though `AIGateway.run()`
+never lets it be called in those modes).
+
+`ai_gateway.APPROVED_MODELS` + `model_is_approved(provider, model)`: a
+per-provider allowlist of models this project has actually reviewed. A
+caller (currently `translate_worker.py`) checks this before proceeding —
+an unlisted model is a configuration error to stop and fix, never silently
+swapped for an approved one.
 
 Adding a sixth adapter — an independent translation-only provider, for
 example — means writing one class implementing `complete()` and registering
@@ -209,3 +218,13 @@ setting `AI_API_KEY` in `.env` alone would have had no effect on the running
 containers. Fixed; see `docs/TRANSLATION PILOT REPORT.md` §2 for the full
 finding and `docs/AI PROVIDER CONFIGURATION.md` for the up-to-date
 activation steps.
+
+## Stage B-OR note (OpenRouter adapter, live)
+
+The Gateway now has a real, tested `openrouter` adapter (see
+`docs/OPENROUTER PROVIDER ADAPTER.md`) and has been exercised against the
+live OpenRouter API — one real pilot invocation, one real call, correctly
+classified as `insufficient_credits` (the project's OpenRouter account had
+no balance) and halted immediately with no retry, no fallback model, and no
+fabricated success. See `docs/TRANSLATION PILOT REPORT.md`'s Stage B-OR
+section for the full result.

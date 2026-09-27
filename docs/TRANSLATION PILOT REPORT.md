@@ -6,6 +6,201 @@ This report covers Stage B only: proving the real, end-to-end path
 PostgreSQL → API → UI → review queue` for title and summary translation of
 up to 20 items.
 
+## Stage B-OR — OpenRouter (2026-09-27, commits `e39a144` and this docs commit)
+
+The project owner supplied a real OpenRouter API key (not a direct
+Anthropic key), so Stage B resumed with a new `OpenRouterAdapter`
+(`docs/OPENROUTER PROVIDER ADAPTER.md`) rather than the existing
+`AnthropicAdapter`. **A serious process incident happened during this
+work and is fully documented separately, not glossed over here**:
+`docs/INCIDENT - API KEY EXPOSURE IN SESSION OUTPUT.md` — a broken
+redaction command printed the (since-revoked) key to the session
+transcript. The project owner rotated the key themselves; the assistant
+never saw or handled either key's value in chat.
+
+### What was built this round
+
+- `OpenRouterAdapter` (real HTTP status classification, one bounded
+  retry for transient failures only, `X-Title` header, deliberately no
+  `HTTP-Referer` — see the adapter doc for why).
+- `ai_gateway.APPROVED_MODELS` / `model_is_approved()` — a real
+  allowlist gate, checked by `translate_worker.py` before any dry-run or
+  pilot proceeds; no automatic model substitution exists anywhere in
+  this codebase.
+- A real bug fixed: `AIGateway.run()`'s per-task model override didn't
+  recognize `OpenRouterAdapter` — see the adapter doc's closing section.
+- `translate_worker.py --manifest <path>`: runs against an exact,
+  externally-selected item set (this pilot's 20-item manifest) in
+  manifest order, instead of "whatever's newest" — required so the
+  entire pilot could be **one single invocation** covering exactly the
+  reviewed 20 candidates, per this stage's explicit "exactly one
+  invocation" rule.
+- Fatal-error short-circuit logic in `translate_worker.py`: an
+  `authentication_failed`/`insufficient_credits`/`provider_forbidden`/
+  `budget_exceeded`/`request_invalid` result (or the circuit breaker
+  opening) stops the remaining candidates immediately rather than
+  repeating the same doomed call up to 20 times; a >10% failure rate
+  (once at least 3 attempts have been made) does the same.
+- 15 new offline tests (`tests/monitoring/test_openrouter_adapter.py`) +
+  4 more (`test_translate_worker.py`, manifest ordering/cap). **241/241
+  offline tests pass.**
+
+### Provider configuration gate (read-only, before any call)
+
+Checked **only** via `GET /api/v1/ai/provider-status` on the freshly
+rebuilt `news-api` container — never via `grep`/`Get-Content`/`env`/
+`docker inspect`/`docker compose config` against `.env` or a container's
+environment:
+
+```json
+{"mode": "external_provider", "provider": "openrouter",
+ "models": {"translation": "anthropic/claude-haiku-4.5", "summary": "anthropic/claude-haiku-4.5"},
+ "daily_budget_usd": 1.0, "api_key_configured": true, "circuit_open": false}
+```
+
+Every field matches the required target state exactly. `model_is_approved`
+passed for both configured models (both are on `APPROVED_MODELS['openrouter']`).
+Only `news-api` was rebuilt/recreated as a running service;
+`news-translate`'s image was rebuilt (it must be, to run the pilot at all)
+but it was never `up -d`'d as a persistent service — it only ever ran as a
+single `docker compose run --rm` invocation, consistent with its
+`profiles: [tools]`, never-a-scheduler design. `news-db`/`news-web`/
+`news-collector`/OpenCTI were never recreated.
+
+### Manifest re-validation (read-only, live)
+
+The existing `runtime/evidence/translation-pilot/candidate-manifest.json`
+(20 items, 12 sources, built in the earlier Stage B round) was
+re-validated against current production data: **0/20 stale, 0 items with
+an existing successful translation** — reused as-is, no rebuild needed.
+
+### Dry run
+
+`provider calls=0`, `database writes=0`, 20/20 manifest items found in the
+DB and selected in manifest order. Estimated cost (character-count-based
+heuristic, since no real tokenizer is available offline): **~$0.046** for
+all 39 possible title+summary calls — well under the stage's $0.50 ceiling,
+so the pilot was authorized to proceed.
+
+### The one pilot invocation
+
+```
+docker compose ... run --rm -v ".../runtime/evidence/translation-pilot:/manifest:ro" \
+  news-translate python /app/translate_worker.py \
+  --manifest /manifest/candidate-manifest.json --fields title,summary --sleep 0.5
+```
+
+**Result: 1 real provider call made, then stopped immediately.** The very
+first call (translating item `178c6b8e…`'s title) returned HTTP 402 from
+OpenRouter, correctly classified as `insufficient_credits`
+("Insufficient credits. This account never purchased credits...") — the
+project's OpenRouter account has no balance. Per this stage's explicit
+rule, this is a **stop-immediately** condition: no retry was attempted (402
+is not in the retryable set), no alternative model was tried, and the
+remaining 19 candidates were never attempted.
+
+This is treated as the correct, honest outcome, not a failure to explain
+away: the full pipeline — Gateway config resolution, the real HTTP request
+to OpenRouter, error classification, audit logging, versioned/append-only
+persistence, and the fatal-stop rule — all worked exactly as designed. The
+only thing missing is OpenRouter account balance, which is a billing action
+for the project owner, not a code or configuration fix.
+
+### Verified after the one call
+
+| Check | Result |
+| --- | --- |
+| `ai_requests_log` rows | 1 (task=translation, provider=openrouter, model=anthropic/claude-haiku-4.5, status=error) |
+| `ai_response_cache` rows | 0 (an error is never cached) |
+| `news_item_translations` rows changed | 1 (`field=title`, `status=error`, `review_status=not_applicable`, `human_reviewed=false`) |
+| `news_item_translation_history` rows | 1 (append-only; `content_version=1`) |
+| Original `news_items.title` for the attempted item | Unchanged |
+| `GET /api/v1/news/{id}/content-intelligence` | Shows `title.status="error"`, `text=null`, correct provider/model attribution — no fabricated text, no raw error detail exposed to this endpoint |
+| `GET /api/v1/review/content?status=pending_review` | `total: 0` — correctly empty; nothing succeeded, so nothing is pending review |
+| `GET /api/v1/ai/usage` | 1 request, 0 succeeded, 0 tokens, `$0.00` spent, `daily_budget_usd: 1.0` |
+| `news_items` / `sources` counts | Grew only via the collector's normal schedule; unaffected by the pilot |
+| Collection scheduler | Unchanged (`NEWS_COLLECTION_ENABLED=true` throughout) |
+| Translation scheduler | Never enabled; `news-translate` only ever ran as one `--rm` invocation |
+| OpenCTI (14 containers) / `mlw-*` / `plane-preview-*` | Unchanged, running |
+| Secrets scan (`git diff` across this round's commits) | Clean — the only key-shaped string is a synthetic test fixture, and even that was caught and replaced after it was found to too closely resemble the (already revoked) leaked key — see the incident report |
+| `git diff --check` | Clean |
+
+### Five-sample manual evaluation
+
+**Not performed.** Only one real call was made and it failed before
+producing any translated text — there is no successful output to evaluate.
+This section will be completed once a pilot run actually produces text.
+
+### Report fields
+
+```
+PROVIDER_PROBE_COUNT: 0 (no separate probe mechanism exists in this project;
+  per this stage's own fallback rule, the first real pilot request served
+  as the de facto probe, under the same circuit-breaker/stop-on-failure
+  discipline as any other call)
+PROVIDER_PROBE_STATUS: n/a (see above — folded into the pilot's first call)
+MANIFEST_REUSED: true
+MANIFEST_REBUILT: false
+STALE_CANDIDATE_COUNT: 0
+PILOT_INVOCATION_COUNT: 1
+PILOT_CANDIDATE_COUNT: 20
+PILOT_ATTEMPTED_COUNT: 1
+PROVIDER_CALL_COUNT: 1
+RETRY_COUNT: 0
+CACHE_HIT_COUNT: 0
+CACHE_MISS_COUNT: 1
+TITLE_TRANSLATED_COUNT: 0
+SUMMARY_TRANSLATED_COUNT: 0
+SOURCE_SUMMARY_MISSING_COUNT: 0 (never reached — stopped on the first item's title)
+TRANSLATION_SUCCEEDED_COUNT: 0
+TRANSLATION_FAILED_COUNT: 1
+TRANSLATION_REJECTED_COUNT: 0
+NEEDS_REVIEW_COUNT: 0
+MACHINE_PUBLISHED_COUNT: 0
+AUTH_ERROR_COUNT: 0
+INSUFFICIENT_CREDITS_ERROR_COUNT: 1
+RATE_LIMIT_ERROR_COUNT: 0
+TRANSIENT_ERROR_COUNT: 0
+VALIDATION_ERROR_COUNT: 0
+NUMBER_PRESERVATION_PASSED: n/a (no real output)
+ENTITY_PRESERVATION_PASSED: n/a (no real output)
+NEGATION_PRESERVATION_PASSED: n/a (no real output)
+UNSUPPORTED_CLAIM_COUNT: n/a (no real output)
+AVERAGE_LATENCY_MS: not separately timed for the single failed call (no successful call to average)
+INPUT_TOKEN_COUNT: 0
+OUTPUT_TOKEN_COUNT: 0
+ESTIMATED_COST: 0.00 (confirmed via GET /api/v1/ai/usage)
+DAILY_BUDGET_REMAINING: 1.00 (of 1.00 configured — nothing spent)
+DATABASE_ITEM_COUNT_BEFORE: 1061
+DATABASE_ITEM_COUNT_AFTER: 1082 (normal collector growth only)
+DATABASE_TRANSLATION_COUNT_BEFORE: 80
+DATABASE_TRANSLATION_COUNT_AFTER: 81 (the one error row)
+TRANSLATION_HISTORY_COUNT_BEFORE: 0
+TRANSLATION_HISTORY_COUNT_AFTER: 1
+ORIGINAL_FIELDS_UNCHANGED: true
+TRANSLATION_HISTORY_APPEND_ONLY: true
+REVIEW_QUEUE_READY: true (correctly shows 0 pending — nothing succeeded)
+UI_MACHINE_TRANSLATION_LABEL_VERIFIED: n/a (no successful translation exists to label yet)
+COLLECTION_SCHEDULER_UNCHANGED: true
+TRANSLATION_SCHEDULER_ENABLED: false
+WORKER_RUNNING_AFTER: false
+OPENCTI_UNCHANGED: true
+UNRELATED_CONTAINERS_UNCHANGED: true
+SECRETS_EXPOSED: one, during preparation (not during the pilot call itself)
+  — fully documented in docs/INCIDENT - API KEY EXPOSURE IN SESSION OUTPUT.md;
+  contained, old key revoked, new key never exposed
+OFFLINE_TEST_COUNT: 241
+OFFLINE_TESTS_PASSED: 241
+GIT_COMMIT_CREATED: true
+GIT_COMMIT_HASHES: e39a144 (adapter/config/tests), plus this docs commit
+STAGE_B_OR_STATUS: PARTIAL — real end-to-end path proven against the live
+  provider; blocked short of a successful translation by the OpenRouter
+  account's own credit balance, not by this project's code
+NEXT_SAFE_ACTION: add credit to the OpenRouter account, then request a
+  fresh, separately-approved pilot invocation (not an automatic retry) —
+  the manifest, code, and dry-run are all already ready
+```
+
 ## Continuation (2026-09-27, commit `acfea29`)
 
 A resume was authorized to attempt the actual pilot invocation. A fresh

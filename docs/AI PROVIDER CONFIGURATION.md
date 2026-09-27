@@ -4,23 +4,37 @@ How to turn on real translation/summarization/key-point generation. Every
 step below is an environment change — no code change is needed anywhere in
 this project to activate a provider.
 
-## Current state (as of this phase)
+## Current state (as of Stage B-OR)
 
 ```json
 {
-  "mode": "disabled",
-  "provider": null,
-  "api_key_configured": false
+  "mode": "external_provider",
+  "provider": "openrouter",
+  "models": {"translation": "anthropic/claude-haiku-4.5", "summary": "anthropic/claude-haiku-4.5"},
+  "daily_budget_usd": 1.0,
+  "api_key_configured": true,
+  "circuit_open": false
 }
 ```
 
-(Live output of `GET /api/v1/ai/status`.) Nothing has been generated;
-`AI_PROVIDER` is unset in every running container and in the root `.env`.
+(Live output of `GET /api/v1/ai/provider-status`, checked exactly this way —
+never via `grep`/`Get-Content`/`docker inspect`/`docker compose config`
+against `.env` or the container's raw environment. See
+`docs/INCIDENT - API KEY EXPOSURE IN SESSION OUTPUT.md` for why that
+distinction matters.) **Configured, but not yet successfully connected**:
+the one real pilot call made so far returned `insufficient_credits` — the
+project's OpenRouter account has no balance. See
+`docs/TRANSLATION PILOT REPORT.md` for the full result. Adding credit at
+[openrouter.ai](https://openrouter.ai) and re-running the pilot (a fresh,
+separately-approved invocation — not an automatic retry) is the next step,
+not a code or configuration change.
 
 ## Steps to activate
 
 1. **Choose a provider** and set `AI_PROVIDER` in `.env` to one of:
-   `anthropic`, `openai_compatible` (or `openai`), `azure_openai`, `local`.
+   `anthropic`, `openai_compatible` (or `openai`), `azure_openai`,
+   `openrouter` (see `docs/OPENROUTER PROVIDER ADAPTER.md` for its specific
+   contract), `local`.
 2. **Set `AI_API_KEY`** to a real credential for that provider (leave empty
    for `local` if your self-hosted endpoint doesn't require one).
 3. **Set `AI_BASE_URL`** if the provider isn't at its default endpoint
@@ -33,7 +47,13 @@ this project to activate a provider.
    restructuring will be needed then). This phase's tasks
    (translation/summary/executive_summary/why_it_matters/
    key_point_extraction) all read from `AI_MODEL_TRANSLATION` /
-   `AI_MODEL_SUMMARY` as appropriate.
+   `AI_MODEL_SUMMARY` as appropriate. **The chosen model must be in
+   `ai_gateway.APPROVED_MODELS[provider]`** — `translate_worker.py` refuses
+   to proceed past the model-allowlist check otherwise (status
+   `blocked_model_not_allowlisted`), and never substitutes a different
+   model on your behalf. Add a new model to the allowlist deliberately, in
+   code, when one is actually reviewed and approved — not by typing it into
+   `.env` alone.
 5. **Set operational limits**: `AI_REQUEST_TIMEOUT` (seconds),
    `AI_MAX_CONCURRENCY`, and optionally `AI_DAILY_BUDGET_LIMIT` (USD — once
    today's estimated spend reaches this, every call fails closed with

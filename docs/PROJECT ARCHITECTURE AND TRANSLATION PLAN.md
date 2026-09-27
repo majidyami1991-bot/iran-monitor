@@ -154,5 +154,20 @@ One real infrastructure gap was found and fixed while preparing the pilot:
 `deployment/news-monitor/compose.yml` never passed any `AI_*` variable
 through to the running containers, so setting `AI_API_KEY` in `.env` alone
 would not have been enough to activate translation even before this pilot.
-That's fixed now — recommendation 2 above (supply a real key) is the only
-remaining step.
+That's fixed now.
+
+## Status update — Stage B-OR, OpenRouter (2026-09-27)
+
+The client supplied an OpenRouter key rather than a direct Anthropic one.
+A new `OpenRouterAdapter` was built (`docs/OPENROUTER PROVIDER ADAPTER.md`),
+configured (`AI_PROVIDER=openrouter`, model `anthropic/claude-haiku-4.5`),
+and exercised for real: one pilot call was made and returned
+`insufficient_credits` — the OpenRouter account has no balance yet. This is
+a billing step for the client, not a code or configuration gap; everything
+else (adapter, wiring, model allowlist, fatal-stop safety logic, 241
+offline tests) is ready. See `docs/TRANSLATION PILOT REPORT.md`'s Stage
+B-OR section for the full result, and
+`docs/INCIDENT - API KEY EXPOSURE IN SESSION OUTPUT.md` for a real process
+mistake made and corrected while preparing this round (a key was briefly
+exposed in the assistant's own tool output during verification, not
+committed anywhere; the client revoked and rotated it).

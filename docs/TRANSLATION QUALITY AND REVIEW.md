@@ -67,8 +67,24 @@ many, never the sole basis for a pass.
 
 Every claim in `docs/TRANSLATION AND SUMMARY QUALITY.md` about the
 *validator's* correctness is proven (fault-injection tests). No claim about
-*Anthropic's actual translation quality* on real Iran Monitor content is
-proven yet — that requires the blocked pilot to actually run. This
+real translation quality on real Iran Monitor content is proven yet: the
+Stage B-OR pilot (via OpenRouter, `anthropic/claude-haiku-4.5`) made exactly
+one real call, which failed at the provider with `insufficient_credits`
+before producing any text — see `docs/TRANSLATION PILOT REPORT.md`. This
 document will be updated with the 5-sample manual evaluation (fidelity,
 readability, number preservation, entity preservation, unsupported-claim
 check, final verdict per sample) the moment real output exists.
+
+## Fatal-error stop logic (Stage B-OR addition)
+
+`translate_worker.py` now stops processing the remaining candidates
+immediately — rather than continuing through the rest of a ≤20-item batch —
+on any of: `authentication_failed`, `insufficient_credits`,
+`provider_forbidden`, `budget_exceeded`, `request_invalid` (e.g. an
+unknown model slug), an open circuit breaker, or a >10% failure rate once
+at least 3 calls have been attempted. The rationale: each of these is a
+*structural* condition that will fail identically on every subsequent item
+— continuing would just spend the rest of the daily budget window
+re-discovering the same fact 19 more times. This is deliberately more
+aggressive than ordinary per-item error handling; it never triggers on an
+isolated, non-repeating failure.

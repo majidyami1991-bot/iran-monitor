@@ -7,14 +7,27 @@ so the next operator has a direct runbook instead of re-deriving one.
 
 ## 1. Preconditions
 
-- `docs/AI PROVIDER CONFIGURATION.md` steps 1–6 complete: `AI_PROVIDER=anthropic`,
-  a real `AI_API_KEY`, `AI_MODEL_TRANSLATION` set to an approved model, in
-  `E:\Iran monitor\.env` (gitignored — never paste the key anywhere else).
+- `docs/AI PROVIDER CONFIGURATION.md` steps 1–6 complete: `AI_PROVIDER` set
+  to an approved provider (`anthropic` or `openrouter` — see
+  `docs/OPENROUTER PROVIDER ADAPTER.md` for the latter's specifics), a real
+  `AI_API_KEY`, `AI_MODEL_TRANSLATION`/`AI_MODEL_SUMMARY` set to a model in
+  `ai_gateway.APPROVED_MODELS`, in `E:\Iran monitor\.env` (gitignored —
+  never paste the key anywhere else, never verify its presence with
+  `grep`/`Get-Content`/`docker inspect`/`docker compose config` — only via
+  `GET /api/v1/ai/provider-status`'s `api_key_configured` boolean; see
+  `docs/INCIDENT - API KEY EXPOSURE IN SESSION OUTPUT.md`).
 - `deployment/news-monitor/compose.yml` passes `AI_*` through to `news-api`
   and `news-translate` (fixed in Stage B — verify this wiring is still
   present if compose.yml is edited again later).
 - `news-api` rebuilt/redeployed so the container process actually sees the
-  new env vars (`docker compose ... up -d --build news-api`).
+  new env vars (`docker compose ... up -d --build news-api`). `news-translate`'s
+  image must also be rebuilt (it shares the Dockerfile but is a *separate*
+  image compose builds independently) — but never `up -d`'d as a running
+  service; it only ever runs via `docker compose run --rm`.
+- For a deterministic, reviewed candidate set rather than "whatever's
+  newest," pass `--manifest <path to a {"items":[{"item_id":...}]} JSON
+  file>` — capped at 20 items for a pilot; `translate_worker.py` refuses a
+  larger one outright.
 
 ## 2. Verify configuration (no provider call yet)
 
