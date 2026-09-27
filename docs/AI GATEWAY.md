@@ -19,14 +19,23 @@ narrow pattern five times was the wrong direction. The Gateway generalizes
 it once, properly, so every future AI-assisted feature is a thin call site
 against the same tested infrastructure.
 
-`translate.py` and `enrichment_worker.process_translation` are **not yet
-migrated** onto the Gateway — they still work exactly as before. Routing
-translation through the Gateway is the natural first adopter once section 4
-of the brief (redesigning translation/summary output — key points, entities,
-attributed claims) is tackled, since that's also when the translation
-prompt itself needs to change. Migrating a working, tested path and
-redesigning its output shape are better done as one deliberate step, not
-two uncoordinated ones.
+**Update (Content Intelligence phase):** `translate.py` has since been
+**fully migrated onto the Gateway and deleted** — `translate_worker.py` and
+`enrichment_worker.process_translation` now call `ai_gateway`/
+`content_intelligence` exclusively; no bespoke provider abstraction remains
+anywhere in this project. See `docs/CONTENT INTELLIGENCE ARCHITECTURE.md`
+for the migration record. The paragraph below is preserved as the original
+rationale for building the Gateway in the first place.
+
+Before the Content Intelligence phase, `translate.py` had its own bespoke
+provider abstraction (`NullProvider`, `OpenAICompatibleProvider`,
+`AnthropicProvider`) — a reasonable start, but narrow: no circuit breaker,
+no rate limiting beyond a concurrency count, no cost tracking, no cache, no
+prompt versioning, no budget enforcement. As the product grows into signal
+analysis and scenario generation (both explicitly AI-assisted per the
+brief), duplicating that narrow pattern five times was the wrong direction.
+The Gateway generalizes it once, properly, so every future AI-assisted
+feature is a thin call site against the same tested infrastructure.
 
 ## Modes
 
@@ -181,14 +190,22 @@ looks like an API key before it can reach a log row).
 
 ## What this phase does not include
 
-- No feature actually calls the Gateway yet for a live user-facing result —
-  `translate.py` still runs its own path (see "Why this exists" above).
-  `AI_MODEL_SIGNAL_ANALYSIS` and `AI_MODEL_SCENARIO` have contracts fixed
-  but no engine behind them — those are sections 6/7 and 11 of the
-  foresight roadmap.
+- `AI_MODEL_SIGNAL_ANALYSIS` and `AI_MODEL_SCENARIO` have contracts fixed
+  but no engine behind them — those are later sections of the foresight
+  roadmap, explicitly out of scope until separately approved.
 - No retry-with-backoff inside the Gateway itself (see Reliability above —
   deliberate, not an oversight).
 - No `local` adapter has been exercised against a real local model server in
   this environment — the code path is implemented and unit-tested, but a
   live local-inference smoke test would need an actual local server
   running, which this environment doesn't have.
+
+## Stage B note (translation pilot compose wiring)
+
+`deployment/news-monitor/compose.yml` did not pass any `AI_*` variable
+through to `news-api` or `news-translate` until Stage B of the "Iran
+Monitor Commercial Intelligence Experience" phase fixed it — meaning
+setting `AI_API_KEY` in `.env` alone would have had no effect on the running
+containers. Fixed; see `docs/TRANSLATION PILOT REPORT.md` §2 for the full
+finding and `docs/AI PROVIDER CONFIGURATION.md` for the up-to-date
+activation steps.

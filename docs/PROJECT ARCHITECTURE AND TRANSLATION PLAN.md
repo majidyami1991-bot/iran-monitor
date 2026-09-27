@@ -140,3 +140,19 @@ rather than reverting to a simpler direct-call design:
 Related docs for deeper detail: `docs/AI GATEWAY.md`,
 `docs/AI PROVIDER CONFIGURATION.md`, `docs/TRANSLATION AND SUMMARY QUALITY.md`,
 `docs/HUMAN REVIEW WORKFLOW.md`, `docs/CONTENT INTELLIGENCE ARCHITECTURE.md`.
+
+## Status update — Stage B pilot (2026-09-27)
+
+A controlled, ≤20-item title+summary translation pilot was authorized and
+run through the checks above (candidate selection, architecture review, dry
+run). It halted at **`BLOCKED_PROVIDER_NOT_CONFIGURED`** — no `AI_API_KEY`
+is set — which is the correct, expected outcome given recommendation 2
+above hasn't been acted on yet, not a defect in this plan. Full detail:
+`docs/TRANSLATION PILOT REPORT.md`.
+
+One real infrastructure gap was found and fixed while preparing the pilot:
+`deployment/news-monitor/compose.yml` never passed any `AI_*` variable
+through to the running containers, so setting `AI_API_KEY` in `.env` alone
+would not have been enough to activate translation even before this pilot.
+That's fixed now — recommendation 2 above (supply a real key) is the only
+remaining step.
