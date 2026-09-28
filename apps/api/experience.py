@@ -514,12 +514,22 @@ def run_jobs_once():
 
 
 def _loop():
+    # Newly collected items get their v3 topic within a minute (cheap: only
+    # rows without an assignment); clustering, briefing and stories run on
+    # the collection cadence.
+    last_full = 0.0
     while True:
         try:
-            log.warning('experience jobs: %s', run_jobs_once())
+            if time.time() - last_full >= REFRESH_SECONDS:
+                log.warning('experience jobs: %s', run_jobs_once())
+                last_full = time.time()
+            else:
+                n = reclassify_missing()
+                if n:
+                    log.warning('experience: classified %s new items', n)
         except Exception:  # noqa: BLE001 - keep serving; next cycle retries
             log.exception('experience jobs failed')
-        time.sleep(REFRESH_SECONDS)
+        time.sleep(60)
 
 
 # ------------------------------------------------------------------ API

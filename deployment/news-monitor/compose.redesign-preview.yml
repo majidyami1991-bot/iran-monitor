@@ -26,6 +26,9 @@ services:
       - ../../runtime/live-rss/phase-8a:/ops-evidence:ro
       - news-collector-state:/state:ro
     depends_on: {news-db: {condition: service_healthy}}
+    # Runs as the collector-state owner so the read-only /state heartbeat
+    # stays readable with every capability dropped.
+    user: "65532:65532"
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]
