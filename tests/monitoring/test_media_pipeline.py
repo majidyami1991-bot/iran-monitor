@@ -246,3 +246,44 @@ def test_collector_parse_carries_rss_media_without_changing_the_content_hash():
     assert [m['source_method'] for m in jfeed['rss_media']] == ['rss_enclosure']
     without = {k: v for k, v in jfeed.items() if k != 'rss_media'}
     assert collector.content_hash(jfeed) == collector.content_hash(without)
+
+
+def test_nonstandard_image_jpg_mime_is_normalised():
+    c = mp.Candidate('https://images.jfeed.com/a.jpg', '', 'rss_enclosure', 'enclosure', mime_type='image/jpg')
+    assert mp.reject_reason(c) is None and mp.norm_mime('image/jpg') == 'image/jpeg'
+
+
+def test_html_display_size_is_a_hint_not_proof():
+    c = mp.Candidate('https://www.edrmagazine.eu/uploads/WB-MSPO_03.jpg', '', 'rss_content_html', 'content:encoded', 300, 200)
+    assert mp.reject_reason(c) is None, 'display size on the original file is not proof of a small image'
+    assert mp.select_primary(mp.evaluate([c])) is None, 'unproven until validated'
+    assert mp.select_primary([c], {c.url: 'valid'}) is c
+    icon = mp.Candidate('https://e.com/uploads/x.jpg', '', 'rss_content_html', 'content:encoded', 72, 72)
+    assert mp.reject_reason(icon) == 'too_small'
+
+
+def test_wide_banner_shaped_photo_rejected_by_aspect_rule():
+    c = mp.Candidate('https://breakingdefense.com/DDX.jpg', '', 'rss_description_html', 'description', 1024, 387)
+    assert mp.reject_reason(c) == 'aspect_ratio'
+
+
+def test_pilot_host_rule_allows_publisher_subdomains_only():
+    import media_pilot as pilot
+    hosts = {'www.jfeed.com', 'rusi.org'}
+    assert pilot.host_allowed('images.jfeed.com', hosts)
+    assert pilot.host_allowed('rusi.org', hosts) and pilot.host_allowed('static.rusi.org', hosts)
+    for bad in ('evil-jfeed.com', 'jfeed.com.evil.io', 'rusi.org.attacker.net', 'example.com'):
+        assert not pilot.host_allowed(bad, hosts), bad
+
+
+def test_pilot_refuses_more_than_ten_items():
+    import media_pilot as pilot
+    with pytest.raises(SystemExit):
+        pilot.run({'items': [{'item_id': str(i)} for i in range(11)]}, dry_run=True)
+
+
+def test_emoji_and_avatar_hosts_are_icons_not_ads():
+    c = mp.Candidate('https://s.w.org/images/core/emoji/17/72x72/1f535.png', '', 'rss_content_html', 'content:encoded')
+    assert mp.reject_reason(c) == 'icon'
+    ad = mp.Candidate('https://ad.doubleclick.net/x.jpg', '', 'rss_content_html', 'content:encoded')
+    assert mp.reject_reason(ad) == 'ad_or_tracking_host'

@@ -53,8 +53,21 @@ DENY_BIGRAMS = {('default', 'image'): 'placeholder', ('no', 'image'): 'placehold
 DENY_PATH_SEGMENTS = ('/emoji/', '/wp-includes/', '/themes/', '/plugins/', '/ads/', '/adserver/', '/banners/', '/avatars/')
 AD_HOSTS = ('doubleclick.net', 'googlesyndication.com', 'googleadservices.com', 'adservice.google.com',
             'amazon-adsystem.com', 'adnxs.com', 'taboola.com', 'outbrain.com', 'criteo.com', 'scorecardresearch.com',
-            'pixel.wp.com', 'stats.wp.com', 's.w.org', 'gravatar.com', 'feedburner.com', 'facebook.com', 'quantserve.com')
+            'pixel.wp.com', 'stats.wp.com', 'feedburner.com', 'facebook.com', 'quantserve.com')
+# Emoji and avatar services: chrome, not advertising — reported as icons.
+ICON_HOSTS = ('s.w.org', 'gravatar.com', 'secure.gravatar.com')
 TRACKING_PARAMS = ('utm_', 'fbclid', 'gclid', 'mc_cid', 'mc_eid', '_hsenc', '_hsmi')
+MIME_ALIASES = {'image/jpg': 'image/jpeg', 'image/pjpeg': 'image/jpeg', 'image/x-png': 'image/png'}
+# width/height on an <img> tag are display hints (WordPress writes the
+# rendered size, e.g. 300x200, on the original full-size file), so for
+# HTML-sourced images they only prove "icon-sized" below this bound.
+HTML_METHODS = frozenset(('rss_content_html', 'rss_description_html', 'article_html'))
+HTML_ICON_MAX = 120
+
+
+def norm_mime(value):
+    v = (value or '').split(';')[0].strip().lower() or None
+    return MIME_ALIASES.get(v, v)
 
 
 @dataclass
@@ -136,6 +149,8 @@ def reject_reason(c):
     host = (p.hostname or '').lower()
     if any(host == h or host.endswith('.' + h) for h in AD_HOSTS):
         return 'ad_or_tracking_host'
+    if any(host == h or host.endswith('.' + h) for h in ICON_HOSTS):
+        return 'icon'
     path = p.path.lower()
     if any(seg in path for seg in DENY_PATH_SEGMENTS):
         return 'chrome_path'
@@ -149,7 +164,7 @@ def reject_reason(c):
         if (a, b) in DENY_BIGRAMS:
             return DENY_BIGRAMS[(a, b)]
     ext = _ext(c.url)
-    mime = c.mime_type or EXT_MIME.get(ext)
+    mime = norm_mime(c.mime_type) or EXT_MIME.get(ext)
     if mime == 'image/svg+xml' or ext == '.svg':
         return 'svg_not_allowed'
     if mime and mime.startswith('image/') and mime not in ALLOWED_MIME:
@@ -159,7 +174,10 @@ def reject_reason(c):
     w, h = c.width, c.height
     if w is not None and h is not None and w <= 2 and h <= 2:
         return 'tracking_pixel'
-    if (w is not None and w < MIN_W) or (h is not None and h < MIN_H):
+    if c.source_method in HTML_METHODS:
+        if (w is not None and w < HTML_ICON_MAX) or (h is not None and h < HTML_ICON_MAX):
+            return 'too_small'
+    elif (w is not None and w < MIN_W) or (h is not None and h < MIN_H):
         return 'too_small'
     if w and h and not (AR_MIN <= w / h <= AR_MAX):
         return 'aspect_ratio'
@@ -202,9 +220,9 @@ def eligible_for_primary(c, validation_status=None):
     if c.source_method in TRUSTED_DECLARATIONS:
         return True
     # Other sources (inline HTML images, thumbnails) qualify only when their
-    # declared dimensions prove the size rules — reject_reason already
-    # checked those dimensions, so "declared" here means "declared and passing".
-    return bool(c.width and c.height)
+    # declared dimensions prove the size rules; for HTML these are display
+    # hints, so a small declared size means "unproven" and waits for validation.
+    return bool(c.width and c.height and c.width >= MIN_W and c.height >= MIN_H)
 
 
 def select_primary(cands, statuses=None):
@@ -290,7 +308,7 @@ def rss_candidates(node, item_url):
             is_img = medium == 'image' or typ.startswith('image/') or (not medium and not typ and EXT_MIME.get(_ext(u), '').startswith('image/'))
             if is_img:
                 add(u, 'rss_media_content', 'media:content', width=_int(e.get('width')), height=_int(e.get('height')),
-                    mime_type=typ or None, file_size_bytes=_int(e.get('fileSize')),
+                    mime_type=norm_mime(typ), file_size_bytes=_int(e.get('fileSize')),
                     caption=_txt(e.find('media:description', NS)) or _txt(g.find('media:description', NS)),
                     credit=_txt(e.find('media:credit', NS)) or _txt(g.find('media:credit', NS)),
                     alt_text=_txt(e.find('media:title', NS)))
@@ -300,7 +318,7 @@ def rss_candidates(node, item_url):
     for e in node.findall('enclosure'):
         typ = (e.get('type') or '').lower()
         if typ.startswith('image/'):
-            add(e.get('url') or '', 'rss_enclosure', 'enclosure', mime_type=typ, file_size_bytes=_int(e.get('length')))
+            add(e.get('url') or '', 'rss_enclosure', 'enclosure', mime_type=norm_mime(typ), file_size_bytes=_int(e.get('length')))
     ce = node.find('content:encoded', NS)
     out += html_images(_txt(ce), item_url, 'rss_content_html', 'content:encoded', start=pos)
     pos = len(out)
@@ -506,7 +524,8 @@ def media_id(item_id, url):
 
 def persist(c, item_id, cands, *, now_sql='now()'):
     """Upsert candidates for one item and recompute its single primary.
-    Writes only v2 columns on rows that already exist; new rows get
+    Writes only v2 columns (never url, relevance, rejection_reason,
+    verification_status or alt_text) on rows that already exist; new rows get
     relevance 'article_media' (or 'rejected_policy') so the pre-redesign
     lead-image logic (relevance='article_image') is never changed by this.
     Idempotent: re-running with the same candidates changes nothing."""
@@ -517,8 +536,8 @@ def persist(c, item_id, cands, *, now_sql='now()'):
         cur = c.execute('''INSERT INTO news_item_media(media_id,item_id,kind,url,mime_type,declared_width,declared_height,alt_text,position,
               relevance,rejection_reason,discovery_method,verification_status,caption,attribution,
               media_type,original_url,canonical_url,width,height,file_size_bytes,credit,source_method,source_field,source_hostname,
-              validation_status,policy_score,policy_version)
-            VALUES(%s,%s,'image',%s,%s,%s,%s,%s,%s,%s,%s,%s,'unverified',%s,%s,'image',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+              validation_status,policy_score,policy_version,policy_rejection_reason)
+            VALUES(%s,%s,'image',%s,%s,%s,%s,%s,%s,%s,%s,%s,'unverified',%s,%s,'image',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT(media_id) DO UPDATE SET
               source_method = CASE WHEN news_item_media.policy_score IS NULL OR EXCLUDED.policy_score > news_item_media.policy_score
                   THEN EXCLUDED.source_method ELSE news_item_media.source_method END,
@@ -530,7 +549,7 @@ def persist(c, item_id, cands, *, now_sql='now()'):
               file_size_bytes = COALESCE(news_item_media.file_size_bytes, EXCLUDED.file_size_bytes),
               validation_status = CASE WHEN news_item_media.validation_status IN ('valid','blocked','unreachable')
                   THEN news_item_media.validation_status ELSE EXCLUDED.validation_status END,
-              rejection_reason = COALESCE(EXCLUDED.rejection_reason, news_item_media.rejection_reason),
+              policy_rejection_reason = EXCLUDED.policy_rejection_reason,
               policy_version = EXCLUDED.policy_version, updated_at = now()
             WHERE (news_item_media.policy_score, news_item_media.policy_version, news_item_media.validation_status, news_item_media.width)
               IS DISTINCT FROM (GREATEST(COALESCE(news_item_media.policy_score, 0), EXCLUDED.policy_score), EXCLUDED.policy_version,
@@ -540,7 +559,7 @@ def persist(c, item_id, cands, *, now_sql='now()'):
                          'rejected_policy' if cand.rejection_reason else 'article_media', cand.rejection_reason,
                          'v2:' + cand.source_method, cand.caption, cand.credit, cand.original_url, cand.url, cand.width,
                          cand.height, cand.file_size_bytes, cand.credit, cand.source_method, cand.source_field,
-                         (urlsplit(cand.url).hostname or '').lower(), vs, cand.score, POLICY_VERSION))
+                         (urlsplit(cand.url).hostname or '').lower(), vs, cand.score, POLICY_VERSION, cand.rejection_reason))
         written += cur.rowcount
     return written + reselect_primary(c, item_id)
 
@@ -573,3 +592,40 @@ def reselect_primary(c, item_id):
     if best_id:
         c.execute('UPDATE news_item_media SET is_primary=true, updated_at=now() WHERE media_id=%s', (best_id,))
     return 1
+
+
+def sync_legacy_rows(c, limit=500):
+    """Rows written by a collector that predates media v2 (media_type IS NULL)
+    get their v2 columns from the legacy ones — the same mapping as
+    migration 2026.09.29-04 — and their items' primary is recomputed. No
+    network; legacy columns are only read. Returns the number of rows synced."""
+    ids = [r[0] for r in c.execute("""SELECT DISTINCT item_id FROM news_item_media WHERE media_type IS NULL LIMIT %s""", (limit,)).fetchall()]
+    if not ids:
+        return 0
+    cur = c.execute("""UPDATE news_item_media m SET media_type = m.kind, original_url = m.url, canonical_url = m.url,
+          source_hostname = lower(split_part(split_part(m.url, '://', 2), '/', 1)),
+          width = COALESCE(m.verified_width, m.declared_width), height = COALESCE(m.verified_height, m.declared_height),
+          file_size_bytes = m.byte_size, credit = m.attribution,
+          source_method = CASE WHEN m.discovery_method = 'feed_content_html' THEN
+              CASE WHEN n.summary_source = 'content_encoded' THEN 'rss_content_html' ELSE 'rss_description_html' END
+              WHEN m.discovery_method = 'public_article_extraction' THEN 'article_html' END,
+          source_field = CASE WHEN m.discovery_method = 'feed_content_html' THEN
+              CASE WHEN n.summary_source = 'content_encoded' THEN 'content:encoded' ELSE 'description' END END,
+          validation_status = CASE WHEN m.verification_status = 'verified' THEN 'valid'
+              WHEN m.verification_status = 'rejected' OR m.relevance LIKE 'rejected%%' THEN 'rejected' ELSE 'unknown' END,
+          policy_rejection_reason = CASE WHEN m.verification_status = 'rejected' OR m.relevance LIKE 'rejected%%' THEN m.rejection_reason END,
+          updated_at = now()
+        FROM news_items n WHERE n.item_id = m.item_id AND m.media_type IS NULL AND m.item_id = ANY(%s)""", (ids,))
+    for iid in ids:
+        from psycopg.rows import dict_row
+        for r in c.cursor(row_factory=dict_row).execute("""SELECT media_id, url, canonical_url, original_url, source_method, source_field,
+                width, height, mime_type, file_size_bytes, alt_text, caption, credit, position, validation_status
+                FROM news_item_media WHERE item_id=%s AND kind='image' AND policy_version IS NULL""", (iid,)).fetchall():
+            cand = _row_to_candidate(r)
+            status = r['validation_status'] if r['validation_status'] in ('valid', 'blocked', 'unreachable') else (
+                'rejected' if cand.rejection_reason else 'unknown')
+            c.execute("""UPDATE news_item_media SET validation_status=%s, policy_rejection_reason=COALESCE(%s, policy_rejection_reason),
+                policy_score=%s, policy_version=%s WHERE media_id=%s""",
+                      (status, cand.rejection_reason, cand.score, POLICY_VERSION, r['media_id']))
+        reselect_primary(c, iid)
+    return cur.rowcount

@@ -255,6 +255,7 @@ ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS validation_status text;
 ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS http_status integer;
 ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS policy_score integer;
 ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS policy_version text;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS policy_rejection_reason text;
 ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS perceptual_hash text;
 ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS validated_at timestamptz;
 ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
@@ -278,7 +279,8 @@ UPDATE news_item_media m SET media_type = m.kind, original_url = m.url, canonica
       CASE WHEN n.summary_source = 'content_encoded' THEN 'content:encoded' ELSE 'description' END
       WHEN m.discovery_method = 'public_article_extraction' THEN 'article_body' END,
   validation_status = CASE WHEN m.verification_status = 'verified' THEN 'valid'
-      WHEN m.verification_status = 'rejected' OR m.relevance LIKE 'rejected%' THEN 'rejected' ELSE 'unknown' END
+      WHEN m.verification_status = 'rejected' OR m.relevance LIKE 'rejected%' THEN 'rejected' ELSE 'unknown' END,
+  policy_rejection_reason = CASE WHEN m.verification_status = 'rejected' OR m.relevance LIKE 'rejected%' THEN m.rejection_reason END
  FROM news_items n WHERE n.item_id = m.item_id AND m.media_type IS NULL;
 -- Exactly one primary per item: the first article_image by position (three
 -- items carried two article_image rows from separate extraction passes).
