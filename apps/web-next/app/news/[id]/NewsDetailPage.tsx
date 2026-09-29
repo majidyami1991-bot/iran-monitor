@@ -91,7 +91,10 @@ export function NewsDetailPage() {
                 <h4>فارسی <TranslationTag status={it.title_fa_status} review={it.title_fa_review} /></h4>
                 {faTitle ? <p className="t">{faTitle}</p> : <p className="muted">عنوان فارسی ذخیره نشده است ({it.title_fa_status === 'error' ? 'آخرین تلاش ترجمه ناموفق بود' : 'در صف ترجمه'}). متنی حدس زده یا جایگزین نمی‌شود.</p>}
                 {faSummary ? <p className="s">{faSummary}</p> : <p className="muted">خلاصه فارسی ذخیره نشده است.</p>}
-                {it.machine_translated && <small className="muted">ترجمه ماشینی · {it.translation_provider} · {it.translation_model}</small>}
+                {it.machine_translated && (
+                  <small className="muted">ترجمه ماشینی · <bdi>{it.translation_provider}</bdi> · مدل درخواستی <bdi>{it.translation_model}</bdi>
+                    {it.translation_served_by && <> · مدل پاسخ‌دهنده <bdi>{it.translation_served_by}</bdi></>} · بازبینی انسانی نشده</small>
+                )}
               </div>
               <div className="lang-col" dir="ltr" lang="en">
                 <h4 dir="rtl">متن اصلی منبع (انگلیسی) <Tag>{x.content_language || 'زبان اعلام‌نشده'}</Tag></h4>

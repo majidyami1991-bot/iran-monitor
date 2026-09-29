@@ -49,6 +49,8 @@ def _run_validated(gateway, task_type, text, validator, *, prompt_version=None, 
         'tokens_in': result.tokens_in, 'tokens_out': result.tokens_out,
         'estimated_cost_usd': result.estimated_cost_usd, 'cache_hit': result.cache_hit,
         'error': result.error, 'validation': None,
+        'response_model': getattr(result, 'response_model', None),
+        'reported_cost_usd': getattr(result, 'reported_cost_usd', None),
     }
     if result.status in ('available', 'cached') and out['text'] is not None:
         validation = validator(text, out['text'], **(validator_kwargs or {}))

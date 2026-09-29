@@ -31,6 +31,14 @@ def test_card_never_exposes_non_available_translation_text():
     assert r['summary_fa_status'] == 'pending' and r['machine_translated'] is False
 
 
+def test_card_hides_translations_that_failed_validation():
+    r = ex.card({'title': 'T', 'title_fa_status': 'available', 'title_fa': 'ت', 'title_fa_review': 'needs_review',
+                 'summary_fa_status': 'available', 'summary_fa': 'خ', 'summary_fa_review': 'pending_review',
+                 'importance': 1, 'published_at': None})
+    assert r['title_fa'] is None and r['title_fa_status'] == 'needs_review'
+    assert r['summary_fa'] == 'خ' and r['machine_translated'] is True
+
+
 def test_migrations_are_additive_and_uniquely_versioned():
     versions = [m[0] for m in rs.MIGRATIONS]
     assert versions == sorted(versions) and len(versions) == len(set(versions))

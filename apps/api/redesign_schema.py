@@ -166,6 +166,13 @@ CREATE TABLE IF NOT EXISTS alert_rules(
   created_by text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now());
 '''),
+    ('2026.09.29-01', 'AI audit: model that actually served a call and provider-reported cost', '''
+ALTER TABLE ai_requests_log ADD COLUMN IF NOT EXISTS response_model text;
+ALTER TABLE ai_requests_log ADD COLUMN IF NOT EXISTS reported_cost_usd numeric(12,6);
+ALTER TABLE news_item_translations ADD COLUMN IF NOT EXISTS response_model text;
+ALTER TABLE news_item_translation_history ADD COLUMN IF NOT EXISTS response_model text;
+ALTER TABLE news_item_translation_history ADD COLUMN IF NOT EXISTS reported_cost_usd numeric(12,6);
+'''),
 ]
 
 # Integration registry rows are facts about this deployment, not data about

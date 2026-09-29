@@ -198,6 +198,15 @@ class CircuitBreaker:
             if self._failures >= self.threshold:
                 self._opened_at = time.monotonic()
 
+    def force_open(self):
+        """Open immediately, regardless of the failure count — used when a
+        response proves a guard was violated (e.g. a free-only call reported
+        a non-zero cost), where waiting for more failures would mean paying
+        more."""
+        with self._lock:
+            self._failures = max(self._failures, self.threshold)
+            self._opened_at = time.monotonic()
+
     @property
     def is_open(self):
         with self._lock:
@@ -210,6 +219,12 @@ class AdapterResponse:
     raw_text: str
     tokens_in: int | None = None
     tokens_out: int | None = None
+    # What the provider says actually served the request, and what it says it
+    # charged. A router model (e.g. openrouter/free) may pick a different
+    # underlying model on every call, so the requested slug alone is not an
+    # audit record.
+    response_model: str | None = None
+    reported_cost_usd: float | None = None
 
 
 class Adapter:
@@ -357,21 +372,35 @@ class OpenRouterAdapter(Adapter):
     name = 'openrouter'
     _MAX_RETRY_AFTER_SECONDS = 5  # never let a provider's Retry-After stall a pilot run
 
-    def __init__(self, api_key, base_url, model, timeout):
+    def __init__(self, api_key, base_url, model, timeout, retry_enabled=True):
         if not api_key:
             raise GatewayError('provider_api_key_missing')
         self.api_key = api_key
         self.base = (base_url or 'https://openrouter.ai/api/v1').rstrip('/')
         self.model = model
         self.timeout = timeout
+        # Free-tier runs disable the retry: a 429 on the free tier means the
+        # shared quota is exhausted, and retrying only spends more of it.
+        self.retry_enabled = retry_enabled
         self.total_retries = 0  # observable by callers (e.g. translate_worker's report); never affects behavior
+
+    def request_body(self, system, user):
+        """The exact JSON sent. `model` is always the single configured slug:
+        no `models` fallback list and no `route`, so OpenRouter can never
+        fall back to a model other than the one requested. `usage.include`
+        asks OpenRouter to report the charged cost in the response."""
+        return {
+            'model': self.model, 'temperature': 0, 'response_format': {'type': 'json_object'},
+            'usage': {'include': True},
+            'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}],
+        }
 
     def complete(self, system, user):
         try:
             return self._call_once(system, user)
         except GatewayError as exc:
             reason = str(exc).split(':', 1)[0]
-            if reason not in _RETRYABLE_CLASSES:
+            if reason not in _RETRYABLE_CLASSES or not self.retry_enabled:
                 raise
             self.total_retries += 1
             time.sleep(min(getattr(exc, 'retry_after_seconds', 1) or 1, self._MAX_RETRY_AFTER_SECONDS))
@@ -380,10 +409,7 @@ class OpenRouterAdapter(Adapter):
     def _call_once(self, system, user):
         opener = build_opener(ProxyHandler())
         headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {self.api_key}', 'X-Title': 'Iran Monitor'}
-        body = json.dumps({
-            'model': self.model, 'temperature': 0, 'response_format': {'type': 'json_object'},
-            'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}],
-        }, ensure_ascii=False).encode('utf-8')
+        body = json.dumps(self.request_body(system, user), ensure_ascii=False).encode('utf-8')
         request = Request(f'{self.base}/chat/completions', data=body, headers=headers)
         try:
             with opener.open(request, timeout=self.timeout) as response:
@@ -406,12 +432,23 @@ class OpenRouterAdapter(Adapter):
             raise GatewayError(f'transient_timeout:{_redact(str(exc))}') from exc
         except (URLError, ValueError) as exc:
             raise GatewayError(f'{type(exc).__name__}:{_redact(str(exc))}') from exc
-        try:
-            text = data['choices'][0]['message']['content'].strip()
-            usage = data.get('usage', {})
-            return AdapterResponse(text, usage.get('prompt_tokens'), usage.get('completion_tokens'))
-        except (KeyError, IndexError, AttributeError, TypeError) as exc:
-            raise GatewayError('unexpected_response_shape') from exc
+        return parse_openrouter_response(data)
+
+
+def parse_openrouter_response(data):
+    try:
+        text = data['choices'][0]['message']['content'].strip()
+        usage = data.get('usage') or {}
+    except (KeyError, IndexError, AttributeError, TypeError) as exc:
+        raise GatewayError('unexpected_response_shape') from exc
+    cost = usage.get('cost')
+    try:
+        cost = float(cost) if cost is not None else None
+    except (TypeError, ValueError):
+        cost = None
+    return AdapterResponse(text, usage.get('prompt_tokens'), usage.get('completion_tokens'),
+                           response_model=data.get('model') if isinstance(data.get('model'), str) else None,
+                           reported_cost_usd=cost)
 
 
 ADAPTER_REGISTRY = {
@@ -429,8 +466,29 @@ ADAPTER_REGISTRY = {
 # CONFIGURATION.md and docs/OPENROUTER PROVIDER ADAPTER.md.
 APPROVED_MODELS = {
     'anthropic': {'claude-sonnet-5', 'claude-haiku-4-5'},
-    'openrouter': {'anthropic/claude-haiku-4.5', 'anthropic/claude-sonnet-5'},
+    # 'openrouter/free' is OpenRouter's official Free Router: it picks one of
+    # the currently free models per request. Added 2026-09-29 for the
+    # free-tier-only translation pilot; see FREE_MODELS below.
+    'openrouter': {'anthropic/claude-haiku-4.5', 'anthropic/claude-sonnet-5', 'openrouter/free'},
 }
+
+# Models that are free by OpenRouter's own definition. When a configured
+# model is one of these (or AI_FREE_ONLY=true), the gateway runs in free-only
+# mode: it refuses any other model, disables the adapter's retry, requires
+# the response to report its cost, and opens the circuit breaker the moment a
+# response reports a cost above zero.
+FREE_MODELS = {'openrouter': {'openrouter/free'}}
+
+
+def free_only_enabled(config):
+    if (os.getenv('AI_FREE_ONLY') or '').strip().lower() in ('1', 'true', 'yes'):
+        return True
+    free = FREE_MODELS.get(config.provider, set())
+    return any(m in free for m in config.models.values() if m)
+
+
+def model_is_free(provider, model):
+    return model in FREE_MODELS.get(provider, set())
 
 
 def model_is_approved(provider, model):
@@ -532,9 +590,12 @@ def build_adapter(config: GatewayConfig) -> Adapter:
     if factory is None:
         return DisabledAdapter()
     try:
-        return factory(config.api_key, config.base_url or _default_base_url(config.provider), config.models.get('translation') or '', config.timeout_seconds)
+        adapter = factory(config.api_key, config.base_url or _default_base_url(config.provider), config.models.get('translation') or '', config.timeout_seconds)
     except GatewayError:
         return DisabledAdapter()
+    if isinstance(adapter, OpenRouterAdapter) and free_only_enabled(config):
+        adapter.retry_enabled = False
+    return adapter
 
 
 def _default_base_url(provider):
@@ -578,6 +639,8 @@ class GatewayResult:
     estimated_cost_usd: float | None = None
     cache_hit: bool = False
     error: str | None = None
+    response_model: str | None = None      # what actually served the call (may differ from `model`)
+    reported_cost_usd: float | None = None  # what the provider itself reported charging
 
 
 def content_hash(task_type, content, prompt_version):
@@ -634,6 +697,14 @@ class AIGateway:
                                                 prompt_version, request.task_type, digest,
                                                 error='circuit_breaker_open_provider_failing'))
 
+        free_only = free_only_enabled(self.config)
+        if free_only and not model_is_free(self.config.provider, self._model_for(request.task_type)):
+            # Refused before any network call: free-only mode never sends a
+            # paid (or unknown) model, and never substitutes one.
+            return self._finish(GatewayResult('error', None, self.adapter.name, self._model_for(request.task_type),
+                                                prompt_version, request.task_type, digest,
+                                                error='free_only_guard:model_not_free'))
+
         system = prompt_for(request.task_type, prompt_version)
         sem = _semaphore_for(self.config.max_concurrency)
         started = time.monotonic()
@@ -652,27 +723,42 @@ class AIGateway:
                                                 latency_ms=int((time.monotonic() - started) * 1000)))
         finally:
             sem.release()
-        self.breaker.record_success()
-
         latency_ms = int((time.monotonic() - started) * 1000)
+        served_by = getattr(response, 'response_model', None)
+        reported = getattr(response, 'reported_cost_usd', None)
+        if free_only and (reported is None or reported > 0):
+            # Fail closed: a free-only call that reports a charge — or does
+            # not report its cost at all — stops everything at once.
+            self.breaker.force_open()
+            reason = 'nonzero_cost_reported' if reported is not None else 'cost_not_reported'
+            return self._finish(GatewayResult('error', None, self.adapter.name, self._model_for(request.task_type),
+                                                prompt_version, request.task_type, digest,
+                                                error=f'{reason}:{reported}', latency_ms=latency_ms,
+                                                tokens_in=response.tokens_in, tokens_out=response.tokens_out,
+                                                response_model=served_by, reported_cost_usd=reported,
+                                                estimated_cost_usd=reported))
+        self.breaker.record_success()
         try:
             payload = json.loads(response.raw_text)
         except (json.JSONDecodeError, TypeError):
             return self._finish(GatewayResult('invalid_response', None, self.adapter.name, self._model_for(request.task_type),
                                                 prompt_version, request.task_type, digest, error='output_not_valid_json',
-                                                latency_ms=latency_ms))
+                                                latency_ms=latency_ms, response_model=served_by, reported_cost_usd=reported))
         ok, reason = validate_output(request.task_type, payload)
         if not ok:
             return self._finish(GatewayResult('invalid_response', None, self.adapter.name, self._model_for(request.task_type),
                                                 prompt_version, request.task_type, digest, error=reason,
-                                                latency_ms=latency_ms))
+                                                latency_ms=latency_ms, response_model=served_by, reported_cost_usd=reported))
 
-        cost = None if self.config.mode == Mode.LOCAL else estimate_cost_usd(
-            self._model_for(request.task_type), response.tokens_in, response.tokens_out)
+        if reported is not None:
+            cost = reported  # the provider's own figure beats our estimate
+        else:
+            cost = None if self.config.mode == Mode.LOCAL else estimate_cost_usd(
+                self._model_for(request.task_type), response.tokens_in, response.tokens_out)
         result = GatewayResult('available', payload, self.adapter.name, self._model_for(request.task_type),
                                 prompt_version, request.task_type, digest, latency_ms=latency_ms,
                                 tokens_in=response.tokens_in, tokens_out=response.tokens_out,
-                                estimated_cost_usd=cost)
+                                estimated_cost_usd=cost, response_model=served_by, reported_cost_usd=reported)
         if self.cache is not None:
             self.cache.set(cache_key, payload)
         return self._finish(result)
@@ -727,11 +813,12 @@ class PostgresLogger:
         import psycopg
         with psycopg.connect(self._dsn, autocommit=True) as c:
             c.execute('''INSERT INTO ai_requests_log(task_type,provider,model,prompt_version,content_sha256,
-                status,latency_ms,tokens_in,tokens_out,estimated_cost_usd,cache_hit,error)
-                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+                status,latency_ms,tokens_in,tokens_out,estimated_cost_usd,cache_hit,error,response_model,reported_cost_usd)
+                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
                 (result.task_type, result.provider, result.model, result.prompt_version, result.content_hash,
                  result.status, result.latency_ms, result.tokens_in, result.tokens_out,
-                 result.estimated_cost_usd, result.cache_hit, result.error))
+                 result.estimated_cost_usd, result.cache_hit, result.error,
+                 result.response_model, result.reported_cost_usd))
 
 
 def postgres_budget_check(dsn):

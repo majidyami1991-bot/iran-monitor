@@ -61,6 +61,7 @@ SELECT n.item_id, n.title, COALESCE(n.summary_text, n.summary) AS summary, n.sum
   tt.status AS title_fa_status, tt.text AS title_fa, tt.review_status AS title_fa_review,
   ts.status AS summary_fa_status, ts.text AS summary_fa, ts.review_status AS summary_fa_review,
   COALESCE(tt.provider, ts.provider) AS translation_provider, COALESCE(tt.model, ts.model) AS translation_model,
+  COALESCE(tt.response_model, ts.response_model) AS translation_served_by,
   img.url AS image_url, img.alt_text AS image_alt, img.verification_status AS image_verification,
   ev.event_id, COALESCE(ev.src, 0) AS event_sources, COALESCE(ev.members, 0) AS event_members,
   (LEAST(9, GREATEST(COALESCE(ev.src, 1) - 1, 0) * 3)
@@ -108,6 +109,11 @@ def card(r):
     r['importance_level'] = level(r.get('importance'))
     r['title_fa_status'] = r.get('title_fa_status') or 'pending'
     r['summary_fa_status'] = r.get('summary_fa_status') or 'pending'
+    # A translation that failed the independent validator stays stored for
+    # review but is never displayed as if it were a usable translation.
+    for f in ('title', 'summary'):
+        if r[f + '_fa_status'] == 'available' and r.get(f + '_fa_review') == 'needs_review':
+            r[f + '_fa_status'] = 'needs_review'
     if r['title_fa_status'] != 'available':
         r['title_fa'] = None
     if r['summary_fa_status'] != 'available':

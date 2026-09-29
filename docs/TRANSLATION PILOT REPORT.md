@@ -506,3 +506,47 @@ manual evaluation of pilot *outputs*; evaluating placeholder or
 deterministic-mode text and presenting it as translation quality would
 violate this stage's core rule against manufacturing evidence of success.
 This section will be completed the moment a real pilot run produces output.
+
+## Stage B-Free — OpenRouter Free Router only (2026-09-29)
+
+Configuration: `AI_PROVIDER=openrouter`, `AI_BASE_URL=https://openrouter.ai/api/v1`,
+`AI_MODEL_TRANSLATION=openrouter/free`, `AI_MODEL_SUMMARY=openrouter/free`,
+`AI_FREE_ONLY=true`. The key's presence was checked; its value was not read.
+
+Free-only guard, in `ai_gateway.py` (13 new offline tests, 274 total pass):
+
+- **Allowlist:** `openrouter/free` was added. It is the only model the guard
+  lets through; any other model is refused before any network call.
+- **Request body:** always exactly `model: openrouter/free`, with no `models`
+  fallback list and no `route`, plus `usage.include=true` so OpenRouter
+  reports the cost.
+- **Cost:** a reported cost above 0 opens the circuit breaker at once.
+  A **missing** cost report also stops the run (fail closed).
+- **Retries:** the adapter's single retry is disabled in free mode.
+- **Audit columns:** the model that actually served each call is recorded in
+  `ai_requests_log`, `news_item_translations` and the history table, via
+  additive migration 2026.09.29-01.
+- **Stop rules:** the worker now stops at the first rate limit, timeout,
+  schema error or invalid translation.
+
+**Smoke test (1 item: title + summary, no article body):** 2 provider calls,
+2 responses, reported cost $0.00 each, no retries.
+- The title was served by `google/gemma-4-31b-it:free`. It is accurate and
+  fluent; NORTHCOM is kept, and the place and command names are correct.
+- The summary was served by `dots-studio/dots-3-note-preview:free`. It left
+  whole English quotations and many ordinary English words untranslated.
+  The existing validator scored it 1.0.
+
+A new hard-fail check (`untranslated_english`) now rejects that output. The
+stored summary row was re-validated and set to `needs_review`, so the UI does
+not display it. The append-only history is unchanged.
+
+Because one smoke output was an invalid translation, **the 20-item pilot was
+not run**.
+
+**Recommendation (not applied):** pin `google/gemma-4-31b-it:free`, one of 16
+`:free` models in the official `/api/v1/models` list. It supports JSON output
+and produced the good title. The Free Router picks a different model per call,
+and one of its picks failed; pinning one model makes quality repeatable.
+Applying it requires the owner's approval, plus an allowlist and FREE_MODELS
+entry with a test.

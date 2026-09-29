@@ -246,18 +246,19 @@ def _persist_translation_field(item_id, field, text, result):
         quality_status_legacy = None if not validation else ('ok' if validation.get('passed') else 'suspect')
 
         c.execute('''INSERT INTO news_item_translation_history(item_id,field,target_language,content_version,
-            status,text,provider,model,prompt_version,input_text_sha256,quality_score,quality_flags,latency_ms,error)
-            VALUES(%s,%s,'fa',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+            status,text,provider,model,prompt_version,input_text_sha256,quality_score,quality_flags,latency_ms,error,
+            response_model,reported_cost_usd)
+            VALUES(%s,%s,'fa',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
             (item_id, field, new_version, result['status'], result['text'], result.get('provider'), result.get('model'),
              result.get('prompt_version'), result.get('content_hash'), quality_score, Jsonb(quality_flags),
-             result.get('latency_ms'), result.get('error')))
+             result.get('latency_ms'), result.get('error'), result.get('response_model'), result.get('reported_cost_usd')))
 
         c.execute('''INSERT INTO news_item_translations(item_id,field,target_language,status,text,provider,model,
             content_version,source_chars,latency_ms,error,input_text_sha256,quality_status,
-            prompt_version,quality_score,quality_flags,review_status)
-            VALUES(%s,%s,'fa',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            prompt_version,quality_score,quality_flags,review_status,response_model)
+            VALUES(%s,%s,'fa',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT(item_id,field,target_language) DO UPDATE SET status=EXCLUDED.status,text=EXCLUDED.text,
-            provider=EXCLUDED.provider,model=EXCLUDED.model,content_version=EXCLUDED.content_version,
+            provider=EXCLUDED.provider,model=EXCLUDED.model,response_model=EXCLUDED.response_model,content_version=EXCLUDED.content_version,
             source_chars=EXCLUDED.source_chars,latency_ms=EXCLUDED.latency_ms,error=EXCLUDED.error,
             input_text_sha256=EXCLUDED.input_text_sha256,quality_status=EXCLUDED.quality_status,
             prompt_version=EXCLUDED.prompt_version,quality_score=EXCLUDED.quality_score,
@@ -267,7 +268,8 @@ def _persist_translation_field(item_id, field, text, result):
             (item_id, field, result['status'], result['text'], result.get('provider'), result.get('model'),
              new_version, len(text or ''), result.get('latency_ms'), result.get('error'),
              result.get('content_hash'), quality_status_legacy,
-             result.get('prompt_version'), quality_score, Jsonb(quality_flags), review_status))
+             result.get('prompt_version'), quality_score, Jsonb(quality_flags), review_status,
+             result.get('response_model')))
     return f"{result['status']}"
 
 

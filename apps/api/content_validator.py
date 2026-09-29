@@ -120,7 +120,19 @@ class ValidationResult:
 # else only lowers quality_score; a translator legitimately rephrases, so a
 # missing distinctive code alone (for example) is a flag worth a reviewer's
 # attention, not an automatic rejection.
-_HARD_FAIL_FLAGS = frozenset(('empty_output', 'placeholder_text_detected', 'not_persian', 'echoes_source_language'))
+_HARD_FAIL_FLAGS = frozenset(('empty_output', 'placeholder_text_detected', 'not_persian', 'echoes_source_language',
+                              'untranslated_english'))
+
+# Names and acronyms legitimately stay in Latin script (NORTHCOM, Air & Space
+# Forces Magazine, F-35). Ordinary lowercase English words ("the", "we",
+# "have") in a Persian output mean prose was left untranslated — found in the
+# first free-tier smoke test (2026-09-29), where a summary kept whole English
+# sentences and still scored 1.0 under the checks above.
+UNTRANSLATED_LOWERCASE_WORDS_MAX = 3
+
+
+def _untranslated_lowercase_words(text):
+    return [w for w in re.findall(r"(?<![A-Za-z'’\-])[a-z][a-z'’]+(?![A-Za-z])", text or '') if len(w) >= 2]
 
 
 def validate_translation(source_text, translated_text, *, min_length_ratio=0.3, max_length_ratio=3.0):
@@ -145,6 +157,12 @@ def validate_translation(source_text, translated_text, *, min_length_ratio=0.3, 
     elif source_text and _looks_persian(source_text) is False and translated_text.strip().casefold() == (source_text or '').strip().casefold():
         flags.append('echoes_source_language')
         reasons['echoes_source_language'] = 'Output is identical to the English source — provider echoed the input.'
+    else:
+        leftover = _untranslated_lowercase_words(translated_text)
+        if len(leftover) > UNTRANSLATED_LOWERCASE_WORDS_MAX:
+            flags.append('untranslated_english')
+            reasons['untranslated_english'] = (f'{len(leftover)} ordinary English words left untranslated '
+                                               f'(e.g. {", ".join(leftover[:6])}).')
 
     src_numbers, out_numbers = extract_numbers(source_text), extract_numbers(translated_text)
     missing_numbers = src_numbers - out_numbers

@@ -30,6 +30,7 @@ export interface FeedItem {
   summary_fa_review: string | null;
   translation_provider: string | null;
   translation_model: string | null;
+  translation_served_by: string | null;
   image_url: string | null;
   image_alt: string | null;
   image_verification: string | null;
