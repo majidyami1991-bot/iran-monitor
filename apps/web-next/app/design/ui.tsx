@@ -116,6 +116,7 @@ export function CardBones({ n = 4, image = true }: { n?: number; image?: boolean
 const INTEGRATION_STATUS: Record<string, [string, 'ok' | 'warn' | 'error' | 'uncertain']> = {
   active: ['فعال', 'ok'], configured: ['پیکربندی‌شده', 'ok'], stale: ['متوقف یا با تأخیر', 'warn'],
   blocked: ['مسدود', 'error'], not_configured: ['اتصال پیکربندی نشده', 'uncertain'],
+  manual_only: ['پایش دستی', 'ok'],
 };
 
 /** Honest state for a capability whose data source is not connected: which

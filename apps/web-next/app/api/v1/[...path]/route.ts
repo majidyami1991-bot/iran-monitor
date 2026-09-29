@@ -11,7 +11,20 @@ const ORIGIN = () => (process.env.API_ORIGIN || 'http://news-api:3000').replace(
 async function forward(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   const { path } = await ctx.params;
   const target = `${ORIGIN()}/api/v1/${path.map(encodeURIComponent).join('/')}${req.nextUrl.search}`;
-  const init: RequestInit = { method: req.method, headers: { accept: 'application/json' }, cache: 'no-store' };
+  const headers: Record<string, string> = { accept: 'application/json' };
+  if (!['GET', 'HEAD'].includes(req.method)) {
+    // Writes: JSON only (a cross-site HTML form cannot send it without a
+    // CORS preflight, which this app never grants), the CSRF token header,
+    // and the browser's own Origin — set here, so a client-supplied
+    // x-im-origin is always overwritten.
+    if (!(req.headers.get('content-type') || '').toLowerCase().startsWith('application/json')) {
+      return Response.json({ detail: 'json_required' }, { status: 415 });
+    }
+    headers['content-type'] = 'application/json';
+    headers['x-im-csrf'] = req.headers.get('x-im-csrf') || '';
+    headers['x-im-origin'] = req.headers.get('origin') || 'absent';
+  }
+  const init: RequestInit = { method: req.method, headers, cache: 'no-store' };
   if (!['GET', 'HEAD'].includes(req.method)) init.body = await req.text();
   try {
     const r = await fetch(target, init);

@@ -497,3 +497,29 @@ a.bars-row:hover { background: var(--panel-2); }
 }
 
 details > summary { cursor: pointer; display: flex; align-items: center; gap: 6px; list-style-position: inside; }
+
+/* ------------------------------------------------------------ X-FREE (manual X monitoring) */
+.x-list { display: grid; gap: var(--s3); }
+.x-post { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s4); display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.x-post-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.x-handle { font-weight: var(--w-bold); color: var(--ink); }
+.x-handle:hover { color: var(--brand-strong); }
+.x-post-head time { font-size: var(--fs-xs); color: var(--ink-3); }
+.x-original { margin: 0; padding: 10px 14px; border-inline-start: 3px solid var(--line-3); background: var(--panel-2); border-radius: var(--r-sm); white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-sm); line-height: 1.8; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+.x-text { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.x-text p { line-height: 1.9; }
+.x-note { font-size: var(--fs-sm); color: var(--ink-2); background: var(--info-soft); border-radius: var(--r-sm); padding: 8px 12px; overflow-wrap: anywhere; }
+.x-post-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 8px; font-size: var(--fs-xs); }
+.x-links { display: inline-flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.x-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; }
+.x-form form { display: grid; gap: var(--s3); }
+.x-form textarea, .field textarea { background: var(--panel-2); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 8px 10px; color: var(--ink); font-size: var(--fs-sm); width: 100%; resize: vertical; font-family: inherit; }
+.field textarea:focus { border-color: var(--brand); outline: none; }
+.x-form-actions, .x-actions { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.x-actions { margin: var(--s3) 0; }
+.x-preview { margin-top: var(--s4); border-top: 1px dashed var(--line-2); padding-top: var(--s3); }
+.x-embed-consent { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.x-embed-consent p { display: flex; gap: 6px; align-items: flex-start; }
+.x-embed-msg { font-size: var(--fs-sm); color: var(--ink-2); background: var(--warn-soft); border-radius: var(--r-sm); padding: 10px 12px; margin-bottom: 10px; }
+.x-embed-box { min-height: 40px; margin-bottom: 10px; }
+@media (max-width: 760px) { .x-stats { grid-template-columns: 1fr 1fr; } }

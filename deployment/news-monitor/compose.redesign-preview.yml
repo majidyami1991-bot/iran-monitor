@@ -23,6 +23,9 @@ services:
       AI_MAX_CONCURRENCY: ${AI_MAX_CONCURRENCY:-3}
       AI_DAILY_BUDGET_LIMIT: ${AI_DAILY_BUDGET_LIMIT:-}
       AI_FREE_ONLY: ${PREVIEW_AI_FREE_ONLY:-${AI_FREE_ONLY:-false}}
+      # X-FREE manual post registration: off unless explicitly enabled for preview.
+      SOCIAL_MANUAL_INGEST_ENABLED: ${PREVIEW_SOCIAL_MANUAL_INGEST_ENABLED:-false}
+      SOCIAL_ALLOWED_ORIGINS: http://127.0.0.1:3002,http://localhost:3002
       EXPERIENCE_JOBS_ENABLED: ${EXPERIENCE_JOBS_ENABLED:-true}
     volumes:
       - ../../runtime/live-rss/phase-8a:/ops-evidence:ro
@@ -43,6 +46,43 @@ services:
       retries: 3
       start_period: 60s
     profiles: [redesign-preview]
+    networks: [news]
+  # Disposable integration-test pair for X-FREE: its own restored database
+  # (XTEST_DB), writes enabled, provider disabled. Never points at production.
+  news-api-xtest:
+    image: iran-monitor-news-news-api:redesign-candidate
+    command: uvicorn main:app --host 0.0.0.0 --port 3000
+    environment:
+      DATABASE_URL: postgresql://iran_monitor:${NEWS_DB_PASSWORD}@news-db:5432/${XTEST_DB:-iran_monitor_xtest}
+      AI_PROVIDER: disabled
+      EXPERIENCE_JOBS_ENABLED: "false"
+      SOCIAL_MANUAL_INGEST_ENABLED: ${XTEST_INGEST:-true}
+      SOCIAL_ALLOWED_ORIGINS: http://127.0.0.1:3003,http://localhost:3003
+    user: "65532:65532"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:3000/api/v1/health',timeout=8).status==200 else 1)"]
+      interval: 10s
+      timeout: 8s
+      retries: 10
+      start_period: 30s
+    profiles: [xtest]
+    networks: [news]
+  news-web-xtest:
+    image: iran-monitor-news-news-web:redesign-candidate
+    environment:
+      API_ORIGIN: http://news-api-xtest:3000
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports: ["127.0.0.1:3003:3000"]
+    restart: "no"
+    profiles: [xtest]
     networks: [news]
   news-web-preview:
     image: iran-monitor-news-news-web:redesign-candidate

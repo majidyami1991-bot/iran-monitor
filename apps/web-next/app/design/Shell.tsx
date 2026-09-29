@@ -21,7 +21,7 @@ export const NAV: NavItem[] = [
   { label: 'تحلیل', children: [
     { label: 'تحلیل آماری', href: '/analytics', note: 'حجم، زمان انتشار، پوشش موضوعی' },
     { label: 'نقشه', href: '/map', note: 'وضعیت اتصال داده مکانی' },
-    { label: 'شبکه‌های اجتماعی', href: '/social', note: 'وضعیت اتصال X' },
+    { label: 'شبکه‌های اجتماعی', href: '/social', note: 'پایش دستی ۳۶ حساب X' },
   ] },
   { label: 'آینده‌پژوهی', children: [
     { label: 'روندها', href: '/foresight/trends', note: 'تغییر حجم پوشش، توصیفی' },

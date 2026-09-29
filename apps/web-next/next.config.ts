@@ -2,5 +2,38 @@ import type { NextConfig } from 'next';
 
 // API calls go through app/api/v1/[...path]/route.ts, which resolves
 // API_ORIGIN at request time (rewrites would freeze it at build time).
-const config: NextConfig = { output: 'standalone', poweredByHeader: false };
+//
+// Content Security Policy: everything is same-origin except (a) article and
+// X-CDN images (img-src https:), and (b) the official X embed, which the
+// reader loads by clicking and which runs only from platform.twitter.com in
+// its own iframe. 'unsafe-inline' is required by Next.js hydration scripts
+// and inline style props; no user or X HTML is ever injected into the page.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' https://platform.twitter.com",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: https:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  'frame-src https://platform.twitter.com https://syndication.twitter.com',
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+
+const config: NextConfig = {
+  output: 'standalone',
+  poweredByHeader: false,
+  async headers() {
+    return [{
+      source: '/:path*',
+      headers: [
+        { key: 'Content-Security-Policy', value: CSP },
+        { key: 'X-Content-Type-Options', value: 'nosniff' },
+        { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+      ],
+    }];
+  },
+};
 export default config;

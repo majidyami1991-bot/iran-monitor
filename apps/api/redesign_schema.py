@@ -177,6 +177,66 @@ ALTER TABLE news_item_translation_history ADD COLUMN IF NOT EXISTS reported_cost
 UPDATE news_item_translations SET status = 'needs_review', updated_at = now()
  WHERE status = 'available' AND review_status = 'needs_review' AND NOT human_reviewed;
 '''),
+    ('2026.09.29-03', 'X-FREE: manually monitored X accounts and analyst-registered posts', '''
+CREATE TABLE IF NOT EXISTS x_accounts(
+  id bigserial PRIMARY KEY,
+  source_id text NOT NULL UNIQUE,
+  handle text NOT NULL,
+  handle_key text NOT NULL UNIQUE,
+  display_name text,
+  profile_url text NOT NULL,
+  description text,
+  category text,
+  monitoring_mode text NOT NULL DEFAULT 'manual',
+  status text NOT NULL DEFAULT 'manual_monitoring',
+  last_manual_post_at timestamptz,
+  post_count integer NOT NULL DEFAULT 0,
+  provenance_json jsonb NOT NULL DEFAULT '[]'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS x_posts(
+  id bigserial PRIMARY KEY,
+  post_id text NOT NULL UNIQUE,
+  source_id text NOT NULL REFERENCES x_accounts(source_id),
+  post_url text NOT NULL UNIQUE,
+  author_handle text NOT NULL,
+  original_text text,
+  translated_text_fa text,
+  summary_fa text,
+  published_at timestamptz,
+  manually_registered_at timestamptz NOT NULL DEFAULT now(),
+  topic_id text,
+  event_id text REFERENCES news_events(event_id),
+  related_item_id text REFERENCES news_items(item_id),
+  analyst_note text,
+  importance text NOT NULL DEFAULT 'medium',
+  verification_status text NOT NULL DEFAULT 'unverified',
+  availability_status text NOT NULL DEFAULT 'link_only',
+  provenance_json jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS x_posts_source_idx ON x_posts(source_id, manually_registered_at DESC);
+CREATE TABLE IF NOT EXISTS x_post_media(
+  id bigserial PRIMARY KEY,
+  post_id text NOT NULL REFERENCES x_posts(post_id),
+  media_type text NOT NULL,
+  external_url text NOT NULL,
+  alt_text text,
+  provenance_json jsonb NOT NULL);
+CREATE TABLE IF NOT EXISTS x_post_history(
+  id bigserial PRIMARY KEY,
+  post_id text NOT NULL REFERENCES x_posts(post_id),
+  action text NOT NULL,
+  previous_value_json jsonb,
+  new_value_json jsonb,
+  actor text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS x_post_history_post_idx ON x_post_history(post_id, created_at);
+UPDATE integrations SET status = 'manual_only',
+  reason_fa = '۳۶ حساب X فقط به‌صورت دستی پایش می‌شوند: تحلیلگر نشانی پست مشخص را ثبت می‌کند. هیچ API پولی، scraping یا زمان‌بند فعال نیست.',
+  updated_at = now()
+ WHERE integration_id = 'x_social';
+'''),
 ]
 
 # Integration registry rows are facts about this deployment, not data about

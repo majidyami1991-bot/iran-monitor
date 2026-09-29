@@ -128,14 +128,16 @@ function ActivityBlock() {
 }
 
 function Social() {
-  const q = useApi<{ integration: Integration; registered_accounts: { handle: string }[]; total_posts: number }>('social');
+  const st = useApi<{ integration: Integration }>('social');
+  const x = useApi<{ accounts: number; posts: number; posts_today: number; last_registered_at: string | null }>('social/stats');
+  const now = useNow();
   return (
     <section className="block" aria-labelledby="soc-h">
-      <SectionHead id="soc-h" title="شبکه‌های اجتماعی" kicker="پست‌ها فقط از مسیر مجاز گردآوری نمایش داده می‌شوند" action={{ href: '/social', label: 'جزئیات' }} />
-      {q.error && <Failure onRetry={q.reload} />}
-      {q.data && (
-        <IntegrationNotice integration={q.data.integration} title="پست‌های زنده X (توییتر)">
-          <p className="muted"><Users size={14} style={{ verticalAlign: 'middle' }} /> {fmt(q.data.registered_accounts.length)} حساب در فهرست منابع مشتری ثبت شده است؛ {fmt(q.data.total_posts)} پست در پایگاه داده وجود دارد.</p>
+      <SectionHead id="soc-h" title="شبکه‌های اجتماعی" kicker="پایش دستی ۳۶ حساب X؛ بدون API پولی و بدون scraping" action={{ href: '/social', label: 'پست‌های ثبت‌شده' }} />
+      {(st.error || x.error) && <Failure onRetry={() => { st.reload(); x.reload(); }} />}
+      {st.data && x.data && (
+        <IntegrationNotice integration={st.data.integration} title="حساب‌های X">
+          <p className="muted"><Users size={14} style={{ verticalAlign: 'middle' }} /> {fmt(x.data.accounts)} حساب · {fmt(x.data.posts)} پست ثبت‌شده دستی · امروز {fmt(x.data.posts_today)}{x.data.last_registered_at ? ` · آخرین ثبت ${fmtRelative(x.data.last_registered_at, now)}` : ''}</p>
         </IntegrationNotice>
       )}
     </section>

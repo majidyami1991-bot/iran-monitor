@@ -8,6 +8,8 @@ from ops import register_ops
 register_ops(app)
 from experience import register_experience
 register_experience(app)
+from social import register_social
+register_social(app)
 def q(sql,args=()):
  with psycopg.connect(DSN) as c:
   with c.cursor() as cur:
