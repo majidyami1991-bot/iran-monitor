@@ -8,33 +8,47 @@ const GLYPH: Record<string, string> = {
   aerospace_maritime: 'هو', society_human_rights: 'جا', environment_crisis: 'مح', other: '؟',
 };
 
-/** Internal, generated artwork used whenever no verified article image
- *  exists. Never a stock photo or an unrelated image. */
-export function CategoryArt({ categoryId, label, monogram, compact = false }: { categoryId?: string | null; label?: string | null; monogram?: string; compact?: boolean }) {
+/** Neutral, generated placeholder used whenever no valid source image exists
+ *  (or the publisher refuses it). Never a stock, random or AI-generated
+ *  picture; it says plainly that the source image is unavailable. */
+export function CategoryArt({ categoryId, label, monogram, compact = false, reason }: {
+  categoryId?: string | null; label?: string | null; monogram?: string; compact?: boolean; reason?: string;
+}) {
   const id = categoryId || 'other';
+  const text = reason ?? 'تصویر منبع موجود نیست';
   return (
     <div className={compact ? 'art art-compact' : 'art'} style={{ ['--art' as string]: catVar(id) }} role="img"
-      aria-label={label ? `نگاره دسته ${label} (تصویر خبر در دسترس نیست)` : 'تصویر خبر در دسترس نیست'}>
+      aria-label={label ? `${text} — نگاره دسته ${label}` : text} data-placeholder="true">
       <span className="art-glyph" aria-hidden="true">{monogram ?? GLYPH[id] ?? '؟'}</span>
-      {!compact && label && <span className="art-label">{label}</span>}
+      {!compact && <span className="art-label">{text}</span>}
     </div>
   );
 }
 
-/** A verified-or-unverified article image served from the publisher (never
- *  downloaded or proxied), with attribution; falls back to CategoryArt if the
- *  URL is unsafe or the publisher refuses the request. */
-export function ItemImage({ src, alt, categoryId, categoryLabel, compact, credit = true }: {
-  src: string | null | undefined; alt?: string | null; categoryId?: string | null; categoryLabel?: string | null; compact?: boolean; credit?: boolean;
+/** The item's primary image, loaded from the publisher (never proxied or
+ *  stored here). The frame keeps a fixed aspect ratio so nothing shifts while
+ *  it loads (skeleton) or if it fails (placeholder). Alt text is the
+ *  publisher's own, or empty — never invented. */
+export function ItemImage({ src, alt, categoryId, categoryLabel, compact, credit = true, priority = false, width, height }: {
+  src: string | null | undefined; alt?: string | null; categoryId?: string | null; categoryLabel?: string | null;
+  compact?: boolean; credit?: boolean; priority?: boolean; width?: number | null; height?: number | null;
 }) {
-  const [broken, setBroken] = useState(false);
+  const [state, setState] = useState<'loading' | 'loaded' | 'failed'>('loading');
   const url = safeUrl(src);
-  if (!url || broken) return <CategoryArt categoryId={categoryId} label={categoryLabel} compact={compact} />;
+  if (!url || !url.startsWith('https://')) {
+    return <CategoryArt categoryId={categoryId} label={categoryLabel} compact={compact} />;
+  }
+  if (state === 'failed') {
+    return <CategoryArt categoryId={categoryId} label={categoryLabel} compact={compact} reason="تصویر منبع بارگذاری نشد" />;
+  }
   return (
-    <figure className="img">
+    <figure className={state === 'loading' ? 'img img-loading' : 'img'} aria-busy={state === 'loading' || undefined}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={url} alt={alt || ''} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setBroken(true)} />
-      {credit && <figcaption dir="ltr">© {hostOf(url)}</figcaption>}
+      <img src={url} alt={alt || ''} loading={priority ? 'eager' : 'lazy'} decoding="async" referrerPolicy="no-referrer"
+        {...(priority ? { fetchPriority: 'high' as const } : {})}
+        width={width ?? undefined} height={height ?? undefined}
+        onLoad={() => setState('loaded')} onError={() => setState('failed')} />
+      {credit && state === 'loaded' && <figcaption dir="ltr">© {hostOf(url)}</figcaption>}
     </figure>
   );
 }

@@ -1,0 +1,26 @@
+{
+ "version": "2026-09-29",
+ "purpose": "CSP img-src allowlist: publisher and publisher-CDN hosts of stored article images. Regenerate per docs/NEWS MEDIA OPERATIONS RUNBOOK.md when a source or CDN is added.",
+ "hosts": [
+  "breakingdefense.com",
+  "defence-blog.com",
+  "defence-industry.eu",
+  "i0.wp.com",
+  "ik.imagekit.io",
+  "images.jfeed.com",
+  "jcfa.org",
+  "mwi.westpoint.edu",
+  "news.usni.org",
+  "rusi.org",
+  "www.airandspaceforces.com",
+  "www.edrmagazine.eu",
+  "www.jfeed.com",
+  "www.missiledefenseadvocacy.org",
+  "www.twz.com"
+ ],
+ "notes": {
+  "i0.wp.com": "CDN declared by jcfa.org in its own og:image (WordPress.com Jetpack)",
+  "ik.imagekit.io": "CDN declared by rusi.org in its own og:image (ImageKit)",
+  "images.jfeed.com": "enclosure host declared in the JFeed RSS feed"
+ }
+}

@@ -8,7 +8,7 @@ import type { FeedItem } from '../../design/types';
 import { fmt, fmtDateTime, fmtPercent, fmtRelative, hostOf, safeUrl, sourceColor } from '../../design/format';
 import { usePrefs } from '../../design/prefs';
 import { BreakingTag, CategoryTag, Empty, Failure, ImportanceTag, SourceMark, Tag, TranslationTag, Bone, CardBones } from '../../design/ui';
-import { ItemImage } from '../../components/Visual';
+import { MediaViewer } from '../../components/MediaViewer';
 import { NewsCard } from '../../components/NewsCard';
 
 interface Media { media_id: string; kind: string; url: string; mime_type: string | null; byte_size: number | null; alt_text: string | null; relevance: string; verification_status: string }
@@ -53,13 +53,25 @@ export function NewsDetailPage() {
   const { contentLang } = usePrefs();
 
   if (d.error || c.error) return <Shell><Failure onRetry={() => { d.reload(); c.reload(); }}>این خبر پیدا نشد یا دریافت آن ناموفق بود.</Failure></Shell>;
-  if (!d.data || !c.data) return <Shell><Bone h={28} w="70%" /><CardBones n={2} /></Shell>;
+  // Loading skeleton mirrors the final layout (breadcrumb, flags, title,
+  // meta, 16:9 hero, side panels) so content arriving does not shift it.
+  if (!d.data || !c.data) return (
+    <Shell>
+      <Bone h={16} w="18%" />
+      <div className="detail" aria-busy="true">
+        <div className="detail-main">
+          <Bone h={20} w="40%" /><Bone h={34} w="85%" /><Bone h={34} w="55%" /><Bone h={16} w="60%" />
+          <div className="detail-hero"><span className="bone" /></div>
+          <div className="bilingual"><Bone h={180} /><Bone h={180} /></div>
+        </div>
+        <aside className="side"><Bone h={320} r={14} /><Bone h={260} r={14} /></aside>
+      </div>
+    </Shell>
+  );
   const x = d.data, ctx = c.data, it = ctx.item, a = ctx.assignment;
   const faTitle = it.title_fa, faSummary = it.summary_fa;
   const leadFa = contentLang === 'fa' && !!faTitle;
   const original = safeUrl(x.canonical_url);
-  const images = x.media.images.filter((m) => m.verification_status !== 'rejected').slice(0, 6);
-  const hero = images.find((m) => m.relevance === 'article_image') ?? null;
 
   return (
     <Shell>
@@ -81,8 +93,7 @@ export function NewsDetailPage() {
             {original && <a href={original} target="_blank" rel="noopener noreferrer nofollow" className="sec-link">خبر در سایت منبع<ExternalLink size={13} /></a>}
           </div>
 
-          {hero ? <div className="detail-hero"><ItemImage src={hero.url} alt={hero.alt_text} categoryId={it.category_id} categoryLabel={it.category_label} /></div>
-            : <div className="detail-hero"><ItemImage src={null} categoryId={it.category_id} categoryLabel={it.category_label} /></div>}
+          <MediaViewer itemId={it.item_id} categoryId={it.category_id} categoryLabel={it.category_label} mediaStatus={it.media_status} articleUrl={x.canonical_url} />
 
           <section aria-labelledby="bi-h">
             <h2 id="bi-h" className="sr-only">متن دوزبانه</h2>
@@ -123,12 +134,9 @@ export function NewsDetailPage() {
             </section>
           )}
 
-          {(images.length > 1 || x.media.documents.length > 0) && (
+          {x.media.documents.length > 0 && (
             <section className="panel" aria-labelledby="media-h">
-              <div className="panel-title"><h3 id="media-h">تصاویر و اسناد پیوست خبر</h3></div>
-              {images.length > 1 && (
-                <div className="grid-3">{images.map((m) => <div key={m.media_id} style={{ aspectRatio: '4 / 3', borderRadius: 10, overflow: 'hidden' }}><ItemImage src={m.url} alt={m.alt_text} categoryId={it.category_id} compact /></div>)}</div>
-              )}
+              <div className="panel-title"><h3 id="media-h">اسناد پیوست خبر</h3></div>
               {x.media.documents.length > 0 && (
                 <ul className="prov" style={{ marginTop: 12 }}>
                   {x.media.documents.map((doc) => {
@@ -142,7 +150,7 @@ export function NewsDetailPage() {
                   })}
                 </ul>
               )}
-              {x.media.filtered_out.length > 0 && <p className="muted" style={{ marginTop: 8 }}>{fmt(x.media.filtered_out.length)} تصویر نامرتبط (لوگو، آواتار، تبلیغ یا بسیار کوچک) کنار گذاشته شد.</p>}
+
             </section>
           )}
 

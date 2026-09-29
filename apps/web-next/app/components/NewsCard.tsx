@@ -62,7 +62,8 @@ export function NewsCard({ item, now, variant = 'standard' }: { item: FeedItem; 
     return (
       <article className="card-row">
         <Link href={href} className="card-row-media" tabIndex={-1} aria-hidden="true">
-          <ItemImage src={item.image_url} alt={item.image_alt} categoryId={item.category_id} categoryLabel={item.category_label} compact credit={false} />
+          <ItemImage src={item.primary_media?.url} alt={item.primary_media?.alt_text} categoryId={item.category_id} categoryLabel={item.category_label}
+            compact credit={false} width={item.primary_media?.width} height={item.primary_media?.height} />
         </Link>
         <div className="card-row-body">
           <div className="card-flags">
@@ -86,7 +87,8 @@ export function NewsCard({ item, now, variant = 'standard' }: { item: FeedItem; 
   return (
     <article className={variant === 'lead' ? 'card card-lead' : 'card'}>
       <Link href={href} className="card-media" tabIndex={-1} aria-hidden="true">
-        <ItemImage src={item.image_url} alt={item.image_alt} categoryId={item.category_id} categoryLabel={item.category_label} />
+        <ItemImage src={item.primary_media?.url} alt={item.primary_media?.alt_text} categoryId={item.category_id} categoryLabel={item.category_label}
+          priority={variant === 'lead'} width={item.primary_media?.width} height={item.primary_media?.height} />
       </Link>
       <div className="card-body">
         <div className="card-flags">

@@ -41,6 +41,14 @@ export interface FeedItem {
   importance_level: Importance;
   machine_translated: boolean;
   breaking: boolean;
+  primary_media: PrimaryMedia | null;
+  media_count: number;
+  media_status: 'available' | 'missing' | 'rejected' | 'blocked' | 'unreachable' | 'pending';
+}
+
+export interface PrimaryMedia {
+  id: string | null; type: 'image'; url: string; thumbnail_url: string | null; width: number | null; height: number | null;
+  alt_text: string | null; caption: string | null; credit: string | null; source_method: string | null; validation_status: string;
 }
 
 export interface FeedResponse { items: FeedItem[]; total: number; page: number; page_size: number; has_next: boolean; taxonomy_version: string; }
