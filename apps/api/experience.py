@@ -63,6 +63,10 @@ SELECT n.item_id, n.title, COALESCE(n.summary_text, n.summary) AS summary, n.sum
   COALESCE(tt.provider, ts.provider) AS translation_provider, COALESCE(tt.model, ts.model) AS translation_model,
   COALESCE(tt.response_model, ts.response_model) AS translation_served_by,
   img.url AS image_url, img.alt_text AS image_alt, img.verification_status AS image_verification,
+  img.media_id AS pm_id, img.caption AS pm_caption, img.credit AS pm_credit, img.width AS pm_width, img.height AS pm_height,
+  img.source_method AS pm_source_method, img.validation_status AS pm_validation_status, img.thumbnail_url AS pm_thumbnail_url,
+  COALESCE(ms.usable, 0) AS media_count, ms.blocked AS ms_blocked, ms.unreachable AS ms_unreachable,
+  ms.pending AS ms_pending, ms.rejected AS ms_rejected,
   ev.event_id, COALESCE(ev.src, 0) AS event_sources, COALESCE(ev.members, 0) AS event_members,
   (LEAST(9, GREATEST(COALESCE(ev.src, 1) - 1, 0) * 3)
    + CASE WHEN a.category_id IN ('security_defense', 'regional_geopolitics') THEN 2
@@ -75,9 +79,16 @@ JOIN sources s ON s.source_id = n.source_id
 LEFT JOIN item_topic_assignments a ON a.item_id = n.item_id AND a.taxonomy_version = %(taxv)s
 LEFT JOIN news_item_translations tt ON tt.item_id = n.item_id AND tt.field = 'title' AND tt.target_language = 'fa'
 LEFT JOIN news_item_translations ts ON ts.item_id = n.item_id AND ts.field = 'summary' AND ts.target_language = 'fa'
-LEFT JOIN LATERAL (SELECT m.url, m.alt_text, m.verification_status FROM news_item_media m
-  WHERE m.item_id = n.item_id AND m.kind = 'image' AND m.relevance = 'article_image'
-    AND m.verification_status <> 'rejected' ORDER BY m.position NULLS LAST LIMIT 1) img ON TRUE
+LEFT JOIN LATERAL (SELECT m.media_id, COALESCE(m.canonical_url, m.url) AS url, m.alt_text, m.verification_status,
+    m.caption, m.credit, COALESCE(m.width, m.verified_width, m.declared_width) AS width,
+    COALESCE(m.height, m.verified_height, m.declared_height) AS height, m.source_method, m.validation_status, m.thumbnail_url
+  FROM news_item_media m
+  WHERE m.item_id = n.item_id AND m.kind = 'image' AND m.is_primary
+    AND COALESCE(m.validation_status, 'unknown') NOT IN ('rejected', 'blocked', 'unreachable') LIMIT 1) img ON TRUE
+LEFT JOIN LATERAL (SELECT count(*) FILTER (WHERE COALESCE(m.validation_status, 'unknown') NOT IN ('rejected', 'blocked', 'unreachable')) AS usable,
+    bool_or(m.validation_status = 'blocked') AS blocked, bool_or(m.validation_status = 'unreachable') AS unreachable,
+    bool_or(m.validation_status = 'pending') AS pending, bool_or(m.validation_status = 'rejected') AS rejected
+  FROM news_item_media m WHERE m.item_id = n.item_id AND m.kind = 'image') ms ON TRUE
 LEFT JOIN LATERAL (SELECT (array_agg(e.event_id ORDER BY e.source_count DESC, e.member_count DESC))[1] AS event_id,
   max(e.source_count) AS src, max(e.member_count) AS members
   FROM news_event_members em JOIN news_events e USING (event_id)
@@ -102,6 +113,33 @@ def one(sql, args=None):
     return r[0] if r else None
 
 
+def media_fields(r):
+    """(primary_media, media_status) for one item row. Additive to the
+    legacy image_url/image_alt fields, which keep their meaning."""
+    pm = None
+    if r.get('image_url'):
+        pm = {'id': r.get('pm_id'), 'type': 'image', 'url': r['image_url'], 'thumbnail_url': r.get('pm_thumbnail_url'),
+              'width': r.get('pm_width'), 'height': r.get('pm_height'), 'alt_text': r.get('image_alt'),
+              'caption': r.get('pm_caption'), 'credit': r.get('pm_credit'),
+              'source_method': r.get('pm_source_method'), 'validation_status': r.get('pm_validation_status') or 'unknown'}
+    if pm:
+        status = 'available'
+    elif r.get('ms_blocked'):
+        status = 'blocked'
+    elif r.get('ms_unreachable'):
+        status = 'unreachable'
+    elif r.get('ms_pending'):
+        status = 'pending'
+    elif r.get('ms_rejected'):
+        status = 'rejected'
+    else:
+        status = 'missing'
+    for k in ('pm_id', 'pm_caption', 'pm_credit', 'pm_width', 'pm_height', 'pm_source_method', 'pm_validation_status',
+              'pm_thumbnail_url', 'ms_blocked', 'ms_unreachable', 'ms_pending', 'ms_rejected'):
+        r.pop(k, None)
+    return pm, status
+
+
 def card(r):
     """API shape of one item. Persian fields are only ever the stored
     translation text; when absent the status says why, never a guess."""
@@ -119,6 +157,7 @@ def card(r):
     if r['summary_fa_status'] != 'available':
         r['summary_fa'] = None
     r['machine_translated'] = r['title_fa'] is not None or r['summary_fa'] is not None
+    r['primary_media'], r['media_status'] = media_fields(r)
     r['breaking'] = is_breaking(r)
     return r
 
@@ -296,7 +335,7 @@ def build_stories():
     if evs:
         imgs = {r['event_id']: r for r in rows('''SELECT DISTINCT ON (em.event_id) em.event_id, m.url
             FROM news_event_members em JOIN news_item_media m ON m.item_id = em.item_id
-            WHERE m.kind='image' AND m.relevance='article_image' AND m.verification_status <> 'rejected'
+            WHERE m.kind='image' AND m.is_primary AND COALESCE(m.validation_status,'unknown') NOT IN ('rejected','blocked','unreachable')
             AND em.event_id = ANY(%(ids)s) ORDER BY em.event_id, m.position NULLS LAST''',
                                                    {'ids': [e['event_id'] for e in evs]})}
         add('events', now.strftime('%Y%m%d'), 'رویدادهای در حال تحول', f'{len(evs)} رویداد در ۷۲ ساعت گذشته',
@@ -533,6 +572,13 @@ def _loop():
                 n = reclassify_missing()
                 if n:
                     log.warning('experience: classified %s new items', n)
+            # Media v2 for rows written by the (pre-v2) production collector:
+            # offline mapping + primary selection, no network.
+            import media_pipeline as mp
+            with psycopg.connect(DSN) as mc:
+                synced = mp.sync_legacy_rows(mc)
+            if synced:
+                log.warning('experience: media v2 synced %s legacy rows', synced)
         except Exception:  # noqa: BLE001 - keep serving; next cycle retries
             log.exception('experience jobs failed')
         time.sleep(60)
@@ -671,7 +717,8 @@ def register_experience(app):
               FROM news_event_members em JOIN news_items n USING (item_id)
               WHERE em.event_id = e.event_id AND NOT em.manually_removed) AS pulses,
             (SELECT m.url FROM news_event_members em JOIN news_item_media m ON m.item_id = em.item_id
-              WHERE em.event_id = e.event_id AND m.kind='image' AND m.relevance='article_image'
+              WHERE em.event_id = e.event_id AND m.kind='image' AND m.is_primary
+              AND COALESCE(m.validation_status,'unknown') NOT IN ('rejected','blocked','unreachable')
               AND m.verification_status <> 'rejected' ORDER BY m.position NULLS LAST LIMIT 1) AS image_url
             FROM news_events e{w} ORDER BY {order} LIMIT %(l)s OFFSET %(o)s''', {**args, 'l': page_size, 'o': (page - 1) * page_size})
         labels = c3.get().labels

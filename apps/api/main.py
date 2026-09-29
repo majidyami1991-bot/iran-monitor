@@ -10,6 +10,8 @@ from experience import register_experience
 register_experience(app)
 from social import register_social
 register_social(app)
+from media_api import register_media
+register_media(app)
 def q(sql,args=()):
  with psycopg.connect(DSN) as c:
   with c.cursor() as cur:

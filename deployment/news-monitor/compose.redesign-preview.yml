@@ -50,7 +50,7 @@ services:
   # Disposable integration-test pair for X-FREE: its own restored database
   # (XTEST_DB), writes enabled, provider disabled. Never points at production.
   news-api-xtest:
-    image: iran-monitor-news-news-api:redesign-candidate
+    image: ${XTEST_API_IMAGE:-iran-monitor-news-news-api:redesign-candidate}
     command: uvicorn main:app --host 0.0.0.0 --port 3000
     environment:
       DATABASE_URL: postgresql://iran_monitor:${NEWS_DB_PASSWORD}@news-db:5432/${XTEST_DB:-iran_monitor_xtest}
@@ -85,7 +85,7 @@ services:
     profiles: [xtest]
     networks: [news]
   news-web-preview:
-    image: iran-monitor-news-news-web:redesign-candidate
+    image: ${PREVIEW_WEB_IMAGE:-iran-monitor-news-news-web:redesign-candidate}
     build: {context: ../../apps/web-next, dockerfile: Dockerfile}
     environment:
       API_ORIGIN: http://news-api-preview:3000
