@@ -237,6 +237,58 @@ UPDATE integrations SET status = 'manual_only',
   updated_at = now()
  WHERE integration_id = 'x_social';
 '''),
+    ('2026.09.29-04', 'news media v2: provenance, validation status and a single primary image per item', '''
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS media_type text;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS original_url text;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS canonical_url text;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS proxy_url text;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS thumbnail_url text;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS width integer;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS height integer;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS file_size_bytes bigint;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS credit text;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS source_method text;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS source_field text;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS source_hostname text;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS is_primary boolean NOT NULL DEFAULT false;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS validation_status text;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS http_status integer;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS policy_score integer;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS policy_version text;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS perceptual_hash text;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS validated_at timestamptz;
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE news_item_media ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE news_item_media ADD CONSTRAINT news_item_media_source_method_chk CHECK (source_method IS NULL OR source_method IN
+  ('rss_media_content','rss_media_thumbnail','rss_enclosure','rss_content_html','rss_description_html',
+   'article_open_graph','article_json_ld','article_html','manual')) NOT VALID;
+ALTER TABLE news_item_media ADD CONSTRAINT news_item_media_validation_status_chk CHECK (validation_status IS NULL OR validation_status IN
+  ('pending','valid','rejected','unreachable','blocked','unknown')) NOT VALID;
+-- Carry existing rows into the v2 vocabulary. Only the new columns are
+-- written; url, relevance and verification_status keep their old values so
+-- the pre-redesign API reads exactly what it read before.
+UPDATE news_item_media m SET media_type = m.kind, original_url = m.url, canonical_url = m.url,
+  source_hostname = lower(split_part(split_part(m.url, '://', 2), '/', 1)),
+  width = COALESCE(m.verified_width, m.declared_width), height = COALESCE(m.verified_height, m.declared_height),
+  file_size_bytes = m.byte_size, credit = m.attribution,
+  source_method = CASE WHEN m.discovery_method = 'feed_content_html' THEN
+      CASE WHEN n.summary_source = 'content_encoded' THEN 'rss_content_html' ELSE 'rss_description_html' END
+      WHEN m.discovery_method = 'public_article_extraction' THEN 'article_html' END,
+  source_field = CASE WHEN m.discovery_method = 'feed_content_html' THEN
+      CASE WHEN n.summary_source = 'content_encoded' THEN 'content:encoded' ELSE 'description' END
+      WHEN m.discovery_method = 'public_article_extraction' THEN 'article_body' END,
+  validation_status = CASE WHEN m.verification_status = 'verified' THEN 'valid'
+      WHEN m.verification_status = 'rejected' OR m.relevance LIKE 'rejected%' THEN 'rejected' ELSE 'unknown' END
+ FROM news_items n WHERE n.item_id = m.item_id AND m.media_type IS NULL;
+-- Exactly one primary per item: the first article_image by position (three
+-- items carried two article_image rows from separate extraction passes).
+UPDATE news_item_media m SET is_primary = true FROM (
+  SELECT DISTINCT ON (item_id) media_id FROM news_item_media WHERE relevance = 'article_image'
+  ORDER BY item_id, position NULLS LAST, media_id) first
+ WHERE m.media_id = first.media_id;
+CREATE UNIQUE INDEX IF NOT EXISTS news_item_media_one_primary ON news_item_media(item_id) WHERE is_primary;
+CREATE INDEX IF NOT EXISTS news_item_media_canonical_idx ON news_item_media(item_id, canonical_url);
+'''),
 ]
 
 # Integration registry rows are facts about this deployment, not data about

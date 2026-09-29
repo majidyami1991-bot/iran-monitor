@@ -11,6 +11,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 from ops import EXEC, REG, DSN, database_json, canonical_json_dumps
 from content import extract as extract_content, display_policy, CONTENT_VERSION
+import media_pipeline as mp
 import classify_v2 as cv
 
 ROOT=Path('/app'); STATE=Path(os.getenv('COLLECTOR_STATE_DIR','/state'))
@@ -55,7 +56,7 @@ def text(node,path):
 def content_hash(item):
     # Capture-time values are evidence, not story content; excluding them makes
     # the same item hash stable across naturally repeated feed reads.
-    stable={k:v for k,v in item.items() if k not in ('collected_at','fetched_at','content_html')}
+    stable={k:v for k,v in item.items() if k not in ('collected_at','fetched_at','content_html','rss_media')}
     return hashlib.sha256(canonical_json_dumps(stable).encode('utf-8')).hexdigest()
 
 def safe_message(exc):
@@ -127,8 +128,12 @@ def parse(data,sid,received):
                     try:published=datetime.fromisoformat(rawdate.replace('Z','+00:00')).astimezone(timezone.utc)
                     except ValueError:published=None
             guid=text(n,'guid') or text(n,'{*}id')
+            # Media v2: every image the item declares (media:content, media:thumbnail,
+            # enclosure, content:encoded/description <img>), from these same bytes.
+            try:rss_media=[x.to_dict() for x in mp.rss_candidates(n,canonical)]
+            except Exception:rss_media=[]
             language=n.attrib.get(xml_lang) or feed_language
-            items.append({'item_id':sidhash,'source_id':sid,'title':title,'canonical_url':canonical,'external_guid':guid,'published_at':published.isoformat() if published else None,'collected_at':received,'fetched_at':received,'summary_raw':summary,'summary_text':summary,'summary_source':source,'summary_available':bool(summary),'content_html':content_html,'content_language':language.strip()[:64] if language and language.strip() else None,'classification':None,'topics':[]})
+            items.append({'item_id':sidhash,'source_id':sid,'title':title,'canonical_url':canonical,'external_guid':guid,'published_at':published.isoformat() if published else None,'collected_at':received,'fetched_at':received,'summary_raw':summary,'summary_text':summary,'summary_source':source,'summary_available':bool(summary),'content_html':content_html,'content_language':language.strip()[:64] if language and language.strip() else None,'classification':None,'topics':[],'rss_media':rss_media})
         except (ValueError,TypeError):rejected+=1
     return items,len(nodes),rejected,{'feed_title':feed_title[:200] if feed_title else None,'feed_language':feed_language}
 def atomic_json(path,obj):
@@ -191,6 +196,8 @@ def store_content(c,item):
             VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(media_id) DO NOTHING''',
             (m['media_id'],m['item_id'],m['kind'],m['url'],m['mime_type'],m['declared_width'],m['declared_height'],
              m['alt_text'],m['position'],m['relevance'],m['rejection_reason'],m['discovery_method'],m['verification_status']))
+    if item.get('rss_media'):
+        mp.persist(c,item['item_id'],[mp.Candidate(**d) for d in item['rss_media']])
     return len(result['media'])
 
 def _source_start(c,runid,sid,started):
