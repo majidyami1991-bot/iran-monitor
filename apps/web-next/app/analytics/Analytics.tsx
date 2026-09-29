@@ -23,7 +23,7 @@ interface Insights {
 const DOW = ['', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه', 'شنبه', 'یکشنبه'];
 const DOW_ORDER = [6, 7, 1, 2, 3, 4, 5]; // Saturday first, Persian week
 const TR: Record<string, [string, string]> = {
-  available: ['ترجمه موجود', 'var(--ai)'], pending: ['در انتظار', 'var(--line-3)'], error: ['ناموفق', 'var(--error)'], unavailable: ['ناموجود', 'var(--ink-4)'],
+  available: ['ترجمه موجود', 'var(--ai)'], pending: ['در انتظار', 'var(--line-3)'], error: ['ناموفق', 'var(--error)'], needs_review: ['ردشده در کنترل کیفیت', 'var(--warn)'], unavailable: ['ناموجود', 'var(--ink-4)'],
 };
 
 function lastNDays(n: number, rows: { day: string }[], val: (r: { day: string }) => number) {

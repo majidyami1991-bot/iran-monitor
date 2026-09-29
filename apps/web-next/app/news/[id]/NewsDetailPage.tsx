@@ -89,8 +89,14 @@ export function NewsDetailPage() {
             <div className="bilingual">
               <div className="lang-col">
                 <h4>فارسی <TranslationTag status={it.title_fa_status} review={it.title_fa_review} /></h4>
-                {faTitle ? <p className="t">{faTitle}</p> : <p className="muted">عنوان فارسی ذخیره نشده است ({it.title_fa_status === 'error' ? 'آخرین تلاش ترجمه ناموفق بود' : 'در صف ترجمه'}). متنی حدس زده یا جایگزین نمی‌شود.</p>}
-                {faSummary ? <p className="s">{faSummary}</p> : <p className="muted">خلاصه فارسی ذخیره نشده است.</p>}
+                {faTitle ? <p className="t">{faTitle}</p>
+                  : it.title_fa_status === 'needs_review'
+                    ? <p className="muted">ترجمه عنوان در کنترل کیفیت رد شد و نمایش داده نمی‌شود؛ برای بازبینی ذخیره شده است.</p>
+                    : <p className="muted">عنوان فارسی ذخیره نشده است ({it.title_fa_status === 'error' ? 'آخرین تلاش ترجمه ناموفق بود' : 'در صف ترجمه'}). متنی حدس زده یا جایگزین نمی‌شود.</p>}
+                {faSummary ? <p className="s">{faSummary}</p>
+                  : it.summary_fa_status === 'needs_review'
+                    ? <p className="muted">ترجمه خلاصه در کنترل کیفیت رد شد و نمایش داده نمی‌شود؛ برای بازبینی یا ترجمه دوباره ذخیره شده است.</p>
+                    : <p className="muted">خلاصه فارسی ذخیره نشده است.</p>}
                 {it.machine_translated && (
                   <small className="muted">ترجمه ماشینی · <bdi>{it.translation_provider}</bdi> · مدل درخواستی <bdi>{it.translation_model}</bdi>
                     {it.translation_served_by && <> · مدل پاسخ‌دهنده <bdi>{it.translation_served_by}</bdi></>} · بازبینی انسانی نشده</small>

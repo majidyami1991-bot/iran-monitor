@@ -47,9 +47,18 @@ def extract_numbers(text):
     is stripped — English and Persian sentence punctuation never lines up
     the same way, so keeping it would flag identical numbers as mismatched
     purely because of where a comma happened to fall."""
-    text = normalize_digits(text or '')
+    # Persian thousands (٬) and decimal (٫) separators and the Persian percent
+    # sign are normalised; thousands separators and % are then dropped, so
+    # "13,500", "۱۳٬۵۰۰" and "13500", or "40%" and "۴۰ درصد", compare equal.
+    text = normalize_digits(text or '').replace('٬', ',').replace('٫', '.').replace('٪', '%')
     raw = re.findall(r'\d[\d,.]*%?', text)
-    return {tok.rstrip('.,') for tok in raw}
+    out = set()
+    for tok in raw:
+        tok = tok.rstrip('.,%').rstrip('.,')
+        tok = re.sub(r'(?<=\d),(?=\d{3}(?:\D|$))', '', tok)
+        if tok:
+            out.add(tok)
+    return out
 
 
 def extract_dates(text):
@@ -77,6 +86,10 @@ def extract_distinctive_codes(text):
     translation dictionary this module doesn't have — out of scope for an
     honest deterministic check."""
     return set(re.findall(r'\b[A-Za-z]{1,4}-\d{1,4}\b', text or ''))
+
+
+def _codes_digits(text):
+    return {d for code in extract_distinctive_codes(text) for d in re.findall(r'\d+', code)}
 
 
 def _looks_persian(text):
@@ -121,18 +134,46 @@ class ValidationResult:
 # missing distinctive code alone (for example) is a flag worth a reviewer's
 # attention, not an automatic rejection.
 _HARD_FAIL_FLAGS = frozenset(('empty_output', 'placeholder_text_detected', 'not_persian', 'echoes_source_language',
-                              'untranslated_english'))
+                              'untranslated_english', 'number_mismatch', 'number_added', 'date_mismatch',
+                              'distinctive_code_missing', 'output_too_long', 'model_commentary_or_markdown'))
 
 # Names and acronyms legitimately stay in Latin script (NORTHCOM, Air & Space
-# Forces Magazine, F-35). Ordinary lowercase English words ("the", "we",
-# "have") in a Persian output mean prose was left untranslated — found in the
-# first free-tier smoke test (2026-09-29), where a summary kept whole English
-# sentences and still scored 1.0 under the checks above.
-UNTRANSLATED_LOWERCASE_WORDS_MAX = 3
+# Forces Magazine, F-35, U.S.). Untranslated *prose* is what must fail — found
+# in the first free-tier smoke test (2026-09-29), where a summary kept whole
+# English sentences and still scored 1.0. The distinction used here:
+#   - a Latin run is a maximal sequence of Latin-script words in the output;
+#   - a word is "prose" when it is lowercase and not a name connector
+#     (of, the, and, de, al, ...), i.e. not something that appears inside a
+#     proper name like "Institute of Technology";
+#   - a run with 2+ prose words, or 3+ prose words in total, is untranslated
+#     English. Capitalised names and acronyms never count, however many.
+_NAME_CONNECTORS = frozenset(('of', 'the', 'and', 'for', 'de', 'del', 'da', 'du', 'la', 'le', 'al', 'el', 'bin',
+                              'ibn', 'von', 'van', 'der', 'y', 'e', 'on', 'at', 'in'))
+UNTRANSLATED_PROSE_WORDS_MAX = 2
+_LATIN_RUN = re.compile(r"[A-Za-z][A-Za-z0-9'’.\-]*(?:[ \t&/]+[A-Za-z0-9][A-Za-z0-9'’.\-]*)*")
 
 
-def _untranslated_lowercase_words(text):
-    return [w for w in re.findall(r"(?<![A-Za-z'’\-])[a-z][a-z'’]+(?![A-Za-z])", text or '') if len(w) >= 2]
+def untranslated_english(text):
+    """Returns (prose_word_count, offending_runs)."""
+    total, runs = 0, []
+    for run in _LATIN_RUN.findall(text or ''):
+        words = re.findall(r"[A-Za-z][A-Za-z'’\-]*", run)
+        prose = [w for w in words if w[0].islower() and w.lower() not in _NAME_CONNECTORS and len(w) >= 2]
+        total += len(prose)
+        if len(prose) >= 2:
+            runs.append(run.strip()[:60])
+    return total, runs
+
+
+_COMMENTARY = (
+    re.compile(r'(\*\*|__|```|^\s*#{1,6}\s|^\s*[-*]\s)', re.MULTILINE),
+    re.compile(r"^\s*(here is|here's|translation\s*:|note\s*:|sure[,!])", re.IGNORECASE | re.MULTILINE),
+    re.compile(r'^\s*(ترجمه\s*:|توجه\s*:|یادداشت\s*:|در اینجا ترجمه)', re.MULTILINE),
+)
+
+
+def _has_commentary(text):
+    return any(p.search(text or '') for p in _COMMENTARY)
 
 
 def validate_translation(source_text, translated_text, *, min_length_ratio=0.3, max_length_ratio=3.0):
@@ -158,17 +199,29 @@ def validate_translation(source_text, translated_text, *, min_length_ratio=0.3, 
         flags.append('echoes_source_language')
         reasons['echoes_source_language'] = 'Output is identical to the English source — provider echoed the input.'
     else:
-        leftover = _untranslated_lowercase_words(translated_text)
-        if len(leftover) > UNTRANSLATED_LOWERCASE_WORDS_MAX:
+        prose_words, runs = untranslated_english(translated_text)
+        if runs or prose_words > UNTRANSLATED_PROSE_WORDS_MAX:
             flags.append('untranslated_english')
-            reasons['untranslated_english'] = (f'{len(leftover)} ordinary English words left untranslated '
-                                               f'(e.g. {", ".join(leftover[:6])}).')
+            reasons['untranslated_english'] = (f'{prose_words} untranslated English prose word(s)'
+                                               + (f'; e.g. «{runs[0]}»' if runs else '') + '.')
+
+    if _has_commentary(translated_text):
+        flags.append('model_commentary_or_markdown')
+        reasons['model_commentary_or_markdown'] = 'Output contains Markdown or model commentary, not only the translation.'
 
     src_numbers, out_numbers = extract_numbers(source_text), extract_numbers(translated_text)
     missing_numbers = src_numbers - out_numbers
     if missing_numbers:
         flags.append('number_mismatch')
         reasons['number_mismatch'] = f'{len(missing_numbers)} number(s) in the source do not appear in the translation: {sorted(missing_numbers)[:5]}'
+    # Numbers that appear only in the output were added by the model. Digits
+    # inside a preserved code (F-35) or a Persian ordinal written as digits
+    # are already in the source set, so this only catches invented figures.
+    added = {n for n in out_numbers - src_numbers
+             if not any(n in s or s in n for s in src_numbers) and n not in _codes_digits(source_text)}
+    if added:
+        flags.append('number_added')
+        reasons['number_added'] = f'Number(s) not present in the source: {sorted(added)[:5]}'
 
     src_dates, out_dates = extract_dates(source_text), extract_dates(translated_text)
     if src_dates and not (src_dates & out_dates) and not (extract_numbers(source_text) & extract_numbers(translated_text)):

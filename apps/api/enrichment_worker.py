@@ -223,6 +223,18 @@ _SUMMARY_KIND_FUNCS = {
 }
 
 
+def current_translation_status(result):
+    """Status for the current (displayable) row. The provider answering is not
+    the same as a usable translation: output that fails the independent
+    validator is stored as 'needs_review', so 'available' always means
+    "validated and displayable" and every count or filter on it is honest.
+    The history row keeps the provider's own outcome for audit."""
+    validation = result.get('validation') or {}
+    if result['status'] in ('available', 'cached') and validation and not validation.get('passed', True):
+        return 'needs_review'
+    return result['status']
+
+
 def _persist_translation_field(item_id, field, text, result):
     """Writes the append-only history row first (never overwritten, never
     deleted — the real versioned record), then upserts the fast-read
@@ -265,7 +277,7 @@ def _persist_translation_field(item_id, field, text, result):
             quality_flags=EXCLUDED.quality_flags,review_status=EXCLUDED.review_status,
             superseded_at=NULL,updated_at=now()
             WHERE news_item_translations.human_reviewed IS NOT TRUE''',
-            (item_id, field, result['status'], result['text'], result.get('provider'), result.get('model'),
+            (item_id, field, current_translation_status(result), result['text'], result.get('provider'), result.get('model'),
              new_version, len(text or ''), result.get('latency_ms'), result.get('error'),
              result.get('content_hash'), quality_status_legacy,
              result.get('prompt_version'), quality_score, Jsonb(quality_flags), review_status,

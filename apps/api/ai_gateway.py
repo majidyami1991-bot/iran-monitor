@@ -164,7 +164,16 @@ def validate_output(task_type, payload):
             return False, f'missing_key:{key}'
         if not isinstance(payload[key], expected_type):
             return False, f'wrong_type:{key}'
+    if task_type in _EXACT_SCHEMAS:
+        extra = sorted(set(payload) - set(schema))
+        if extra:
+            # A model that adds keys ("notes", "explanation") is adding
+            # content the prompt did not ask for.
+            return False, 'unexpected_key:' + ','.join(extra)[:60]
     return True, None
+
+
+_EXACT_SCHEMAS = frozenset(('translation', 'summary'))
 
 
 # --------------------------------------------------------------------------- circuit breaker
@@ -469,26 +478,38 @@ APPROVED_MODELS = {
     # 'openrouter/free' is OpenRouter's official Free Router: it picks one of
     # the currently free models per request. Added 2026-09-29 for the
     # free-tier-only translation pilot; see FREE_MODELS below.
-    'openrouter': {'anthropic/claude-haiku-4.5', 'anthropic/claude-sonnet-5', 'openrouter/free'},
+    # google/gemma-4-31b-it:free pinned 2026-09-29 (owner-approved) after the
+    # Free Router picked a model that left English untranslated.
+    'openrouter': {'anthropic/claude-haiku-4.5', 'anthropic/claude-sonnet-5', 'openrouter/free',
+                   'google/gemma-4-31b-it:free'},
 }
 
-# Models that are free by OpenRouter's own definition. When a configured
-# model is one of these (or AI_FREE_ONLY=true), the gateway runs in free-only
-# mode: it refuses any other model, disables the adapter's retry, requires
-# the response to report its cost, and opens the circuit breaker the moment a
-# response reports a cost above zero.
-FREE_MODELS = {'openrouter': {'openrouter/free'}}
+# Free-only mode (AI_FREE_ONLY=true, or any configured ':free' model):
+#   - the model must be one pinned ':free' slug on the allowlist — a router
+#     such as openrouter/free, which picks a different model per call, is
+#     refused;
+#   - the response must name exactly the requested model;
+#   - the response must report its cost, and the cost must be exactly 0;
+#   - the adapter's retry is disabled.
+# Any violation opens the circuit breaker immediately.
+FREE_ROUTERS = {'openrouter': {'openrouter/free'}}
 
 
 def free_only_enabled(config):
     if (os.getenv('AI_FREE_ONLY') or '').strip().lower() in ('1', 'true', 'yes'):
         return True
-    free = FREE_MODELS.get(config.provider, set())
-    return any(m in free for m in config.models.values() if m)
+    return any(m and (m.endswith(':free') or m in FREE_ROUTERS.get(config.provider, set()))
+               for m in config.models.values())
 
 
 def model_is_free(provider, model):
-    return model in FREE_MODELS.get(provider, set())
+    """A pinned free model: ends with ':free' and is on the allowlist. Routers
+    are not pinned models, however free they are."""
+    return bool(model) and model.endswith(':free') and model_is_approved(provider, model)
+
+
+def model_is_router(provider, model):
+    return model in FREE_ROUTERS.get(provider, set())
 
 
 def model_is_approved(provider, model):
@@ -698,10 +719,15 @@ class AIGateway:
                                                 error='circuit_breaker_open_provider_failing'))
 
         free_only = free_only_enabled(self.config)
-        if free_only and not model_is_free(self.config.provider, self._model_for(request.task_type)):
+        requested = self._model_for(request.task_type)
+        if free_only and model_is_router(self.config.provider, requested):
+            return self._finish(GatewayResult('error', None, self.adapter.name, requested,
+                                                prompt_version, request.task_type, digest,
+                                                error='free_only_guard:router_not_allowed'))
+        if free_only and not model_is_free(self.config.provider, requested):
             # Refused before any network call: free-only mode never sends a
             # paid (or unknown) model, and never substitutes one.
-            return self._finish(GatewayResult('error', None, self.adapter.name, self._model_for(request.task_type),
+            return self._finish(GatewayResult('error', None, self.adapter.name, requested,
                                                 prompt_version, request.task_type, digest,
                                                 error='free_only_guard:model_not_free'))
 
@@ -726,14 +752,17 @@ class AIGateway:
         latency_ms = int((time.monotonic() - started) * 1000)
         served_by = getattr(response, 'response_model', None)
         reported = getattr(response, 'reported_cost_usd', None)
-        if free_only and (reported is None or reported > 0):
-            # Fail closed: a free-only call that reports a charge — or does
-            # not report its cost at all — stops everything at once.
+        if free_only and (reported is None or reported != 0 or served_by != requested):
+            # Fail closed: a free-only call that reports a charge, does not
+            # report its cost, or was served by a different model than the
+            # one pinned, stops everything at once.
             self.breaker.force_open()
-            reason = 'nonzero_cost_reported' if reported is not None else 'cost_not_reported'
+            reason = ('model_identity_mismatch' if served_by != requested and reported == 0
+                      else 'nonzero_cost_reported' if reported is not None else 'cost_not_reported')
             return self._finish(GatewayResult('error', None, self.adapter.name, self._model_for(request.task_type),
                                                 prompt_version, request.task_type, digest,
-                                                error=f'{reason}:{reported}', latency_ms=latency_ms,
+                                                error=f'{reason}:{served_by if reason == "model_identity_mismatch" else reported}',
+                                                latency_ms=latency_ms,
                                                 tokens_in=response.tokens_in, tokens_out=response.tokens_out,
                                                 response_model=served_by, reported_cost_usd=reported,
                                                 estimated_cost_usd=reported))

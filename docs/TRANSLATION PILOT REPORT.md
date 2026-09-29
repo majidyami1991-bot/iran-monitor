@@ -550,3 +550,39 @@ and produced the good title. The Free Router picks a different model per call,
 and one of its picks failed; pinning one model makes quality repeatable.
 Applying it requires the owner's approval, plus an allowlist and FREE_MODELS
 entry with a test.
+
+## Stage B-Pinned — google/gemma-4-31b-it:free on preview only (2026-09-29)
+
+Owner-approved pin, preview-scoped (`PREVIEW_AI_MODEL_*` in `.env`,
+consumed only by `compose.redesign-preview.yml`; production :3001 untouched).
+
+**Guard (tightened).** In free-only mode:
+- The model must end in `:free` and be on the allowlist; the router
+  `openrouter/free` is refused.
+- The response must name exactly the requested model.
+- A cost must be reported, and it must be exactly 0.
+- Retry is disabled.
+- Any violation opens the breaker and stops the run.
+- The translation JSON schema is exact (no extra keys).
+
+**Validator (hard fails).**
+- Entity-aware untranslated-English check: names and acronyms such as
+  NORTHCOM pass; English prose and quotes fail.
+- Numbers must be preserved; Persian separators and the percent sign are
+  normalised.
+- No added numbers.
+- Dates and model codes must be preserved.
+- Output no longer than 3× the source.
+- No Markdown or model commentary.
+
+**Status semantics fixed.** A validation-failed translation is now stored as
+`status='needs_review'`, not `available` (versioned correction 2026.09.29-02;
+history untouched). `available` now means validated and displayable: 1 after
+the fix, versus "2 (1 shown)" before.
+
+**Smoke (3 deterministic items: short summary; long summary with quotes and
+names; numbers + date + acronym).** The first call returned **HTTP 429**:
+"google/gemma-4-31b-it:free is temporarily rate-limited upstream". The run
+stopped at once (no retry, no other model). The 20-item pilot was **not**
+run. The error is recorded (1 translation row `error`, history +1) and
+nothing was displayed. Tests: 281 passed.

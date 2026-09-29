@@ -16,12 +16,13 @@ services:
       AI_PROVIDER: ${AI_PROVIDER:-disabled}
       AI_BASE_URL: ${AI_BASE_URL:-}
       AI_API_KEY: ${AI_API_KEY:-}
-      AI_MODEL_TRANSLATION: ${AI_MODEL_TRANSLATION:-}
-      AI_MODEL_SUMMARY: ${AI_MODEL_SUMMARY:-}
+      # Preview-scoped model pins (fall back to the shared values).
+      AI_MODEL_TRANSLATION: ${PREVIEW_AI_MODEL_TRANSLATION:-${AI_MODEL_TRANSLATION:-}}
+      AI_MODEL_SUMMARY: ${PREVIEW_AI_MODEL_SUMMARY:-${AI_MODEL_SUMMARY:-}}
       AI_REQUEST_TIMEOUT: ${AI_REQUEST_TIMEOUT:-60}
       AI_MAX_CONCURRENCY: ${AI_MAX_CONCURRENCY:-3}
       AI_DAILY_BUDGET_LIMIT: ${AI_DAILY_BUDGET_LIMIT:-}
-      AI_FREE_ONLY: ${AI_FREE_ONLY:-false}
+      AI_FREE_ONLY: ${PREVIEW_AI_FREE_ONLY:-${AI_FREE_ONLY:-false}}
       EXPERIENCE_JOBS_ENABLED: ${EXPERIENCE_JOBS_ENABLED:-true}
     volumes:
       - ../../runtime/live-rss/phase-8a:/ops-evidence:ro

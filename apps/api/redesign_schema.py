@@ -173,6 +173,10 @@ ALTER TABLE news_item_translations ADD COLUMN IF NOT EXISTS response_model text;
 ALTER TABLE news_item_translation_history ADD COLUMN IF NOT EXISTS response_model text;
 ALTER TABLE news_item_translation_history ADD COLUMN IF NOT EXISTS reported_cost_usd numeric(12,6);
 '''),
+    ('2026.09.29-02', "status semantics: a validation-failed translation is 'needs_review', never 'available'", '''
+UPDATE news_item_translations SET status = 'needs_review', updated_at = now()
+ WHERE status = 'available' AND review_status = 'needs_review' AND NOT human_reviewed;
+'''),
 ]
 
 # Integration registry rows are facts about this deployment, not data about

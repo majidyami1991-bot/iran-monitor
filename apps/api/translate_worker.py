@@ -179,7 +179,8 @@ def main(argv=None):
                   # free-only guard trip, or reported/unreported cost stops
                   # the run; nothing is retried or worked around.
                   'rate_limited': None, 'transient_timeout': None, 'TimeoutError': None,
-                  'free_only_guard': None, 'nonzero_cost_reported': None, 'cost_not_reported': None}
+                  'free_only_guard': None, 'nonzero_cost_reported': None, 'cost_not_reported': None,
+                  'model_identity_mismatch': None}
         fatal_stop_reason = None
         report['free_only'] = gw.free_only_enabled(gateway.config)
         report['requested_models'] = sorted({m for m in (translation_model, summary_model) if m})
