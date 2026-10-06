@@ -179,9 +179,9 @@ export function Shell({ children, wide = false }: { title?: string; breadcrumb?:
       <header className="masthead">
         <div className="masthead-row wrap">
           <button type="button" className="icon-btn only-mobile" aria-label="باز کردن منو" aria-expanded={drawer} onClick={() => setDrawer(true)}><Menu size={20} /></button>
-          <Link href="/" className="logo" aria-label="ایران مانیتور، صفحه اصلی">
+          <Link href="/" className="logo" aria-label="Defence Monitor، صفحه اصلی">
             <span className="logo-mark" aria-hidden="true"><Radio size={18} /></span>
-            <span className="logo-word">ایران مانیتور<small>اتاق خبر رصد منابع باز</small></span>
+            <span className="logo-word">Defence Monitor<small>اتاق خبر رصد منابع باز</small></span>
           </Link>
           <LiveStatus />
           <form className="search" role="search" onSubmit={search}>
@@ -210,7 +210,7 @@ export function Shell({ children, wide = false }: { title?: string; breadcrumb?:
           <button type="button" className="drawer-scrim" aria-label="بستن منو" onClick={() => setDrawer(false)} />
           <aside className="drawer" role="dialog" aria-modal="true" aria-label="منوی اصلی">
             <div className="drawer-head">
-              <strong>ایران مانیتور</strong>
+              <strong>Defence Monitor</strong>
               <button type="button" className="icon-btn" aria-label="بستن منو" onClick={() => setDrawer(false)} autoFocus><X size={20} /></button>
             </div>
             <form className="search drawer-search" role="search" onSubmit={search}>
@@ -239,7 +239,7 @@ export function Shell({ children, wide = false }: { title?: string; breadcrumb?:
       <footer className="footer">
         <div className="wrap footer-row">
           <div>
-            <strong>ایران مانیتور</strong>
+            <strong>Defence Monitor</strong>
             <p>همه داده‌ها از پایگاه داده PostgreSQL همین سامانه خوانده می‌شود. آمارها توصیفی‌اند؛ برچسب‌های «قاعده‌محور» و «هوش مصنوعی» منشأ هر خروجی را نشان می‌دهند.</p>
           </div>
           <nav aria-label="پیوندهای پایانی">

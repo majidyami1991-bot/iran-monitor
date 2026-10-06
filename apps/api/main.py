@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse
 import os, psycopg, re
 from datetime import date
 from collections import Counter
-app=FastAPI(title='Iran Monitor News API',version='0.3.0'); DSN=os.environ['DATABASE_URL']
+app=FastAPI(title='Defence Monitor News API',version='0.3.0'); DSN=os.environ['DATABASE_URL']
 from ops import register_ops
 register_ops(app)
 from experience import register_experience
@@ -20,7 +20,7 @@ def count(t): return q(f'select count(*)::int n from {t}')[0]['n']
 @app.get('/api/v1/health')
 def health(): return {'status':'ok','items':count('news_items'),'database':'ready'}
 @app.get('/api/v1/meta')
-def meta(): return {'name':'Iran Monitor','version':'0.2.0','item_count':count('news_items')}
+def meta(): return {'name':'Defence Monitor','version':'0.2.0','item_count':count('news_items')}
 @app.get('/api/v1/items')
 def items(search:str|None=None,source_id:str|None=None,source_type:str|None=None,date_from:str|None=None,date_to:str|None=None,provenance:str|None=None,sort:str='newest',page:int=1,page_size:int=20):
  for value in (date_from,date_to):

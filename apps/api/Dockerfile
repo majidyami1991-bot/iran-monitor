@@ -17,7 +17,7 @@ RUN python -m compileall -q /app && PYTHONPATH=/app pytest -q tests/monitoring &
 FROM runtime-deps AS runtime-final
 ARG GIT_REVISION=unknown
 ARG BUILD_TIMESTAMP_UTC=unknown
-LABEL org.opencontainers.image.title="Iran Monitor news collector" org.opencontainers.image.version="1.2.0" org.opencontainers.image.revision="$GIT_REVISION" org.opencontainers.image.created="$BUILD_TIMESTAMP_UTC" org.opencontainers.image.source="local://Iran-monitor"
+LABEL org.opencontainers.image.title="Defence Monitor news collector" org.opencontainers.image.version="1.2.0" org.opencontainers.image.revision="$GIT_REVISION" org.opencontainers.image.created="$BUILD_TIMESTAMP_UTC" org.opencontainers.image.source="local://defence-monitor"
 COPY apps/api/main.py apps/api/ops.py apps/api/collector.py apps/api/health.py apps/api/content.py apps/api/translate_worker.py apps/api/content_intelligence.py apps/api/content_validator.py apps/api/net_guard.py apps/api/image_verify.py apps/api/document_verify.py apps/api/article_extract.py apps/api/classify_v2.py apps/api/clustering.py apps/api/enrichment_worker.py apps/api/ai_gateway.py apps/api/classify_v3.py apps/api/clustering_v2.py apps/api/redesign_schema.py apps/api/experience.py apps/api/social.py apps/api/media_pipeline.py apps/api/media_api.py apps/api/media_backfill.py apps/api/media_pilot.py ./
 COPY apps/api/iran_monitor_collector ./iran_monitor_collector
 COPY apps/api/web ./web

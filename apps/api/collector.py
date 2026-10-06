@@ -15,8 +15,8 @@ import media_pipeline as mp
 import classify_v2 as cv
 
 ROOT=Path('/app'); STATE=Path(os.getenv('COLLECTOR_STATE_DIR','/state'))
-MAX_BYTES=2*1024*1024;TIMEOUT=30;UA='IranMonitor/1.0 (bounded RSS monitoring; project news-feed collector)';VERSION='1.2.0'
-LOG=logging.getLogger('iran_monitor.collector')
+MAX_BYTES=2*1024*1024;TIMEOUT=30;UA='DefenceMonitor/1.0 (bounded RSS monitoring; project news-feed collector)';VERSION='1.2.0'
+LOG=logging.getLogger('defence_monitor.collector')
 LOCK_KEY=0x4952414E4D4F4E
 SOURCE_TERMINAL={'succeeded','failed_fetch','failed_parse','failed_normalize','committed_checkpoint_failed','failed_finalize'}
 def preflight_image():

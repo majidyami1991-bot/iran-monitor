@@ -12,7 +12,7 @@ HEAD was `205d769`; the worktree was clean before execution. Readiness contained
 
 Run: `309cb859-2a3e-4d54-a9ce-6a47bd4637a5`. It made 11 RSS requests and received 1,760,114 bytes, observing 199 entries. Four sources followed the duplicate/update path successfully (55 updates, no overwrite). Seven sources reached `database_insert` and failed with `TypeError: Object of type datetime is not JSON serializable`; each was finalized as `failed_finalize`. The error occurred before PostgreSQL executed the insert, at psycopg JSON adaptation. No item or provenance was inserted, and no checkpoint failure or UniqueViolation occurred.
 
-The failure is not treated as a successful validation. The collector invocation used the existing `iran-monitor-news-news-collector:latest` image, which still contained the pre-R1 collector code; the R1 serializer had only been validated in the candidate API image. This explains why the live result cannot establish the repaired path. No code was changed during the cycle and no retry was attempted.
+The failure is not treated as a successful validation. The collector invocation used the existing `defence-monitor-news-news-collector:latest` image, which still contained the pre-R1 collector code; the R1 serializer had only been validated in the candidate API image. This explains why the live result cannot establish the repaired path. No code was changed during the cycle and no retry was attempted.
 
 ## Post-cycle preservation
 

@@ -2,7 +2,7 @@ import json,urllib.request,time,hashlib
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
-R=Path('config/sources/source-registry.json'); O=Path('config/sources'); UA='IranMonitor-SourceDiscovery/0.1'
+R=Path('config/sources/source-registry.json'); O=Path('config/sources'); UA='DefenceMonitor-SourceDiscovery/0.1'
 def check(s):
  u=s['url']; h=urlparse(u).netloc; out={'source_id':s['source_id'],'canonical_url':u,'category':s['canonical_category'],'hostname':h,'recommended_method':'html_listing','discovery_status':'completed','javascript_required':False,'authentication_required':False,'rate_limited':False,'access_status':'unreachable','feed_type':None,'verified_feed_url':None,'sitemap_url':None,'review_reasons':[]}
  for label,url in [('robots','https://'+h+'/robots.txt'),('homepage','https://'+h+'/')]:

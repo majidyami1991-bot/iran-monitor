@@ -1,4 +1,4 @@
-# Iran Monitor
+# Defence Monitor
 
 A Persian-language monitoring product that answers one question about a defined
 set of open sources: **what was published, when, by which source, and under what
@@ -49,11 +49,11 @@ cd 'E:\Iran monitor'
 # Build the collector image and pin it to the current revision.
 $rev = (git rev-parse HEAD).Trim()
 $ts  = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-docker build -f apps/api/Dockerfile --build-arg GIT_REVISION=$rev --build-arg BUILD_TIMESTAMP_UTC=$ts -t "iran-monitor-news-collector:$rev" .
+docker build -f apps/api/Dockerfile --build-arg GIT_REVISION=$rev --build-arg BUILD_TIMESTAMP_UTC=$ts -t "defence-monitor-news-collector:$rev" .
 (Get-Content .env) -replace '^COLLECTOR_REVISION=.*$', "COLLECTOR_REVISION=$rev" | Set-Content .env -Encoding utf8
 
 # Start the stack.
-docker compose -p iran-monitor-news --env-file .env -f deployment/news-monitor/compose.yml up -d
+docker compose -p defence-monitor-news --env-file .env -f deployment/news-monitor/compose.yml up -d
 ```
 
 The image build runs the test suite; a failing test fails the build. The
@@ -64,7 +64,7 @@ Open `http://127.0.0.1:3001`. Collection is **off** until you enable it:
 
 ```powershell
 # Set NEWS_COLLECTION_ENABLED=true in .env, then:
-docker compose -p iran-monitor-news --env-file .env -f deployment/news-monitor/compose.yml --profile scheduler up -d news-collector
+docker compose -p defence-monitor-news --env-file .env -f deployment/news-monitor/compose.yml --profile scheduler up -d news-collector
 Invoke-RestMethod http://127.0.0.1:3001/api/v1/collection/status
 ```
 

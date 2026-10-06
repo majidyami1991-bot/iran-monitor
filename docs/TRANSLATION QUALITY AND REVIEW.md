@@ -67,7 +67,7 @@ many, never the sole basis for a pass.
 
 Every claim in `docs/TRANSLATION AND SUMMARY QUALITY.md` about the
 *validator's* correctness is proven (fault-injection tests). No claim about
-real translation quality on real Iran Monitor content is proven yet: the
+real translation quality on real Defence Monitor content is proven yet: the
 Stage B-OR pilot (via OpenRouter, `anthropic/claude-haiku-4.5`) made exactly
 one real call, which failed at the provider with `insufficient_credits`
 before producing any text — see `docs/TRANSLATION PILOT REPORT.md`. This

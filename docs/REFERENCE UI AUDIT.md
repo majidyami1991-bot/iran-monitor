@@ -29,7 +29,7 @@ typography, motion, card design, image treatment, skeleton/empty/error
 states, internal pages or responsive behaviour. Those parts of the requested
 audit could not be performed.
 
-| # | Feature named in the brief | Observed on reference? | Iran Monitor implementation |
+| # | Feature named in the brief | Observed on reference? | Defence Monitor implementation |
 |---|---|---|---|
 | 1 | Header and navigation | No (blocked) | Masthead with live status, search, Tehran clock + Jalali date, content-language toggle, notifications; grouped primary nav; mobile drawer |
 | 2 | Breaking-news ticker | No | One-at-a-time ticker (never a marquee), pause/prev/next, pauses on hover/focus, audited rule `breaking_v1` |
@@ -44,7 +44,7 @@ audit could not be performed.
 
 ## Independence
 
-The Iran Monitor identity (name, mark, amber signal accent, dark ink palette,
+The Defence Monitor identity (name, mark, amber signal accent, dark ink palette,
 Vazirmatn typography, category artwork) is original to this project. Design
 decisions are documented in `docs/COMMERCIAL DESIGN SYSTEM.md` and justified
 by this product's own data, not by the reference.

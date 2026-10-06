@@ -1,7 +1,7 @@
 # News Media Operations Runbook
 
 Procedures for the media v2 pipeline. They assume the preview stack (compose
-project `iran-monitor-news`, files `compose.yml` + `compose.redesign-preview.yml`,
+project `defence-monitor-news`, files `compose.yml` + `compose.redesign-preview.yml`,
 profile `redesign-preview`) and the env file `E:/Iran monitor/.env`.
 Never print or commit that file or anything derived from it.
 
@@ -20,7 +20,7 @@ Never print or commit that file or anything derived from it.
 ## Legacy fingerprint (run before and after every write step)
 
 ```sh
-docker exec -i iran-monitor-news-news-db-1 sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At' < legacy_fp.sql
+docker exec -i defence-monitor-news-news-db-1 sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At' < legacy_fp.sql
 ```
 
 `legacy_fp.sql` computes md5 over `news_items`, `news_item_translations`,
@@ -36,11 +36,11 @@ The backfill re-parses **saved** feed XML. It never fetches anything.
 ```sh
 # The API image's rootfs is read-only, so use a one-off container.
 # Write DATABASE_URL to a gitignored file without printing it; delete it after the run.
-docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' iran-monitor-news-news-api-preview-1 \
+docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' defence-monitor-news-news-api-preview-1 \
   | grep -E '^(DATABASE_URL|COLLECTOR_METADATA_DIR)=' > runtime/.bf.env
 docker run --rm --network <compose network> --env-file runtime/.bf.env \
   -v "<repo>/runtime/media-audit/feeds:/feeds:ro" --entrypoint python \
-  iran-monitor-news-news-api:media-candidate /app/media_backfill.py --feeds-dir /feeds --dry-run
+  defence-monitor-news-news-api:media-candidate /app/media_backfill.py --feeds-dir /feeds --dry-run
 # review the report, then run without --dry-run, then run again: rows_written must be 0
 rm runtime/.bf.env
 ```

@@ -4,10 +4,10 @@
 
 | Component | Image | Address | Role |
 |---|---|---|---|
-| news-web (production) | `iran-monitor-news-news-web:rollback-pre-redesign` (= `latest`, 674515f7) | 127.0.0.1:3001 | Unchanged pre-redesign UI |
-| news-api (production) | `iran-monitor-news-news-api:rollback-pre-redesign` (= `latest`, 9d1ee6d5) | internal | Unchanged pre-redesign API |
-| news-web-preview | `iran-monitor-news-news-web:redesign-candidate` | **127.0.0.1:3002** | Redesign preview |
-| news-api-preview | `iran-monitor-news-news-api:redesign-candidate` | internal | Redesign API; runs the derived-view jobs |
+| news-web (production) | `defence-monitor-news-news-web:rollback-pre-redesign` (= `latest`, 674515f7) | 127.0.0.1:3001 | Unchanged pre-redesign UI |
+| news-api (production) | `defence-monitor-news-news-api:rollback-pre-redesign` (= `latest`, 9d1ee6d5) | internal | Unchanged pre-redesign API |
+| news-web-preview | `defence-monitor-news-news-web:redesign-candidate` | **127.0.0.1:3002** | Redesign preview |
+| news-api-preview | `defence-monitor-news-news-api:redesign-candidate` | internal | Redesign API; runs the derived-view jobs |
 | news-db, news-collector, OpenCTI, others | unchanged | — | — |
 
 The database already carries the additive migrations 2026.09.28-01 … -03 (see
@@ -17,9 +17,9 @@ the incident below). The production API ignores the new tables.
 
 ```powershell
 cd 'E:\Iran monitor-redesign'   # worktree of feature/iranmonitor-reference-redesign
-docker build -f apps/api/Dockerfile -t iran-monitor-news-news-api:redesign-candidate .   # runs the 261-test suite
-docker build -t iran-monitor-news-news-web:redesign-candidate apps/web-next
-docker compose -p iran-monitor-news --env-file 'E:\Iran monitor\.env' -f deployment/news-monitor/compose.yml `
+docker build -f apps/api/Dockerfile -t defence-monitor-news-news-api:redesign-candidate .   # runs the 261-test suite
+docker build -t defence-monitor-news-news-web:redesign-candidate apps/web-next
+docker compose -p defence-monitor-news --env-file 'E:\Iran monitor\.env' -f deployment/news-monitor/compose.yml `
   -f deployment/news-monitor/compose.redesign-preview.yml --profile redesign-preview up -d --no-deps --no-build `
   news-api-preview news-web-preview
 node tests/ui/redesign-qa.cjs   # BASE_URL defaults to 3002 via env
@@ -39,7 +39,7 @@ are git-ignored. Copy them from the main working tree.
    docker tag …news-web:redesign-candidate …news-web:latest
    ```
 
-4. `docker compose -p iran-monitor-news --env-file .env -f deployment/news-monitor/compose.yml up -d --no-deps --no-build --force-recreate news-api news-web`
+4. `docker compose -p defence-monitor-news --env-file .env -f deployment/news-monitor/compose.yml up -d --no-deps --no-build --force-recreate news-api news-web`
 5. Stop the preview:
 
    ```
@@ -85,7 +85,7 @@ exactly: `news_items` 1,169, `sources` 12, `translations` 81,
 
 ## Incident: production recreated by an unidentified actor (2026-09-28)
 
-At 10:23:01 UTC `iran-monitor-news-news-api:latest` was rebuilt from the main
+At 10:23:01 UTC `defence-monitor-news-news-api:latest` was rebuilt from the main
 working tree, which at that moment contained the uncommitted redesign API.
 At 10:25:44 `news-web:latest` was rebuilt. At 10:25:48 and 10:25:53 the
 production `news-api` and `news-web` containers were recreated from

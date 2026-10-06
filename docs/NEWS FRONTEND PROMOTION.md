@@ -13,12 +13,12 @@ receives database credentials. No collection or scheduler is enabled.
 ## Rollback
 
 The original frontend image is retained locally as
-`iran-monitor-news-legacy:rollback-7096ec3`; its source remains in `apps/api`.
+`defence-monitor-news-legacy:rollback-7096ec3`; its source remains in `apps/api`.
 `compose.legacy.yml` preserves the original configuration and references that
 retained image. From the repository root, restore only the frontend:
 
 ```powershell
-docker compose --env-file .env -p iran-monitor-news -f deployment/news-monitor/compose.legacy.yml up -d --no-deps --no-build news-web
+docker compose --env-file .env -p defence-monitor-news -f deployment/news-monitor/compose.legacy.yml up -d --no-deps --no-build news-web
 ```
 
 This command does not recreate dependencies or remove volumes. Do not prune

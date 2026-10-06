@@ -376,7 +376,7 @@ class OpenRouterAdapter(Adapter):
     (attribution-only, purely cosmetic on OpenRouter's own site) — sending a
     fabricated one would violate this project's standing rule against
     inventing values. `X-Title` is sent since a fixed, true product name
-    ("Iran Monitor") is not fabricated data.
+    ("Defence Monitor") is not fabricated data.
     """
     name = 'openrouter'
     _MAX_RETRY_AFTER_SECONDS = 5  # never let a provider's Retry-After stall a pilot run
@@ -417,7 +417,7 @@ class OpenRouterAdapter(Adapter):
 
     def _call_once(self, system, user):
         opener = build_opener(ProxyHandler())
-        headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {self.api_key}', 'X-Title': 'Iran Monitor'}
+        headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {self.api_key}', 'X-Title': 'Defence Monitor'}
         body = json.dumps(self.request_body(system, user), ensure_ascii=False).encode('utf-8')
         request = Request(f'{self.base}/chat/completions', data=body, headers=headers)
         try:

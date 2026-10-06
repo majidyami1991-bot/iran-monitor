@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 import psycopg
 
-DSN = os.environ.get('DATABASE_URL', 'postgresql://iran_monitor@127.0.0.1:5432/iran_monitor')
+DSN = os.environ.get('DATABASE_URL', 'postgresql://defence_monitor@127.0.0.1:5432/defence_monitor')
 TARGET_COUNT = 20
 MIN_SOURCES = 5
 MIN_WITH_TEXT = 5

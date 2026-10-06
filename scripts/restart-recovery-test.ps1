@@ -15,7 +15,7 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$Project = 'iran-monitor-news',
+  [string]$Project = 'defence-monitor-news',
   [int]$SettleSeconds = 30
 )
 
@@ -23,8 +23,8 @@ $ErrorActionPreference = 'Stop'
 $Db = "$Project-news-db-1"
 $Collector = "$Project-news-collector-1"
 $Api = "$Project-news-api-1"
-$User = 'iran_monitor'
-$Database = 'iran_monitor'
+$User = 'defence_monitor'
+$Database = 'defence_monitor'
 
 function Sql([string]$query) { (docker exec $Db psql -U $User -d $Database -t -A -c $query).Trim() }
 

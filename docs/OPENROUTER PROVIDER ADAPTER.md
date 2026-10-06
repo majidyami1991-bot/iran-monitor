@@ -51,7 +51,7 @@ anyone deciding that on purpose.
 
 ## Headers
 
-- `X-Title: Iran Monitor` — a fixed, true product name, sent for
+- `X-Title: Defence Monitor` — a fixed, true product name, sent for
   OpenRouter's own attribution/leaderboard display. Not a secret, not
   fabricated.
 - **No `HTTP-Referer` is ever sent.** OpenRouter's own docs list this

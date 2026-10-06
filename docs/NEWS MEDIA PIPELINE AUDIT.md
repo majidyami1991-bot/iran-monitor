@@ -1,6 +1,6 @@
 # News Media Pipeline Audit
 
-Audit of why Iran Monitor showed few article images. It follows each image
+Audit of why Defence Monitor showed few article images. It follows each image
 through every layer: RSS feed → parser → `news_item_media` → API →
 Next.js → browser. Run on 2026-09-29 against the production database
 (read-only for the audit itself), branch `feature/news-media-pipeline`,
@@ -82,7 +82,7 @@ Recovery re-parsed the saved audit feeds instead.
 
 | Group | n | Consistent at every layer | Notes |
 |---|---|---|---|
-| Visible on the publisher's site, missing in Iran Monitor | 8 | 7 | The limit of 8 (not 10) comes from the pilot's article-request budget. All 8 now have an `article_open_graph` primary. Missile Defense Advocacy hits the ORB hotlink block and shows a placeholder. |
+| Visible on the publisher's site, missing in Defence Monitor | 8 | 7 | The limit of 8 (not 10) comes from the pilot's article-request budget. All 8 now have an `article_open_graph` primary. Missile Defense Advocacy hits the ORB hotlink block and shows a placeholder. |
 | RSS has media | 10 | 10 | JFeed/TWZ now use `rss_enclosure`; USNI and Defence Blog use content/description HTML. One JCFA item has only emoji, so it is correctly `rejected` with no primary. |
 | No valid RSS media | 10 | 10 | `missing` status with a neutral placeholder. The article fallback flag is off, so no request was made. |
 

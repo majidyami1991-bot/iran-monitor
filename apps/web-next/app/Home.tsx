@@ -147,7 +147,7 @@ function Social() {
 export function Home() {
   return (
     <Shell>
-      <h1 className="sr-only">ایران مانیتور — اتاق خبر</h1>
+      <h1 className="sr-only">Defence Monitor — اتاق خبر</h1>
       <BreakingTicker />
       <section className="stories-block" aria-label="استوری‌ها"><StoriesRail /></section>
       <div className="home-top">

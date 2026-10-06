@@ -1,4 +1,4 @@
-# UI/UX Commercial Audit — Iran Monitor (before redesign)
+# UI/UX Commercial Audit — Defence Monitor (before redesign)
 
 Method: the live system at `http://127.0.0.1:3001` was screenshotted full-page at
 1920×1080, 1440×900, 1024×768 and 390×844 across dashboard, news stream, news

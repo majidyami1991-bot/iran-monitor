@@ -3,7 +3,7 @@ import type { Metadata, Viewport } from 'next';
 import { Prefs } from './design/prefs';
 
 export const metadata: Metadata = {
-  title: { default: 'ایران مانیتور | اتاق خبر رصد منابع باز', template: '%s | ایران مانیتور' },
+  title: { default: 'Defence Monitor | اتاق خبر رصد منابع باز', template: '%s | Defence Monitor' },
   description: 'رصد زنده، فارسی و مستند منابع باز: چه منتشر شد، کِی، از کدام منبع و درباره چه موضوعی.',
 };
 
