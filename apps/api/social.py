@@ -16,6 +16,7 @@ import json
 import os
 import re
 import secrets
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -277,9 +278,19 @@ class AiActionIn(BaseModel):
 POST_COLS = '''p.post_id, p.source_id, p.post_url, p.author_handle, p.original_text, p.translated_text_fa, p.summary_fa,
   p.published_at, p.manually_registered_at, p.topic_id, p.event_id, p.related_item_id, p.analyst_note, p.importance,
   p.verification_status, p.availability_status, p.provenance_json, p.created_at, p.updated_at,
-  a.profile_url, a.display_name, e.title AS event_title, n.title AS related_item_title'''
+  a.profile_url, a.display_name, e.title AS event_title, n.title AS related_item_title,
+  CASE WHEN t.id IS NULL THEN NULL ELSE json_build_object(
+    'status', t.status, 'source_language', t.source_language, 'provider', t.provider, 'model', t.model,
+    'prompt_version', t.prompt_version, 'quality_score', t.quality_score, 'quality_flags', t.quality_flags_json,
+    'latency_ms', t.latency_ms, 'translated_at', t.translated_at, 'reviewed_at', t.reviewed_at,
+    'reviewed_by', t.reviewed_by, 'updated_at', t.updated_at,
+    'translated_text', CASE WHEN t.status = 'available' THEN t.translated_text END) END AS translation'''
+# Only an `available` local translation's text leaves the database; a
+# needs_review candidate is never sent to the public UI.
 POST_FROM = '''FROM x_posts p JOIN x_accounts a USING (source_id)
-  LEFT JOIN news_events e ON e.event_id = p.event_id LEFT JOIN news_items n ON n.item_id = p.related_item_id'''
+  LEFT JOIN news_events e ON e.event_id = p.event_id LEFT JOIN news_items n ON n.item_id = p.related_item_id
+  LEFT JOIN x_post_translations t ON t.x_post_id = p.post_id AND t.target_language = 'fa'
+'''
 
 
 def _check_analyst(name):
@@ -368,7 +379,9 @@ def register_social(app):
                 raise HTTPException(422, 'invalid_verification')
             w.append('p.verification_status = %(verification)s'); a['verification'] = verification
         if has_translation is not None:
-            w.append('p.translated_text_fa IS ' + ('NOT NULL' if has_translation else 'NULL'))
+            has = ("(p.translated_text_fa IS NOT NULL OR EXISTS (SELECT 1 FROM x_post_translations xt "
+                   "WHERE xt.x_post_id = p.post_id AND xt.status = 'available'))")
+            w.append(has if has_translation else 'NOT ' + has)
         if has_event is not None:
             w.append('p.event_id IS ' + ('NOT NULL' if has_event else 'NULL'))
         where = (' WHERE ' + ' AND '.join(w)) if w else ''
@@ -397,7 +410,8 @@ def register_social(app):
             (SELECT count(DISTINCT topic_id) FROM x_posts WHERE topic_id IS NOT NULL AND availability_status<>'withdrawn'
                AND manually_registered_at >= now() - interval '7 days') AS active_topics_7d,
             (SELECT max(manually_registered_at) FROM x_posts) AS last_registered_at,
-            (SELECT count(*) FROM x_posts WHERE translated_text_fa IS NOT NULL) AS translated,
+            (SELECT count(*) FROM x_posts xp WHERE translated_text_fa IS NOT NULL OR EXISTS (SELECT 1 FROM x_post_translations xt
+               WHERE xt.x_post_id = xp.post_id AND xt.status = 'available')) AS translated,
             (SELECT count(*) FROM x_posts WHERE event_id IS NOT NULL) AS with_event''')
         s['by_importance'] = _rows("SELECT importance, count(*) AS n FROM x_posts WHERE availability_status<>'withdrawn' GROUP BY 1")
         s['by_verification'] = _rows("SELECT verification_status, count(*) AS n FROM x_posts WHERE availability_status<>'withdrawn' GROUP BY 1")
@@ -504,6 +518,11 @@ def register_social(app):
             action = 'availability_changed' if set(changes) == {'availability_status'} else 'updated'
             _history(c, post_id, action, _jsonable({k: before.get(k) for k in changes}), _jsonable(changes), analyst)
             _refresh_account(c, before['source_id'])
+        if 'original_text' in changes:
+            # DB only: the local translation of the old text becomes stale at once.
+            import x_translate_worker as xw
+            with xw.connect(DSN) as conn:
+                xw.reconcile(conn, [post_id])
         return post(post_id)
 
     @app.post('/api/v1/social/posts/{post_id}/ai')
@@ -529,7 +548,133 @@ def register_social(app):
             _history(c, post_id, 'ai_' + body.action, None, _jsonable(result['audit']), analyst)
         return {'action': body.action, 'status': result['audit']['status'], 'audit': result['audit'], 'post': post(post_id)}
 
+    register_translation(app)
     return app
+
+
+# ------------------------------------------------------------------ local X translation (Ollama)
+_PROBE = {'at': 0.0, 'value': (False, False, None)}
+_PROBE_TTL = 30.0
+
+
+def _probe(s):
+    """Cached Ollama /api/tags probe (no generation, local host only)."""
+    import x_translate_worker as xw
+    now = time.monotonic()
+    if now - _PROBE['at'] > _PROBE_TTL:
+        _PROBE['value'] = xw.ollama_probe(s, timeout=2)
+        _PROBE['at'] = now
+    return _PROBE['value']
+
+
+def admin_token_ok(token):
+    expected = (os.getenv('SOCIAL_ADMIN_TOKEN') or '').strip()
+    if len(expected) < 24:
+        return False  # not configured (or too weak): admin writes stay closed
+    return bool(token) and hmac.compare_digest(token.strip().encode(), expected.encode())
+
+
+def _require_admin(admin, csrf, origin, need_csrf=True):
+    if not admin_token_ok(admin):
+        raise HTTPException(403, 'admin_required')
+    allowed = [o.strip() for o in (os.getenv('SOCIAL_ALLOWED_ORIGINS') or 'http://127.0.0.1:3002,http://localhost:3002').split(',') if o.strip()]
+    if origin not in allowed:
+        raise HTTPException(403, 'origin_not_allowed')
+    if need_csrf and not verify_csrf_token(csrf):
+        raise HTTPException(403, 'csrf_token_invalid')
+
+
+class RunBatchIn(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    limit: int = Field(3, ge=1, le=50)
+
+
+TRANSLATION_PUBLIC_FIELDS = '''x_post_id, status, source_language, target_language, provider, model, prompt_version,
+  quality_score, quality_flags_json AS quality_flags, attempt_count, latency_ms, last_error, translated_at,
+  reviewed_at, reviewed_by, created_at, updated_at,
+  CASE WHEN status = 'available' THEN translated_text END AS translated_text'''
+
+
+def register_translation(app):
+    import x_translate_worker as xw
+
+    @app.get('/api/v1/social/translation/status')
+    def translation_status():
+        s = xw.load_settings()
+        reachable, found, digest = _probe(s)
+        with xw.connect(DSN) as conn:
+            running = xw.worker_running(conn)
+        return {'mode': 'offline_batch', 'realtime': False, 'scheduler': False, 'provider': 'ollama/local',
+                'configured_model': s.model or None, 'prompt_version': xw.PROMPT_VERSION, 'enabled': s.enabled,
+                'ollama_reachable': reachable, 'model_found': found, 'model_digest': digest,
+                'concurrency': s.concurrency, 'batch_size': s.batch_size, 'max_attempts': s.max_attempts,
+                'timeout_seconds': s.timeout_seconds, 'worker_running': running, 'config_errors': s.errors,
+                'external_providers': False, 'cost_usd': 0}
+
+    @app.get('/api/v1/social/translations/stats')
+    def translation_stats():
+        s = xw.load_settings()
+        reachable, _, _ = _probe(s)
+        with xw.connect(DSN) as conn:
+            c = xw.counts(conn)
+            running = xw.worker_running(conn)
+        return {**c, 'ollama_reachable': reachable, 'configured_model': s.model or None, 'worker_running': running}
+
+    @app.get('/api/v1/social/posts/{post_id}/translation')
+    def post_translation(post_id: str):
+        if not _one('SELECT 1 AS x FROM x_posts WHERE post_id=%(p)s', {'p': post_id}):
+            raise HTTPException(404, 'post_not_found')
+        t = _one(f"SELECT {TRANSLATION_PUBLIC_FIELDS} FROM x_post_translations WHERE x_post_id=%(p)s AND target_language='fa'",
+                 {'p': post_id})
+        hist = _rows('''SELECT status, provider, model, prompt_version, source_text_hash, quality_flags_json AS quality_flags,
+            created_at FROM x_post_translation_history WHERE x_post_id=%(p)s ORDER BY history_id''', {'p': post_id})
+        return {'post_id': post_id, 'translation': t, 'history': hist}
+
+    @app.post('/api/v1/social/translations/csrf')
+    def translation_csrf(x_im_admin: str | None = Header(None), x_im_origin: str | None = Header(None)):
+        _require_admin(x_im_admin, None, x_im_origin, need_csrf=False)
+        return {'token': make_csrf_token(), 'expires_in': CSRF_TTL_SECONDS}
+
+    @app.post('/api/v1/social/posts/{post_id}/translation/enqueue')
+    def translation_enqueue(post_id: str, x_im_admin: str | None = Header(None), x_im_csrf: str | None = Header(None),
+                            x_im_origin: str | None = Header(None)):
+        """DB only: (re)queues one post by its internal id; never calls the model."""
+        _require_admin(x_im_admin, x_im_csrf, x_im_origin)
+        p = _one('SELECT post_id, original_text, availability_status FROM x_posts WHERE post_id=%(p)s', {'p': post_id})
+        if not p:
+            raise HTTPException(404, 'post_not_found')
+        if not (p['original_text'] or '').strip() or p['availability_status'] == 'withdrawn':
+            raise HTTPException(422, 'no_analyst_text_recorded')
+        with xw.connect(DSN) as conn:
+            xw.reconcile(conn, [post_id])
+            conn.execute('''UPDATE x_post_translations SET status='pending', attempt_count=0, last_error=NULL, updated_at=now()
+                WHERE x_post_id=%s AND status IN ('failed','needs_review')''', (post_id,))
+        return post_translation(post_id)
+
+    @app.post('/api/v1/social/translations/run-batch', status_code=202)
+    def translation_run_batch(body: RunBatchIn, x_im_admin: str | None = Header(None), x_im_csrf: str | None = Header(None),
+                              x_im_origin: str | None = Header(None)):
+        """Starts one bounded batch in the background and returns at once;
+        the request never waits for a translation."""
+        _require_admin(x_im_admin, x_im_csrf, x_im_origin)
+        s = xw.load_settings()
+        if s.errors:
+            raise HTTPException(409, 'configuration_error')
+        if not s.enabled:
+            raise HTTPException(409, 'x_translation_disabled')
+        with xw.connect(DSN) as conn:
+            if xw.worker_running(conn):
+                raise HTTPException(409, 'worker_already_running')
+
+        def _run():
+            try:
+                rep = xw.run_batch(DSN, s, limit=body.limit)
+                xw.LOG.info('api batch finished: %s', json.dumps(rep.as_dict(), default=str))
+            except Exception as exc:  # a background batch must never take the API down
+                xw.LOG.error('api batch failed: %s', type(exc).__name__)
+
+        threading.Thread(target=_run, name='x-translate-batch', daemon=True).start()
+        return {'started': True, 'limit': body.limit, 'concurrency': 1}
 
 
 # ------------------------------------------------------------------ AI actions
@@ -544,6 +689,10 @@ def run_ai_action(action, p, gateway=None):
     text = p['original_text']
     if action not in AI_ACTIONS:
         raise HTTPException(422, 'unknown_action')
+    if action == 'translate':
+        # X post translation runs only through the local offline batch
+        # (x_translate_worker, Ollama on this machine); never an external provider.
+        raise HTTPException(422, 'translation_is_local_batch_only')
     if action in ('translate', 'summarize'):
         import ai_gateway as gw
         import content_intelligence as ci

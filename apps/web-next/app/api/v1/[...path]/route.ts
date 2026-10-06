@@ -22,6 +22,10 @@ async function forward(req: NextRequest, ctx: { params: Promise<{ path: string[]
     }
     headers['content-type'] = 'application/json';
     headers['x-im-csrf'] = req.headers.get('x-im-csrf') || '';
+    // Operator token for the local-translation admin writes; the API refuses
+    // every admin write when it is missing or wrong. Never sent on reads.
+    const admin = req.headers.get('x-im-admin');
+    if (admin) headers['x-im-admin'] = admin;
     headers['x-im-origin'] = req.headers.get('origin') || 'absent';
   }
   const init: RequestInit = { method: req.method, headers, cache: 'no-store' };

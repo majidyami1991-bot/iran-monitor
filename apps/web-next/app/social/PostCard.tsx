@@ -4,6 +4,7 @@ import { ExternalLink, Layers, Newspaper } from 'lucide-react';
 import { fmtDateTime, fmtRelative, safeUrl } from '../design/format';
 import { AiTag, CategoryTag, Tag } from '../design/ui';
 import { AVAILABILITY_FA, IMPORTANCE_FA, VERIFICATION_FA, VERIFICATION_TONE, type XPost } from './lib';
+import { TranslatedPost } from './Translation';
 
 /** All user- or X-originated text is rendered as React text nodes (escaped);
  *  nothing here uses dangerouslySetInnerHTML. */
@@ -24,16 +25,8 @@ export function PostCard({ p, now, topicLabel, full = false }: { p: XPost; now: 
         <Tag tone={VERIFICATION_TONE[p.verification_status] ?? 'uncertain'}>{VERIFICATION_FA[p.verification_status] ?? p.verification_status}</Tag>
         <Tag tone={p.availability_status === 'text_recorded' ? 'info' : 'uncertain'}>{AVAILABILITY_FA[p.availability_status] ?? p.availability_status}</Tag>
       </div>
-      {p.translated_text_fa && (
-        <div className="x-text">
-          <p>{p.translated_text_fa}</p>
-          <AiTag>ترجمه ماشینی · بازبینی انسانی نشده</AiTag>
-        </div>
-      )}
+      <TranslatedPost p={p} full={full} />
       {p.summary_fa && <div className="x-text"><p className="muted">{p.summary_fa}</p><AiTag>خلاصه هوش مصنوعی</AiTag></div>}
-      {p.original_text
-        ? <blockquote className="x-original" dir="auto" style={full ? undefined : { WebkitLineClamp: 5 }}>{p.original_text}</blockquote>
-        : <p className="muted">متن محلی ثبت نشده است؛ فقط پیوند رسمی پست نگه داشته شده است.</p>}
       {p.analyst_note && <p className="x-note"><b>توضیح تحلیلگر:</b> {p.analyst_note}</p>}
       <footer className="x-post-foot">
         <span className="muted">منشأ: ثبت دستی توسط <bdi>{p.provenance_json?.registered_by ?? '—'}</bdi>{p.original_text ? ' · متن واردشده توسط تحلیلگر (خروجی مستقیم X نیست)' : ''}</span>

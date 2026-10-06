@@ -8,6 +8,7 @@ import { useApi, useNow } from '../design/useApi';
 import { fmt, fmtDateTime, fmtRelative, qs } from '../design/format';
 import { CardBones, Empty, Failure, PageHead, Pager, Stat, Tag } from '../design/ui';
 import { PostCard } from './PostCard';
+import { TranslationStatusNote } from './Translation';
 import { RegisterForm } from './RegisterForm';
 import { IMPORTANCE_FA, VERIFICATION_FA, type SocialStatus, type XAccount, type XPost } from './lib';
 
@@ -66,6 +67,7 @@ export function Social() {
             note={stats.data.last_registered_at ? `آخرین ثبت: ${fmtRelative(stats.data.last_registered_at, now)}` : 'هنوز ثبتی انجام نشده'} />
         </div>
       )}
+      <TranslationStatusNote />
       {status.data && !status.data.manual_ingest_enabled && (
         <p className="note">ثبت دستی در این محیط غیرفعال است (SOCIAL_MANUAL_INGEST_ENABLED=false). پست‌های ثبت‌شده فقط نمایش داده می‌شوند.</p>
       )}

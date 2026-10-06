@@ -23,3 +23,6 @@ venv/
 
 apps/collector/wheelhouse/
 apps/collector/test-wheelhouse/
+
+# Local Ollama model files (multi-GB); never committed
+TranslatorOllama/

@@ -32,6 +32,7 @@ export const ERROR_FA: Record<string, string> = {
   event_not_found: 'رویداد انتخاب‌شده پیدا نشد.',
   news_item_not_found: 'شناسه خبر پیدا نشد.',
   no_analyst_text_recorded: 'برای این پست متنی ثبت نشده است؛ اقدام هوش مصنوعی روی متن ساختگی اجرا نمی‌شود.',
+  translation_is_local_batch_only: 'ترجمه پست‌های X فقط با پردازش دسته‌ای مدل محلی انجام می‌شود.',
   json_required: 'درخواست نامعتبر.',
 };
 
@@ -70,8 +71,17 @@ export interface XPost {
   importance: string; verification_status: string; availability_status: string;
   provenance_json: Record<string, unknown> & { registered_by?: string; text_source?: string; note_fa?: string; ai?: Record<string, Record<string, unknown>> };
   profile_url: string; display_name: string | null; event_title: string | null; related_item_title: string | null;
+  translation?: XTranslation | null;
   media?: { media_type: string; external_url: string; alt_text: string | null }[];
   history?: { action: string; previous_value_json: unknown; new_value_json: unknown; actor: string; created_at: string }[];
+}
+
+/** Local (Ollama) translation state; translated_text is present only when status is 'available'. */
+export interface XTranslation {
+  status: 'pending' | 'processing' | 'available' | 'needs_review' | 'failed' | 'not_required' | 'stale';
+  source_language: string | null; provider: string | null; model: string | null; prompt_version: string | null;
+  quality_score: number | null; quality_flags: string[]; latency_ms: number | null; translated_at: string | null;
+  reviewed_at: string | null; reviewed_by: string | null; updated_at: string; translated_text: string | null;
 }
 
 export interface SocialStatus {

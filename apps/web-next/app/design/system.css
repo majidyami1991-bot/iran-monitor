@@ -506,6 +506,20 @@ details > summary { cursor: pointer; display: flex; align-items: center; gap: 6p
 .x-handle:hover { color: var(--brand-strong); }
 .x-post-head time { font-size: var(--fs-xs); color: var(--ink-3); }
 .x-original { margin: 0; padding: 10px 14px; border-inline-start: 3px solid var(--line-3); background: var(--panel-2); border-radius: var(--r-sm); white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-sm); line-height: 1.8; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+.x-translation { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.x-tr-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.x-tr-toggle { font-size: var(--fs-xs); }
+.x-tr-text { margin: 0; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+.x-tr-state { margin: 0; font-size: var(--fs-sm); color: var(--ink-2); display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--r-sm); background: var(--panel-2); }
+.x-tr-needs_review, .x-tr-failed { background: var(--warn-soft); color: var(--warn); }
+.x-tr-processing { background: var(--ai-soft); color: var(--ai); }
+.x-tr-spinner { width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; border-inline-end-color: transparent; animation: x-tr-spin 1s linear infinite; flex: none; }
+@keyframes x-tr-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .x-tr-spinner { animation: none; } }
+.x-tr-prov summary { cursor: pointer; font-size: var(--fs-xs); color: var(--ink-3); }
+.x-tr-prov .kv { margin-top: 6px; font-size: var(--fs-xs); }
+.x-tr-panel .panel-title h3 { display: inline-flex; align-items: center; gap: 6px; }
+.x-tr-counts { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; font-size: var(--fs-sm); color: var(--ink-2); }
 .x-text { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .x-text p { line-height: 1.9; }
 .x-note { font-size: var(--fs-sm); color: var(--ink-2); background: var(--info-soft); border-radius: var(--r-sm); padding: 8px 12px; overflow-wrap: anywhere; }

@@ -291,6 +291,71 @@ UPDATE news_item_media m SET is_primary = true FROM (
 CREATE UNIQUE INDEX IF NOT EXISTS news_item_media_one_primary ON news_item_media(item_id) WHERE is_primary;
 CREATE INDEX IF NOT EXISTS news_item_media_canonical_idx ON news_item_media(item_id, canonical_url);
 '''),
+    ('2026.10.06-01', 'local (Ollama) X post translation: current row per post + append-only history', '''
+CREATE TABLE IF NOT EXISTS x_post_translations(
+  id bigserial PRIMARY KEY,
+  x_post_id text NOT NULL REFERENCES x_posts(post_id),
+  source_language text,
+  target_language text NOT NULL DEFAULT 'fa',
+  translated_text text,
+  status text NOT NULL DEFAULT 'pending',
+  provider text,
+  model text,
+  prompt_version text,
+  source_text_hash text NOT NULL,
+  translation_hash text,
+  quality_score real,
+  quality_flags_json jsonb NOT NULL DEFAULT '[]'::jsonb,
+  attempt_count integer NOT NULL DEFAULT 0,
+  latency_ms integer,
+  last_error text,
+  processing_started_at timestamptz,
+  translated_at timestamptz,
+  reviewed_at timestamptz,
+  reviewed_by text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT x_post_translations_status_chk CHECK (status IN
+    ('pending','processing','available','needs_review','failed','not_required','stale')),
+  CONSTRAINT x_post_translations_one_per_lang UNIQUE (x_post_id, target_language));
+CREATE INDEX IF NOT EXISTS x_post_translations_status_idx ON x_post_translations(status, id);
+CREATE TABLE IF NOT EXISTS x_post_translation_history(
+  history_id bigserial PRIMARY KEY,
+  translation_id bigint NOT NULL,
+  x_post_id text NOT NULL,
+  translated_text text,
+  status text NOT NULL,
+  provider text,
+  model text,
+  prompt_version text,
+  source_text_hash text,
+  quality_flags_json jsonb,
+  created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS x_post_translation_history_post_idx ON x_post_translation_history(x_post_id, history_id);
+CREATE OR REPLACE FUNCTION log_x_post_translation() RETURNS trigger AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' AND NEW.status IS NOT DISTINCT FROM OLD.status
+     AND NEW.translated_text IS NOT DISTINCT FROM OLD.translated_text
+     AND NEW.source_text_hash IS NOT DISTINCT FROM OLD.source_text_hash THEN
+    RETURN NEW;
+  END IF;
+  INSERT INTO x_post_translation_history(translation_id,x_post_id,translated_text,status,provider,model,
+    prompt_version,source_text_hash,quality_flags_json)
+  VALUES(NEW.id,NEW.x_post_id,NEW.translated_text,NEW.status,NEW.provider,NEW.model,
+    NEW.prompt_version,NEW.source_text_hash,NEW.quality_flags_json);
+  RETURN NEW;
+END $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS x_post_translation_history_trg ON x_post_translations;
+CREATE TRIGGER x_post_translation_history_trg AFTER INSERT OR UPDATE ON x_post_translations
+  FOR EACH ROW EXECUTE FUNCTION log_x_post_translation();
+CREATE OR REPLACE FUNCTION x_post_translation_history_immutable() RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'x_post_translation_history is append-only';
+END $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS x_post_translation_history_no_change ON x_post_translation_history;
+CREATE TRIGGER x_post_translation_history_no_change BEFORE UPDATE OR DELETE ON x_post_translation_history
+  FOR EACH ROW EXECUTE FUNCTION x_post_translation_history_immutable();
+'''),
 ]
 
 # Integration registry rows are facts about this deployment, not data about

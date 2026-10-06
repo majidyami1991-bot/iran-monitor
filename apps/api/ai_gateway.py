@@ -32,7 +32,8 @@ from enum import Enum
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener, ProxyHandler
 
-TASK_TYPES = ('translation', 'summary', 'classification', 'signal_analysis', 'scenario', 'key_point_extraction')
+TASK_TYPES = ('translation', 'summary', 'classification', 'signal_analysis', 'scenario', 'key_point_extraction',
+              'x_post_translation')
 
 
 class Mode(str, Enum):
@@ -116,6 +117,42 @@ PROMPTS = {
         'JSON: {"title": "...", "narrative": "...", "confirming_indicators": ["..."], '
         '"disconfirming_indicators": ["..."]}.'
     ),
+    # Local (Ollama) translation of analyst-recorded X posts. Translation only:
+    # no summary, analysis or added context. See docs/LOCAL OLLAMA X
+    # TRANSLATION ARCHITECTURE.md.
+    ('x_post_translation', 'x-post-translation-fa-v1.0.0'): (
+        'You are a precise English-to-Persian translator for an OSINT monitoring platform.\n\n'
+        'Translate only the supplied social-media post into clear, natural Persian.\n\n'
+        'Rules:\n'
+        '1. Preserve the exact meaning, certainty, uncertainty, attribution and tone.\n'
+        '2. Do not summarize, analyze, explain or add context.\n'
+        '3. Do not invent facts.\n'
+        '4. Preserve all URLs exactly.\n'
+        '5. Preserve @mentions exactly.\n'
+        '6. Preserve hashtags exactly unless a separate Persian explanation is explicitly requested. No explanation is requested here.\n'
+        '7. Preserve numbers, dates, times, percentages, coordinates, identifiers, weapon/model names and technical codes.\n'
+        '8. Preserve emojis unless they are purely decorative duplicates.\n'
+        '9. Keep proper names and organization names accurate. Use Persian transliteration only when natural, without losing the original identity.\n'
+        '10. Keep acronyms such as OSINT, IMINT, GEOINT, ELINT, NATO, CENTCOM and NORTHCOM unchanged unless a common Persian form is unambiguous.\n'
+        '11. Do not output Markdown, commentary, notes or quotation wrappers.\n'
+        '12. If the source is already Persian, report translation_not_required.\n'
+        '13. Return only valid JSON matching the requested schema.'
+    ),
+}
+
+# JSON schema sent to Ollama as `format` (structured output) for tasks that
+# have one; the same keys are enforced by _SCHEMAS below either way.
+OUTPUT_JSON_SCHEMAS = {
+    'x_post_translation': {
+        'type': 'object',
+        'properties': {
+            'detected_language': {'type': 'string'},
+            'translation_fa': {'type': 'string'},
+            'translation_not_required': {'type': 'boolean'},
+            'quality_notes': {'type': 'array', 'items': {'type': 'string'}},
+        },
+        'required': ['detected_language', 'translation_fa', 'translation_not_required', 'quality_notes'],
+    },
 }
 
 
@@ -130,6 +167,7 @@ def prompt_for(task_type, version=None):
 LATEST_PROMPT_VERSION = {
     'translation': '1.0.0', 'summary': '1.0.0', 'classification': '1.0.0',
     'signal_analysis': '0.1.0', 'scenario': '0.1.0', 'key_point_extraction': '0.1.0',
+    'x_post_translation': 'x-post-translation-fa-v1.0.0',
 }
 # Not every task type's own prompts map 1:1 with "the one default" — an
 # executive summary is deliberately a distinct, explicitly-requested prompt
@@ -150,6 +188,8 @@ _SCHEMAS = {
     'signal_analysis': {'title': str, 'explanation': str, 'alternative_explanations': list},
     'scenario': {'title': str, 'narrative': str, 'confirming_indicators': list, 'disconfirming_indicators': list},
     'key_point_extraction': {'points': list},
+    'x_post_translation': {'detected_language': str, 'translation_fa': str, 'translation_not_required': bool,
+                           'quality_notes': list},
 }
 
 
@@ -173,7 +213,7 @@ def validate_output(task_type, payload):
     return True, None
 
 
-_EXACT_SCHEMAS = frozenset(('translation', 'summary'))
+_EXACT_SCHEMAS = frozenset(('translation', 'summary', 'x_post_translation'))
 
 
 # --------------------------------------------------------------------------- circuit breaker
@@ -361,6 +401,117 @@ class LocalModelAdapter(OpenAICompatibleAdapter):
         self.api_key, self.base, self.model, self.timeout = (api_key or 'local'), base_url.rstrip('/'), model, timeout
 
 
+OLLAMA_LOCAL_HOSTS = frozenset(('127.0.0.1', 'localhost', '::1', 'host.docker.internal'))
+_FENCE_RE = re.compile(r'^\s*```(?:json)?\s*\n(.*)\n\s*```\s*$', re.DOTALL)
+
+
+def strip_json_fence(text):
+    """Conservative: only a response that is exactly one fenced block is
+    unwrapped. Free text around JSON is left as-is and fails json.loads."""
+    m = _FENCE_RE.match(text or '')
+    return m.group(1).strip() if m else (text or '').strip()
+
+
+class OllamaAdapter(Adapter):
+    """Ollama's native /api/chat on this machine only (CPU inference).
+
+    Native rather than the OpenAI-compatible endpoint because only the native
+    API takes `format` (a JSON schema for structured output) and the CPU
+    options (num_ctx, num_predict, num_thread). There is no fallback model:
+    the configured model must exist under exactly that name (and digest, when
+    one is pinned) or every call fails closed. Cost is always 0."""
+    name = 'ollama/local'
+
+    def __init__(self, base_url, model, timeout, *, expected_digest=None, num_ctx=4096, num_thread=None,
+                 temperature=0.1, keep_alive='5m', max_predict=1536):
+        from urllib.parse import urlsplit
+        parts = urlsplit(base_url or '')
+        if parts.scheme != 'http' or (parts.hostname or '') not in OLLAMA_LOCAL_HOSTS:
+            raise GatewayError('ollama_host_not_local')
+        if not model:
+            raise GatewayError('ollama_model_not_configured')
+        self.base, self.model, self.timeout = base_url.rstrip('/'), model, timeout
+        self.expected_digest = (expected_digest or '').strip() or None
+        self.num_ctx, self.num_thread, self.temperature = num_ctx, num_thread, temperature
+        self.keep_alive, self.max_predict = keep_alive, max_predict
+        self.json_schema = None  # set per request by AIGateway.run()
+        self.verified_digest = None
+
+    def _get(self, path, timeout):
+        opener = build_opener(ProxyHandler({}))  # never route through a proxy
+        try:
+            with opener.open(Request(self.base + path), timeout=timeout) as r:
+                return json.loads(r.read().decode('utf-8'))
+        except HTTPError as exc:
+            raise GatewayError(f'provider_unavailable:http_{exc.code}') from exc
+        except TimeoutError as exc:
+            raise GatewayError('transient_timeout:tags') from exc
+        except (URLError, OSError, ValueError) as exc:
+            raise GatewayError(f'provider_unreachable:{type(exc).__name__}') from exc
+
+    def verify_model(self, timeout=10):
+        """Exact-name lookup in /api/tags; returns the digest. Raises
+        model_not_found / model_digest_mismatch / provider_unreachable."""
+        tags = self._get('/api/tags', timeout)
+        match = next((m for m in tags.get('models', []) if m.get('name') == self.model), None)
+        if match is None:
+            raise GatewayError(f'model_not_found:{self.model}')
+        digest = match.get('digest') or ''
+        if self.expected_digest and not digest.startswith(self.expected_digest):
+            raise GatewayError(f'model_digest_mismatch:{digest[:12]}')
+        self.verified_digest = digest
+        return digest
+
+    def predict_budget(self, user):
+        # Persian output runs ~1.5-2.5 tokens per source word; JSON keys add a
+        # little. Bounded so a long post cannot ask the CPU for an open-ended run.
+        return max(192, min(self.max_predict, 160 + int(len(user or '') * 1.2)))
+
+    def request_body(self, system, user):
+        options = {'temperature': self.temperature, 'num_ctx': self.num_ctx, 'num_predict': self.predict_budget(user)}
+        if self.num_thread:
+            options['num_thread'] = self.num_thread
+        # think=False: gemma4 reasons by default, which on CPU more than doubles
+        # latency and spends num_predict on text that is never used.
+        return {'model': self.model, 'stream': False, 'think': False, 'keep_alive': self.keep_alive, 'options': options,
+                'format': self.json_schema or 'json',
+                'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}]}
+
+    def complete(self, system, user):
+        if self.verified_digest is None:
+            self.verify_model()
+        opener = build_opener(ProxyHandler({}))
+        data = json.dumps(self.request_body(system, user), ensure_ascii=False).encode('utf-8')
+        req = Request(self.base + '/api/chat', data=data, headers={'Content-Type': 'application/json'})
+        try:
+            with opener.open(req, timeout=self.timeout) as r:
+                out = json.loads(r.read().decode('utf-8'))
+        except HTTPError as exc:
+            code = exc.code
+            if code == 404:
+                raise GatewayError('model_not_found') from exc
+            raise GatewayError(f'provider_unavailable:http_{code}' if code >= 500 else f'request_invalid:http_{code}') from exc
+        except TimeoutError as exc:
+            raise GatewayError('transient_timeout:chat') from exc
+        except (URLError, OSError) as exc:
+            reason = getattr(exc, 'reason', exc)
+            kind = 'transient_timeout' if isinstance(reason, TimeoutError) else 'provider_unreachable'
+            raise GatewayError(f'{kind}:{type(reason).__name__}') from exc
+        except ValueError as exc:
+            raise GatewayError('unexpected_response_shape') from exc
+        try:
+            text = out['message']['content']
+        except (KeyError, TypeError) as exc:
+            raise GatewayError('unexpected_response_shape') from exc
+        served = out.get('model')
+        if served != self.model:
+            raise GatewayError(f'model_identity_mismatch:{str(served)[:40]}')
+        if out.get('done_reason') == 'length':
+            raise GatewayError('output_truncated_num_predict')
+        return AdapterResponse(strip_json_fence(text), out.get('prompt_eval_count'), out.get('eval_count'),
+                               response_model=served, reported_cost_usd=0.0)
+
+
 class OpenRouterAdapter(Adapter):
     """https://openrouter.ai — an OpenAI-compatible chat-completions
     endpoint that proxies many underlying model providers. Kept as its own
@@ -482,6 +633,8 @@ APPROVED_MODELS = {
     # Free Router picked a model that left English untranslated.
     'openrouter': {'anthropic/claude-haiku-4.5', 'anthropic/claude-sonnet-5', 'openrouter/free',
                    'google/gemma-4-31b-it:free'},
+    # Local CPU model for X post translation (owner-approved 2026-10-06).
+    'ollama': {'gemma4:e2b'},
 }
 
 # Free-only mode (AI_FREE_ONLY=true, or any configured ':free' model):
@@ -496,6 +649,8 @@ FREE_ROUTERS = {'openrouter': {'openrouter/free'}}
 
 
 def free_only_enabled(config):
+    if config.mode == Mode.LOCAL:
+        return False  # a model on this machine has no cost to guard
     if (os.getenv('AI_FREE_ONLY') or '').strip().lower() in ('1', 'true', 'yes'):
         return True
     return any(m and (m.endswith(':free') or m in FREE_ROUTERS.get(config.provider, set()))
@@ -572,6 +727,7 @@ class GatewayConfig:
     timeout_seconds: int
     max_concurrency: int
     daily_budget_usd: float | None
+    options: dict = field(default_factory=dict)  # adapter-specific (e.g. Ollama num_ctx, digest pin)
 
 
 def load_config() -> GatewayConfig:
@@ -581,7 +737,7 @@ def load_config() -> GatewayConfig:
         mode = Mode.DISABLED
     elif provider == 'deterministic':
         mode = Mode.DETERMINISTIC
-    elif provider == 'local':
+    elif provider in ('local', 'ollama'):
         mode = Mode.LOCAL
     else:
         mode = Mode.EXTERNAL_PROVIDER
@@ -605,6 +761,16 @@ def load_config() -> GatewayConfig:
 def build_adapter(config: GatewayConfig) -> Adapter:
     if config.mode in (Mode.DISABLED, Mode.DETERMINISTIC):
         return DisabledAdapter()
+    if config.mode == Mode.LOCAL and config.provider == 'ollama':
+        o = config.options
+        try:
+            return OllamaAdapter(config.base_url, config.models.get('x_post_translation') or config.models.get('translation'),
+                                 config.timeout_seconds, expected_digest=o.get('expected_digest'),
+                                 num_ctx=o.get('num_ctx', 4096), num_thread=o.get('num_thread'),
+                                 temperature=o.get('temperature', 0.1), keep_alive=o.get('keep_alive', '5m'),
+                                 max_predict=o.get('max_predict', 1536))
+        except GatewayError:
+            return DisabledAdapter()
     if config.mode == Mode.LOCAL:
         return LocalModelAdapter(config.base_url or 'http://localhost:11434/v1', config.models.get('translation') or 'local-model', config.timeout_seconds)
     factory = ADAPTER_REGISTRY.get(config.provider)
@@ -731,6 +897,11 @@ class AIGateway:
                                                 prompt_version, request.task_type, digest,
                                                 error='free_only_guard:model_not_free'))
 
+        if self.config.provider == 'ollama' and not model_is_approved('ollama', requested):
+            return self._finish(GatewayResult('error', None, self.adapter.name, requested,
+                                                prompt_version, request.task_type, digest,
+                                                error='model_not_approved'))
+
         system = prompt_for(request.task_type, prompt_version)
         sem = _semaphore_for(self.config.max_concurrency)
         started = time.monotonic()
@@ -741,6 +912,8 @@ class AIGateway:
         try:
             if isinstance(self.adapter, (OpenAICompatibleAdapter, AnthropicAdapter, OpenRouterAdapter)):
                 self.adapter.model = self._model_for(request.task_type) or self.adapter.model
+            if isinstance(self.adapter, OllamaAdapter):
+                self.adapter.json_schema = OUTPUT_JSON_SCHEMAS.get(request.task_type)
             response = self.adapter.complete(system, request.content)
         except GatewayError as exc:
             self.breaker.record_failure()

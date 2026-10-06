@@ -12,7 +12,8 @@ import { useTopicLabels } from '../../Social';
 import { AVAILABILITY_FA, errorText, VERIFICATION_FA, writeSocial, type SocialStatus, type XPost } from '../../lib';
 
 const ACTIONS: [string, string, 'ai' | 'rule'][] = [
-  ['translate', 'ترجمه فارسی', 'ai'], ['summarize', 'خلاصه فارسی', 'ai'],
+  // Translation is not an on-demand action: the local offline batch owns it.
+  ['summarize', 'خلاصه فارسی', 'ai'],
   ['classify', 'پیشنهاد موضوع', 'rule'], ['entities', 'استخراج نام‌ها', 'rule'], ['suggest_event', 'پیشنهاد رویداد', 'rule'],
 ];
 const STATUS_FA: Record<string, string> = {
