@@ -25,3 +25,30 @@
 | Meaning | The "new" `gemma4:e2b` builds of the morning were this same migration, not new weights: its `ggml` entry is also `da406dc37ca0`. Under Ollama 0.40 the single-manifest ID `7fbdbf8f5e45` cannot persist, because Ollama rewrites it on load. |
 | Status | `BLOCKED_MODEL_DIGEST_MISMATCH`. The local-AI stack pins `OLLAMA_MODEL_DIGEST=7fbdbf8f5e45` and fails closed: every translation and assistant call ends with `model_digest_mismatch`. One fixture inference (synthetic text, not stored) ran during the load that triggered the rewrite. No real content was translated with the migrated model. |
 | Decision needed | (a) Approve identity by the weights layers (`ggml` sub-manifest `da406dc37ca0` = approved layers) and confirm which runner Ollama uses for inference. (b) Pin Ollama 0.35.1 (downgrade) so manifests are not rewritten. (c) Approve the migrated build as a new reviewed model. Until then nothing runs. |
+
+## 3. Runner gate under option (a) — failed
+
+Option (a) was chosen on 2026-10-08: accept the model's identity by its
+weights only if the runner Ollama actually uses is `ggml` and every blob it
+loads is byte-identical to the approved archive.
+
+| Evidence | Value |
+|---|---|
+| Ollama | 0.40.1. The current `ollama serve` writes no log (`server.log` is 0 bytes), so the runner was proven from the process table instead. |
+| Probe | One synthetic inference on `gemma4:e2b-approved-7fbdbf8f5e45` (text `[SYNTHETIC] The ship arrived.`, seed 42, num_ctx 4096, num_predict 64). Processes were captured before, during and after the call (`runtime/local-ai-evidence/runner-probe.txt`, not committed). |
+| Runner process | `lib\ollama\llama-server.exe` (child of `ollama serve`), i.e. the **llamacpp** runner, with `-c 4096 -np 1`, `--offline`, CPU (`size_vram=0`) |
+| Files it loads | `--model blobs\sha256-aed3339236b464c87de08a4ce3aa148f5a43be4717e92629b35e2642199896ff` (6,178,838,400 B) and `--mmproj blobs\sha256-0012c271672236852cb98401c0f9710d71a57c14b552dbe2b31cf898e7bfbf8e` (984,735,808 B). The full SHA-256 of each file equals its name. |
+| `/api/ps` | loaded digest `d1e84c607e13…`, which is the `llamacpp` entry of the manifest list |
+| Approved archive blobs | `c6bc3775…`, `4e30e2665218…` (weights, 7,162,394,016 B), `7339fa41…`, `56380ca2…`. **None of them is loaded by the runner.** |
+| Verdict | `MODEL_WEIGHT_IDENTITY_ACCEPTED=FALSE`, `BLOCKED_RUNNER_OR_WEIGHT_MISMATCH`. The executed weights are Ollama's conversion, not the approved bytes. No fixture suite, real translation, batch or assistant query was run. |
+
+Possible next steps (owner decision; each changes the global Ollama
+installation, not this repository):
+
+1. Make Ollama 0.40.1 use the `ggml` entry, if a supported setting exists.
+   This must be verified, not assumed, and the gate re-run afterwards.
+2. Reinstall Ollama 0.35.1 (single-manifest store, no conversion), then
+   restore `gemma4:e2b-approved-7fbdbf8f5e45` with ID `7fbdbf8f5e45` and
+   re-run the gate.
+3. Treat the converted llamacpp artifacts (`aed33392…` + `0012c271…`) as a
+   new model and run a full fixture and quality review before approving it.
