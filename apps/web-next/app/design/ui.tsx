@@ -38,8 +38,9 @@ export function TranslationTag({ status, review }: { status: string | null | und
     const reviewed = review === 'approved' ? ' · بازبینی‌شده' : review === 'pending_review' ? ' · در صف بازبینی' : ' · بازبینی‌نشده';
     return <Tag tone="ai" icon={<Languages size={12} />} title="ترجمه ماشینی؛ متن اصلی منبع حفظ شده است">ترجمه ماشینی{reviewed}</Tag>;
   }
-  const label = status === 'error' ? 'ترجمه ناموفق' : status === 'unavailable' ? 'ترجمه ناموجود'
-    : status === 'needs_review' ? 'ترجمه ردشده در کنترل کیفیت' : 'ترجمه در انتظار';
+  const label = status === 'error' || status === 'failed' ? 'ترجمه ناموفق' : status === 'unavailable' ? 'ترجمه ناموجود'
+    : status === 'needs_review' ? 'ترجمه ردشده در کنترل کیفیت' : status === 'processing' ? 'در حال ترجمه'
+    : status === 'stale' ? 'متن اصلی تغییر کرده؛ ترجمه کهنه' : status === 'not_required' ? 'متن اصلی فارسی است' : 'ترجمه در انتظار';
   return <Tag tone="uncertain" icon={<Languages size={12} />} title="هنوز ترجمه فارسی ذخیره نشده؛ متن اصلی نمایش داده می‌شود">{label}</Tag>;
 }
 

@@ -109,7 +109,7 @@ export function NewsDetailPage() {
                     ? <p className="muted">ترجمه خلاصه در کنترل کیفیت رد شد و نمایش داده نمی‌شود؛ برای بازبینی یا ترجمه دوباره ذخیره شده است.</p>
                     : <p className="muted">خلاصه فارسی ذخیره نشده است.</p>}
                 {it.machine_translated && (
-                  <small className="muted">ترجمه ماشینی · <bdi>{it.translation_provider}</bdi> · مدل درخواستی <bdi>{it.translation_model}</bdi>
+                  <small className="muted">{it.translation_provider === 'ollama/local' ? 'ترجمه ماشینی محلی' : 'ترجمه ماشینی'} · <bdi>{it.translation_provider}</bdi> · مدل درخواستی <bdi>{it.translation_model}</bdi>
                     {it.translation_served_by && <> · مدل پاسخ‌دهنده <bdi>{it.translation_served_by}</bdi></>} · بازبینی انسانی نشده</small>
                 )}
               </div>

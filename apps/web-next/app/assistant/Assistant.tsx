@@ -31,6 +31,15 @@ interface Status {
   translation_batch_running: boolean; queue_length: number; generating: boolean;
   limits: { max_records: number; history_turns: number; max_output_tokens: number; retention_days: number };
 }
+interface ModelRow { id: string; role: string; tag: string; state: string; available_in_ollama: boolean | null;
+  manifest_digest: string; runner: string | null; ollama_version: string | null; validator_version: string | null }
+interface Models { models: ModelRow[]; features: { translation: boolean; assistant: boolean; assistant_mode: string | null }; ollama_reachable: boolean }
+const STATE_FA: Record<string, [string, 'ok' | 'warn' | 'uncertain' | 'error' | 'info']> = {
+  approved: ['تأییدشده', 'ok'], proposed: ['پیشنهادشده (در ارزیابی)', 'info'], rejected_quality_gate: ['ردشده در آزمون کیفیت', 'error'],
+  superseded: ['جایگزین‌شده', 'uncertain'], revoked: ['تأیید لغو شد', 'error'], unknown: ['نامشخص', 'uncertain'],
+};
+const ROLE_FA: Record<string, string> = { translation: 'ترجمه', assistant: 'دستیار (پاسخ آزاد)', assistant_extractive: 'دستیار (نقل‌قول‌محور)', both: 'ترجمه و دستیار (قدیمی)' };
+
 interface Usage {
   inferences: number; translation_inferences: number; assistant_inferences: number; cache_hits: number;
   input_tokens: number; output_tokens: number; average_latency_ms: number | null; assistant_average_latency_ms: number | null;
@@ -132,6 +141,7 @@ function AssistantMessage({ r }: { r: Result }) {
 
 export function Assistant() {
   const status = useApi<Status>('assistant/status');
+  const models = useApi<Models>('local-ai/models');
   const usage = useApi<Usage>('assistant/usage');
   const sources = useApi<{ sources: { source_id: string; display_name: string | null; hostname: string }[] }>('sources?page_size=100');
   const topics = useApi<{ categories: { id: string; label: string }[] }>('topics?window=all');
@@ -210,8 +220,10 @@ export function Assistant() {
   };
 
   const st = status.data;
-  const offline = st ? !(st.ollama_reachable && st.model_found) : false;
-  const disabled = !st?.enabled || offline;
+  const noApproved = !!st && (((st as unknown as { config_errors?: string[] }).config_errors || []).includes('no_approved_model_artifact')
+    || (models.data ? !models.data.features.assistant : false));
+  const offline = st ? !noApproved && !(st.ollama_reachable && st.model_found) : false;
+  const disabled = !st?.enabled || offline || noApproved;
   const last = [...msgs].reverse().find((m) => m.result && m.result.citations.length > 0)?.result;
 
   return (
@@ -219,8 +231,8 @@ export function Assistant() {
       <PageHead eyebrow="دستیار هوشمند" title="دستیار هوشمند Defence Monitor"
         lede="پرسش خود را بنویسید؛ پاسخ فقط از خبرها و پست‌های ذخیره‌شده در همین سامانه ساخته می‌شود و هر ادعا به سند داخلی ارجاع دارد. مدل به‌صورت محلی روی همین رایانه اجرا می‌شود و به اینترنت دسترسی ندارد.">
         {st && (
-          <Tag tone={offline ? 'warn' : 'ok'} icon={<Cpu size={12} />}>
-            {offline ? 'مدل محلی در دسترس نیست' : st.generating || st.model_busy ? 'مدل محلی مشغول' : 'مدل محلی آماده'}
+          <Tag tone={noApproved || offline ? 'warn' : 'ok'} icon={<Cpu size={12} />}>
+            {noApproved ? 'دستیار غیرفعال (مدل تأییدشده ندارد)' : offline ? 'مدل محلی در دسترس نیست' : st.generating || st.model_busy ? 'مدل محلی مشغول' : 'مدل محلی آماده'}
           </Tag>
         )}
       </PageHead>
@@ -234,6 +246,7 @@ export function Assistant() {
               <span>{st.translation_batch_running ? 'ترجمه دسته‌ای در حال اجرا است (پاسخ‌ها کندتر می‌شوند)' : 'ترجمه دسته‌ای فعال نیست'}</span>
             </> : <span>در حال بررسی وضعیت مدل…</span>}
           </div>
+          {noApproved && <p className="note as-disabled" role="status" data-testid="as-disabled">دستیار در این نسخه غیرفعال است: هیچ مدل محلی برای این نقش آزمون کیفیت را با موفقیت پشت سر نگذاشته است. خبرها و ترجمه‌های تأییدشده همچنان در بخش‌های دیگر قابل مشاهده‌اند.</p>}
           {offline && <p className="note as-offline" role="alert">مدل محلی (Ollama) در دسترس نیست. خبرها و ترجمه‌های ذخیره‌شده همچنان در بخش‌های دیگر سامانه قابل مشاهده‌اند.</p>}
 
           <div className="as-thread" aria-live="polite">
@@ -295,6 +308,28 @@ export function Assistant() {
             {last
               ? <ol className="as-evidence-list">{last.citations.map((c, i) => <CitationCard key={c.evidence_id} c={c} n={i + 1} />)}</ol>
               : <p className="muted">پس از پاسخ، اسنادی که پاسخ به آن‌ها استناد کرده اینجا نمایش داده می‌شوند.</p>}
+          </section>
+
+          <section className="panel" aria-label="وضعیت مدل‌های محلی" data-testid="as-models">
+            <div className="panel-title"><h3><Cpu size={15} aria-hidden="true" /> وضعیت مدل‌های محلی</h3></div>
+            {models.error && <p className="muted">وضعیت مدل‌ها دریافت نشد.</p>}
+            {!models.data && !models.error && <p className="muted">در حال دریافت…</p>}
+            {models.data && (
+              <>
+                <p className="as-features">ترجمه: <b>{models.data.features.translation ? 'فعال' : 'غیرفعال'}</b> · دستیار: <b>{models.data.features.assistant ? 'فعال' : 'غیرفعال'}</b></p>
+                <ul className="as-model-list">
+                  {models.data.models.filter((m) => m.role !== 'both').map((m) => {
+                    const [label, tone] = STATE_FA[m.state] ?? STATE_FA.unknown;
+                    return (
+                      <li key={m.id}>
+                        <div className="as-model-row"><bdi dir="ltr" className="as-model-tag">{m.tag}</bdi><Tag tone={tone}>{label}</Tag></div>
+                        <small className="muted">{ROLE_FA[m.role] ?? m.role} · <bdi dir="ltr">{m.manifest_digest}</bdi> · {m.runner ?? '—'}{m.available_in_ollama === false ? ' · در Ollama موجود نیست' : ''}</small>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
           </section>
 
           <section className="panel" aria-label="مصرف مدل محلی" data-testid="as-usage">
