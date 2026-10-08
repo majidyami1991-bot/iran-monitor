@@ -456,7 +456,7 @@ class OllamaAdapter(Adapter):
     name = 'ollama/local'
 
     def __init__(self, base_url, model, timeout, *, expected_digest=None, num_ctx=4096, num_thread=None,
-                 temperature=0.1, keep_alive='5m', max_predict=1536):
+                 temperature=0.1, keep_alive='5m', max_predict=1536, seed=None):
         from urllib.parse import urlsplit
         parts = urlsplit(base_url or '')
         if parts.scheme != 'http' or (parts.hostname or '') not in OLLAMA_LOCAL_HOSTS:
@@ -466,7 +466,8 @@ class OllamaAdapter(Adapter):
         self.base, self.model, self.timeout = base_url.rstrip('/'), model, timeout
         self.expected_digest = (expected_digest or '').strip() or None
         self.num_ctx, self.num_thread, self.temperature = num_ctx, num_thread, temperature
-        self.keep_alive, self.max_predict = keep_alive, max_predict
+        self.keep_alive, self.max_predict, self.seed = keep_alive, max_predict, seed
+        self.post_check = None  # callable() run after every successful response; raises to fail closed
         self.json_schema = None  # set per request by AIGateway.run()
         self.predict_override = None  # exact num_predict for the next request, when the caller sizes it
         self.verified_digest = None
@@ -487,12 +488,16 @@ class OllamaAdapter(Adapter):
         """Exact-name lookup in /api/tags; returns the digest. Raises
         model_not_found / model_digest_mismatch / provider_unreachable."""
         tags = self._get('/api/tags', timeout)
-        match = next((m for m in tags.get('models', []) if m.get('name') == self.model), None)
-        if match is None:
+        entries = [m for m in tags.get('models', []) if m.get('name') == self.model]
+        if not entries:
             raise GatewayError(f'model_not_found:{self.model}')
+        # Ollama >= 0.40 lists one entry per runner manifest under the same
+        # name; the pinned digest must be one of them.
+        match = next((m for m in entries if self.expected_digest and (m.get('digest') or '').startswith(self.expected_digest)),
+                     None if self.expected_digest else entries[0])
+        if match is None:
+            raise GatewayError(f'model_digest_mismatch:{(entries[0].get("digest") or "")[:12]}')
         digest = match.get('digest') or ''
-        if self.expected_digest and not digest.startswith(self.expected_digest):
-            raise GatewayError(f'model_digest_mismatch:{digest[:12]}')
         self.verified_digest = digest
         return digest
 
@@ -506,6 +511,8 @@ class OllamaAdapter(Adapter):
         options = {'temperature': self.temperature, 'num_ctx': self.num_ctx, 'num_predict': min(predict, self.max_predict)}
         if self.num_thread:
             options['num_thread'] = self.num_thread
+        if self.seed is not None:
+            options['seed'] = self.seed
         # think=False: gemma4 reasons by default, which on CPU more than doubles
         # latency and spends num_predict on text that is never used.
         return {'model': self.model, 'stream': False, 'think': False, 'keep_alive': self.keep_alive, 'options': options,
@@ -543,8 +550,17 @@ class OllamaAdapter(Adapter):
             raise GatewayError(f'model_identity_mismatch:{str(served)[:40]}')
         if out.get('done_reason') == 'length':
             raise GatewayError('output_truncated_num_predict')
+        self._post_check()
         return AdapterResponse(strip_json_fence(text), out.get('prompt_eval_count'), out.get('eval_count'),
                                response_model=served, reported_cost_usd=0.0)
+
+    def _post_check(self):
+        if self.post_check is None:
+            return
+        try:
+            self.post_check()
+        except Exception as exc:  # any identity doubt fails closed
+            raise GatewayError(str(exc)[:120] or 'identity_post_check_failed') from exc
 
 
     def stream_complete(self, system, user, should_cancel=lambda: False):
@@ -589,6 +605,7 @@ class OllamaAdapter(Adapter):
             raise GatewayError(f'model_identity_mismatch:{str(served)[:40]}')
         if last.get('done_reason') == 'length':
             raise GatewayError('output_truncated_num_predict')
+        self._post_check()
         return AdapterResponse(strip_json_fence(''.join(parts)), last.get('prompt_eval_count'), last.get('eval_count'),
                                response_model=served, reported_cost_usd=0.0)
 
@@ -718,7 +735,9 @@ APPROVED_MODELS = {
     # gemma4:e2b-approved-7fbdbf8f5e45: the approved build restored from the offline
     # archive on 2026-10-08 under an immutable tag (the plain tag now points to a
     # different, unreviewed build). The digest pin is checked on every call.
-    'ollama': {'gemma4:e2b', 'gemma4:e2b-approved-7fbdbf8f5e45'},
+    # gemma4:e2b-ollama0401-llamacpp-d1e84c607e13: Ollama 0.40.1's llamacpp conversion
+    # of the same weights, proposed 2026-10-08 (model_approvals.json is the gate).
+    'ollama': {'gemma4:e2b', 'gemma4:e2b-approved-7fbdbf8f5e45', 'gemma4:e2b-ollama0401-llamacpp-d1e84c607e13'},
 }
 
 # Free-only mode (AI_FREE_ONLY=true, or any configured ':free' model):
@@ -852,7 +871,7 @@ def build_adapter(config: GatewayConfig) -> Adapter:
                                  config.timeout_seconds, expected_digest=o.get('expected_digest'),
                                  num_ctx=o.get('num_ctx', 4096), num_thread=o.get('num_thread'),
                                  temperature=o.get('temperature', 0.1), keep_alive=o.get('keep_alive', '5m'),
-                                 max_predict=o.get('max_predict', 1536))
+                                 max_predict=o.get('max_predict', 1536), seed=o.get('seed'))
         except GatewayError:
             return DisabledAdapter()
     if config.mode == Mode.LOCAL:

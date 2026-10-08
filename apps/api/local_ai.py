@@ -19,6 +19,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 import ai_gateway as gw
+import model_identity as mi
 
 BATCH_LOCK = 7_270_061
 INFERENCE_LOCK = 7_270_062
@@ -38,6 +39,9 @@ class LocalAISettings:
     num_thread: int | None
     keep_alive: str
     errors: list = field(default_factory=list)
+    approval: dict | None = None
+    seed: int | None = None
+    translation_max_output_tokens: int = 1536
 
 
 def _int(name, default):
@@ -47,7 +51,9 @@ def _int(name, default):
         return default
 
 
-def load_settings():
+def load_settings(allow_proposed=None):
+    """allow_proposed: an approval id admitted for an offline evaluation run
+    only (quality gate). Stored content is never produced in that mode."""
     s = LocalAISettings(
         provider=(os.getenv('LOCAL_AI_PROVIDER') or 'ollama').strip().lower(),
         base_url=(os.getenv('OLLAMA_BASE_URL') or 'http://host.docker.internal:11434').strip(),
@@ -61,6 +67,22 @@ def load_settings():
         num_thread=_int('LOCAL_AI_NUM_THREAD', 8) or None,
         keep_alive=(os.getenv('OLLAMA_KEEP_ALIVE') or '5m').strip(),
     )
+    try:
+        contract = mi.load_contract()
+        s.approval = mi.active_approval(contract, allow_proposed=allow_proposed)
+    except (OSError, ValueError, KeyError):
+        s.approval = None
+    if s.approval is None:
+        s.errors.append('no_approved_model_artifact')
+    else:
+        rt = s.approval.get('runtime') or {}
+        s.seed = rt.get('seed')
+        s.translation_max_output_tokens = rt.get('translation_max_output_tokens', 1536)
+        if s.model and s.model != s.approval['tag']:
+            s.errors.append('OLLAMA_MODEL is not the approved immutable tag')
+        if s.expected_digest and not s.approval['manifest_digest'].startswith(s.expected_digest):
+            s.errors.append('OLLAMA_MODEL_DIGEST does not match the approved manifest digest')
+        s.expected_digest = s.approval['manifest_digest']
     if s.provider != 'ollama':
         s.errors.append('LOCAL_AI_PROVIDER must be ollama')
     if s.concurrency != 1:
@@ -77,12 +99,55 @@ def gateway_config(s, task_type):
         mode=gw.Mode.LOCAL, provider='ollama', base_url=s.base_url, api_key='', models={task_type: s.model},
         timeout_seconds=s.timeout_seconds, max_concurrency=1, daily_budget_usd=None,
         options={'expected_digest': s.expected_digest, 'num_ctx': s.num_ctx, 'num_thread': s.num_thread,
-                 'temperature': s.temperature, 'keep_alive': s.keep_alive, 'max_predict': s.max_output_tokens})
+                 'temperature': s.temperature, 'keep_alive': s.keep_alive, 'max_predict': s.max_output_tokens,
+                 'seed': s.seed})
+
+
+class ContractCache(gw.PostgresCache):
+    """Response cache keyed additionally by the identity fingerprint, so any
+    change of weights, runner, Ollama version, digests, parameters or prompt
+    versions is a cache miss."""
+
+    def __init__(self, dsn, fp):
+        super().__init__(dsn)
+        self.fp = fp
+
+    def _k(self, key):
+        content_sha256, provider, model = key
+        return (content_sha256, provider, f'{model or ""}|{self.fp[:32]}')
+
+    def get(self, key):
+        return super().get(self._k(key))
+
+    def set(self, key, value):
+        return super().set(self._k(key), value)
+
+
+def runtime_params(s, kind):
+    p = {'temperature': s.temperature, 'num_ctx': s.num_ctx, 'num_thread': s.num_thread, 'seed': s.seed}
+    if kind == 'translation':
+        p['translation_max'] = s.max_output_tokens
+    elif kind == 'assistant':
+        p['assistant_max'] = s.max_output_tokens
+    return p
+
+
+def preflight(s, kind, timeout=5):
+    """Full identity check (version, tag digests, attestation, params).
+    Raises mi.IdentityError; returns facts."""
+    if s.approval is None:
+        raise mi.IdentityError('no_approved_model_artifact')
+    return mi.verify(s.approval, s.base_url, runtime_params(s, kind), timeout=timeout)
 
 
 def build_gateway(s, dsn, task_type, use_cache=True):
-    return gw.AIGateway(gateway_config(s, task_type), cache=gw.PostgresCache(dsn) if use_cache and dsn else None,
-                        logger=gw.PostgresLogger(dsn) if dsn else None)
+    fp = mi.fingerprint(s.approval) if s.approval else 'none'
+    g = gw.AIGateway(gateway_config(s, task_type), cache=ContractCache(dsn, fp) if use_cache and dsn else None,
+                     logger=gw.PostgresLogger(dsn) if dsn else None)
+    if isinstance(g.adapter, gw.OllamaAdapter) and s.approval:
+        approval, base = s.approval, s.base_url
+        g.adapter.post_check = lambda: mi.check_loaded(approval, base)
+    return g
 
 
 _PROBE = {'at': 0.0, 'value': (False, False, None)}
@@ -95,9 +160,14 @@ def probe(s, timeout=2, ttl=30.0):
         return _PROBE['value']
     try:
         a = gw.OllamaAdapter(s.base_url, s.model or 'unset', timeout, expected_digest=s.expected_digest)
-        value = (True, True, a.verify_model(timeout=timeout)[:12])
+        digest = a.verify_model(timeout=timeout)[:12]
+        preflight(s, 'probe', timeout=timeout)  # version, tag digests, attestation, params
+        value = (True, True, digest)
     except gw.GatewayError as exc:
         value = (not str(exc).startswith(('provider_unreachable', 'transient_timeout', 'ollama_host_not_local')), False, None)
+    except mi.IdentityError as exc:
+        value = (not str(exc).startswith('identity_provider_unreachable'), False, None)
+        _PROBE['reason'] = str(exc)
     _PROBE['at'], _PROBE['value'] = now, value
     return value
 

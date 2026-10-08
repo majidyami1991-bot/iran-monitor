@@ -43,9 +43,10 @@ services:
       ASSISTANT_ENABLED: ${LOCAL_AI_ASSISTANT_ENABLED:-true}
       ASSISTANT_RETENTION_DAYS: ${LOCAL_AI_ASSISTANT_RETENTION_DAYS:-7}
       LOCAL_AI_PROVIDER: ollama
+      LOCAL_AI_ATTESTATION: /attest/attestation.json
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma4:e2b-approved-7fbdbf8f5e45}
-      OLLAMA_MODEL_DIGEST: ${OLLAMA_MODEL_DIGEST:-7fbdbf8f5e45}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma4:e2b-ollama0401-llamacpp-d1e84c607e13}
+      OLLAMA_MODEL_DIGEST: ${OLLAMA_MODEL_DIGEST:-}
       LOCAL_AI_NUM_CTX: ${LOCAL_AI_NUM_CTX:-4096}
       LOCAL_AI_TEMPERATURE: ${LOCAL_AI_TEMPERATURE:-0.1}
       LOCAL_AI_MAX_OUTPUT_TOKENS: ${LOCAL_AI_MAX_OUTPUT_TOKENS:-512}
@@ -54,6 +55,8 @@ services:
       LOCAL_AI_NUM_THREAD: ${LOCAL_AI_NUM_THREAD:-8}
       LOCAL_TRANSLATION_ENABLED: ${LOCAL_TRANSLATION_ENABLED:-false}
     extra_hosts: ["host.docker.internal:host-gateway"]
+    # Host attestation of the model artifact (scripts/attest_local_model.py), read-only.
+    volumes: ["../../runtime/local-ai-attestation:/attest:ro"]
     depends_on: {ai-db: {condition: service_healthy}}
     read_only: true
     tmpfs: [/tmp]
@@ -91,9 +94,10 @@ services:
       DATABASE_URL: postgresql://defence_monitor:${LOCAL_AI_DB_PASSWORD}@ai-db:5432/defence_monitor
       AI_PROVIDER: disabled
       LOCAL_AI_PROVIDER: ollama
+      LOCAL_AI_ATTESTATION: /attest/attestation.json
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma4:e2b-approved-7fbdbf8f5e45}
-      OLLAMA_MODEL_DIGEST: ${OLLAMA_MODEL_DIGEST:-7fbdbf8f5e45}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma4:e2b-ollama0401-llamacpp-d1e84c607e13}
+      OLLAMA_MODEL_DIGEST: ${OLLAMA_MODEL_DIGEST:-}
       LOCAL_AI_NUM_CTX: ${LOCAL_AI_NUM_CTX:-4096}
       LOCAL_AI_TEMPERATURE: ${LOCAL_AI_TEMPERATURE:-0.1}
       LOCAL_AI_MAX_OUTPUT_TOKENS: ${LOCAL_AI_MAX_OUTPUT_TOKENS:-512}
@@ -103,6 +107,8 @@ services:
       LOCAL_TRANSLATION_ENABLED: ${LOCAL_TRANSLATION_ENABLED:-false}
       LOCAL_TRANSLATION_SLEEP_SECONDS: ${LOCAL_TRANSLATION_SLEEP_SECONDS:-2}
     extra_hosts: ["host.docker.internal:host-gateway"]
+    # Host attestation of the model artifact (scripts/attest_local_model.py), read-only.
+    volumes: ["../../runtime/local-ai-attestation:/attest:ro"]
     depends_on: {ai-db: {condition: service_healthy}}
     read_only: true
     tmpfs: [/tmp]

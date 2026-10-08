@@ -74,14 +74,14 @@ class Settings:
     errors: list = field(default_factory=list)
 
 
-def load_settings():
-    ai = local_ai.load_settings()
+def load_settings(allow_proposed=None):
+    ai = local_ai.load_settings(allow_proposed=allow_proposed)
     s = Settings(ai=ai, enabled=(os.getenv('LOCAL_TRANSLATION_ENABLED') or 'false').strip().lower() == 'true',
                  sleep_seconds=max(0.0, min(float(os.getenv('LOCAL_TRANSLATION_SLEEP_SECONDS', '2') or 2), 3.0)),
                  max_attempts=2)
     s.single_request = (os.getenv('LOCAL_TRANSLATION_SINGLE_REQUEST') or 'true').strip().lower() == 'true'
     try:
-        s.output_tokens = max(128, min(int(os.getenv('LOCAL_TRANSLATION_MAX_OUTPUT_TOKENS', '1536')), 2048))
+        s.output_tokens = max(128, min(int(os.getenv('LOCAL_TRANSLATION_MAX_OUTPUT_TOKENS', str(ai.translation_max_output_tokens))), 2048))
     except ValueError:
         s.output_tokens = 1536
     if not s.single_request:
@@ -518,10 +518,18 @@ def run_batch(dsn, s, *, limit=None, item_ids=None, stop_on_review=False, status
             infer = Infer(s, dsn, report, gateways, use_cache, sleep)
             first = next(iter(infer.g.values()))
             if isinstance(first.adapter, gw.OllamaAdapter):
+                import model_identity as mi
+                if mi.approval_state(mi.load_contract()).get((s.ai.approval or {}).get('id')) != 'approved':
+                    report.stopped_reason = 'artifact_not_approved'  # proposed artifacts never write stored content
+                    return report
                 try:
                     first.adapter.verify_model(timeout=10)
+                    local_ai.preflight(infer.ai, 'translation', timeout=10)
                 except gw.GatewayError as exc:
                     report.stopped_reason = error_class(str(exc))
+                    return report
+                except mi.IdentityError as exc:
+                    report.stopped_reason = str(exc)
                     return report
             done = 0
             while not Stop.requested and (limit is None or done < limit):

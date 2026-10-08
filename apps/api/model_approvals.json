@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "_note": "Append-only. Never edit or remove an approval or an event; add a new event instead. The active artifact is the one with the latest 'approved' event that has no later 'superseded'/'revoked' event.",
+  "approvals": [
+    {
+      "id": "gemma4-e2b-archive-7fbdbf8f5e45",
+      "tag": "gemma4:e2b-approved-7fbdbf8f5e45",
+      "ollama_version": "0.35.1",
+      "runner": "llamacpp",
+      "manifest_digest": "7fbdbf8f5e45a75bb122155ed546e765b4d9c53a1285f62fd9f506baa1c5a47e",
+      "weight_blobs": {
+        "config": "c6bc3775a3fa9935ce4a3ccd7abc59e936c3de9308d2cc090516012f43ed9c07",
+        "model": "4e30e2665218745ef463f722c0bf86be0cab6ee676320f1cfadf91e989107448",
+        "license": "7339fa418c9ad3e8e12e74ad0fd26a9cc4be8703f9c110728a992b193be85cb2",
+        "params": "56380ca2ab89f1f68c283f4d50863c0bcab52ae3f1b9a88e4ab5617b176f71a3"
+      },
+      "source_archive_sha256": "d6ee2d62b561cf2f6dc95fd809d916fdba165f43db37bb319fd52964387639e9"
+    },
+    {
+      "id": "gemma4-e2b-ollama0401-llamacpp-d1e84c607e13",
+      "tag": "gemma4:e2b-ollama0401-llamacpp-d1e84c607e13",
+      "ollama_version": "0.40.1",
+      "runner": "llamacpp",
+      "runner_process": "llama-server.exe",
+      "manifest_list_digest": "e4b2053a56a17925b7f1715af462ae1c19349bf7606da64b0708d8ce2562b2cc",
+      "manifest_digest": "d1e84c607e134f00608a2d2f5ec8019222adad318851e70e749a62ac2470da2e",
+      "tag_entry_digests": [
+        "d1e84c607e134f00608a2d2f5ec8019222adad318851e70e749a62ac2470da2e",
+        "da406dc37ca0492240f717c308cd2ccf74780ec0d3fd18e37185f32aabf3e885"
+      ],
+      "model_blob_sha256": "aed3339236b464c87de08a4ce3aa148f5a43be4717e92629b35e2642199896ff",
+      "mmproj_blob_sha256": "0012c271672236852cb98401c0f9710d71a57c14b552dbe2b31cf898e7bfbf8e",
+      "converted_from_archive_sha256": "d6ee2d62b561cf2f6dc95fd809d916fdba165f43db37bb319fd52964387639e9",
+      "runtime": {
+        "temperature": 0.1,
+        "seed": 42,
+        "num_ctx": 4096,
+        "num_thread": 8,
+        "think": false,
+        "translation_max_output_tokens": 1536,
+        "assistant_max_output_tokens": 512,
+        "concurrency": 1
+      },
+      "prompt_versions": [
+        "translate-fa-v1.0.0",
+        "assistant-rag-fa-v1.0.0"
+      ]
+    }
+  ],
+  "events": [
+    {
+      "at": "2026-10-06",
+      "approval": "gemma4-e2b-archive-7fbdbf8f5e45",
+      "event": "approved",
+      "by": "owner",
+      "note": "Original gemma4:e2b (ID 7fbdbf8f5e45) under Ollama 0.35.1."
+    },
+    {
+      "at": "2026-10-08",
+      "approval": "gemma4-e2b-archive-7fbdbf8f5e45",
+      "event": "superseded",
+      "by": "owner",
+      "note": "Ollama 0.40.1 rewrites the manifest on load; its runner (llamacpp) executes converted blobs, not the archive weights. See docs/INCIDENT 2026-10-08 ..."
+    },
+    {
+      "at": "2026-10-08",
+      "approval": "gemma4-e2b-ollama0401-llamacpp-d1e84c607e13",
+      "event": "proposed",
+      "by": "owner",
+      "note": "Option 3: converted artifact as a new model; approval only after the offline quality gate (docs/OLLAMA CONVERTED MODEL QUALITY APPROVAL.md)."
+    },
+    {
+      "at": "2026-10-08",
+      "approval": "gemma4-e2b-ollama0401-llamacpp-d1e84c607e13",
+      "event": "rejected_quality_gate",
+      "by": "quality_gate",
+      "note": "Offline gate: schema 23/23, negatives 9/9 rejected, technical + stability PASS; quality FAIL (8/23 fixtures: mangled person names incl. non-Persian script, acronyms not preserved, model commentary + special-token debris, untranslated word, wrong military terms, added sentence for empty summary). See docs/OLLAMA CONVERTED MODEL QUALITY APPROVAL.md."
+    }
+  ]
+}

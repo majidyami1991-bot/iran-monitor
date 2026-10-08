@@ -254,6 +254,13 @@ def answer(job, adapter=None):
         adapter = gw.build_adapter(local_ai.gateway_config(s, TASK))
         if not isinstance(adapter, gw.OllamaAdapter):
             return job.set('error', error='provider_not_configured')
+    import model_identity as mi
+    try:
+        local_ai.preflight(s, 'assistant')
+    except mi.IdentityError as exc:
+        return job.set('error', error=str(exc).split(':', 1)[0])
+    if isinstance(adapter, gw.OllamaAdapter) and adapter.post_check is None and s.approval:
+        adapter.post_check = lambda: mi.check_loaded(s.approval, s.base_url)
     adapter.json_schema = gw.OUTPUT_JSON_SCHEMAS[TASK]
     adapter.predict_override = s.max_output_tokens
     system = gw.prompt_for(TASK, PROMPT_VERSION)
