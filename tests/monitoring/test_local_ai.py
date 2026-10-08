@@ -161,11 +161,23 @@ def test_like_escapes_wildcards():
     assert retrieval._like('50%_x\\') == '%50\\%\\_x\\\\%'
 
 
-def test_single_request_translation_cap(monkeypatch):
-    monkeypatch.setenv('OLLAMA_MODEL', 'gemma4:e2b-approved-7fbdbf8f5e45')
+def test_single_request_translation_cap(monkeypatch, tmp_path):
+    proposed_contract(tmp_path, monkeypatch)
+    monkeypatch.setenv('OLLAMA_MODEL', 'gemma4:e2b-ollama0401-llamacpp-d1e84c607e13')
     monkeypatch.delenv('LOCAL_TRANSLATION_SINGLE_REQUEST', raising=False)
     monkeypatch.setenv('LOCAL_TRANSLATION_MAX_OUTPUT_TOKENS', '99999')
-    s = lt.load_settings()
+    s = lt.load_settings(allow_proposed='gemma4-e2b-ollama0401-llamacpp-d1e84c607e13')
     assert s.single_request is True and s.output_tokens == 2048 and s.ai.max_output_tokens == 512 and not s.errors
     monkeypatch.setenv('LOCAL_TRANSLATION_SINGLE_REQUEST', 'false')
     assert lt.load_settings().output_tokens == 512
+
+
+def proposed_contract(tmp_path, monkeypatch):
+    """A copy of the contract with the artifact still 'proposed' (pre-gate state)."""
+    import json as _j
+    import model_identity as _mi
+    c = _mi.load_contract()
+    c['events'] = [e for e in c['events'] if e['event'] != 'rejected_quality_gate']
+    p = tmp_path / 'contract.json'
+    p.write_text(_j.dumps(c))
+    monkeypatch.setattr(_mi, 'CONTRACT_PATH', p)
