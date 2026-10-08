@@ -55,15 +55,18 @@ def runner_processes():
     return rows if isinstance(rows, list) else [rows]
 
 
-def load(tag, seed):
-    r = api('/api/chat', {'model': tag, 'stream': False, 'think': False, 'keep_alive': '10m',
-                          'options': {'temperature': 0.1, 'seed': seed, 'num_ctx': 4096, 'num_predict': 8, 'num_thread': 8},
-                          'messages': [{'role': 'user', 'content': '[SYNTHETIC ATTESTATION] Reply with: ok'}]})
-    return r.get('model')
+def load(tag, seed, think=None):
+    body = {'model': tag, 'stream': False, 'keep_alive': '10m',
+            'options': {'temperature': 0.1, 'seed': seed, 'num_ctx': 4096, 'num_predict': 8, 'num_thread': 8},
+                          'messages': [{'role': 'user', 'content': '[SYNTHETIC ATTESTATION] Reply with: ok'}]}
+    if think is not None:
+        body['think'] = think
+    return api('/api/chat', body).get('model')
 
 
 def observe(approval):
-    served = load(approval['tag'], (approval.get('runtime') or {}).get('seed', 42))
+    rt = approval.get('runtime') or {}
+    served = load(approval['tag'], rt.get('seed', 42), think=(False if rt.get('think') is False else None))
     procs = runner_processes()
     servers = [p for p in procs if (p.get('Name') or '').lower().startswith('llama-server')]
     facts = {'served_model': served, 'runner_processes': len(servers)}
@@ -107,11 +110,10 @@ def main():
     approval = next(x for x in contract['approvals'] if x['id'] == a.approval)
     version = api('/api/version', timeout=10).get('version')
     entries = sorted(m['digest'] for m in api('/api/tags', timeout=30)['models'] if m['name'] == approval['tag'])
-    # Clean start: a runner already loaded under another tag that shares the
-    # same manifest digest would be reported by /api/ps under that other name.
+    # Clean start: unload every loaded model (MAX_LOADED_MODELS=1; another tag
+    # sharing the digest would otherwise be reported under its own name).
     for m in api('/api/ps', timeout=30).get('models', []):
-        if m.get('digest') == approval['manifest_digest']:
-            unload(m['name'])
+        unload(m['name'])
     first = observe(approval)
     second = None
     if a.reload:
@@ -125,8 +127,9 @@ def main():
         'runner': first.get('runner') == approval['runner'],
         'model_blob': first.get('model_blob_sha256') == approval['model_blob_sha256']
                       and first.get('model_path_name') == 'sha256-' + approval['model_blob_sha256'],
-        'mmproj_blob': first.get('mmproj_blob_sha256') == approval['mmproj_blob_sha256']
-                       and first.get('mmproj_path_name') == 'sha256-' + approval['mmproj_blob_sha256'],
+        'mmproj_blob': (first.get('mmproj_blob_sha256') is None and approval.get('mmproj_blob_sha256') is None) or (
+                       first.get('mmproj_blob_sha256') == approval.get('mmproj_blob_sha256')
+                       and first.get('mmproj_path_name') == 'sha256-' + str(approval.get('mmproj_blob_sha256'))),
         'manifest_digest': first.get('manifest_digest') == approval['manifest_digest'],
         'cpu_only': first.get('size_vram') == 0,
         'single_model_loaded': first.get('loaded_count') == 1,
@@ -142,7 +145,8 @@ def main():
            'mmproj_blob_sha256': first.get('mmproj_blob_sha256'), 'size_vram': first.get('size_vram'),
            'tag_entries': entries, 'first': first, 'second': second}
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(att, indent=2), encoding='utf-8')
+    target = OUT if approval.get('role') is None else OUT.with_name(f"{approval['id']}.json")
+    target.write_text(json.dumps(att, indent=2), encoding='utf-8')
     print(json.dumps({'passed': passed, 'checks': checks}, indent=2))
     return 0 if passed else 1
 

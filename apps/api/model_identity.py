@@ -25,6 +25,12 @@ from urllib.request import Request, ProxyHandler, build_opener
 
 CONTRACT_PATH = Path(os.getenv('LOCAL_AI_MODEL_CONTRACT') or Path(__file__).with_name('model_approvals.json'))
 ATTESTATION_PATH = Path(os.getenv('LOCAL_AI_ATTESTATION') or '/attest/attestation.json')
+ATTESTATION_DIR = Path(os.getenv('LOCAL_AI_ATTESTATION_DIR') or '/attest')
+
+
+def role_of(approval):
+    """Legacy approvals without a role served both translation and assistant."""
+    return approval.get('role') or 'both'
 
 
 class IdentityError(RuntimeError):
@@ -43,15 +49,17 @@ def approval_state(contract):
     return state
 
 
-def active_approval(contract, allow_proposed=None):
+def active_approval(contract, allow_proposed=None, role=None):
     """The newest approval whose last event is 'approved'. allow_proposed
     (an approval id) admits that one proposed artifact for an offline
     evaluation run only — never for stored content."""
     state = approval_state(contract)
-    by_id = {a['id']: a for a in contract['approvals']}
-    if allow_proposed and state.get(allow_proposed) == 'proposed':
+    by_id = {a['id']: a for a in contract['approvals']
+             if role is None or role_of(a) in (role, 'both')}
+    if allow_proposed and allow_proposed in by_id and state.get(allow_proposed) == 'proposed':
         return by_id[allow_proposed]
-    approved = [e['approval'] for e in contract['events'] if e['event'] == 'approved' and state.get(e['approval']) == 'approved']
+    approved = [e['approval'] for e in contract['events'] if e['event'] == 'approved'
+                and e['approval'] in by_id and state.get(e['approval']) == 'approved']
     return by_id[approved[-1]] if approved else None
 
 
@@ -59,12 +67,25 @@ def fingerprint(approval):
     """Cache/identity fingerprint: weights, runner, version, digests, params, prompts."""
     core = {k: approval.get(k) for k in ('id', 'tag', 'ollama_version', 'runner', 'manifest_digest',
                                           'model_blob_sha256', 'mmproj_blob_sha256', 'runtime', 'prompt_versions')}
+    # Role-specific contracts also bind the glossary and validator versions.
+    for k in ('role', 'glossary_version', 'validator_version'):
+        if approval.get(k) is not None:
+            core[k] = approval[k]
     return hashlib.sha256(json.dumps(core, sort_keys=True).encode()).hexdigest()
 
 
 def _get(base, path, timeout):
-    with build_opener(ProxyHandler({})).open(Request(base.rstrip('/') + path), timeout=timeout) as r:
-        return json.loads(r.read().decode('utf-8'))
+    # One retry for a transient connection error (technical, not identity);
+    # a second failure propagates and the caller fails closed.
+    for attempt in (1, 2):
+        try:
+            with build_opener(ProxyHandler({})).open(Request(base.rstrip('/') + path), timeout=timeout) as r:
+                return json.loads(r.read().decode('utf-8'))
+        except OSError:
+            if attempt == 2:
+                raise
+            import time as _t
+            _t.sleep(1.0)
 
 
 def check_runtime_params(approval, *, temperature, num_ctx, num_thread, seed, translation_max=None, assistant_max=None):
@@ -80,7 +101,8 @@ def check_runtime_params(approval, *, temperature, num_ctx, num_thread, seed, tr
 
 
 def check_attestation(approval, path=None):
-    p = Path(path or ATTESTATION_PATH)
+    per = ATTESTATION_DIR / f"{approval['id']}.json"
+    p = Path(path or (per if per.exists() else ATTESTATION_PATH))
     try:
         a = json.loads(p.read_text(encoding='utf-8'))
     except (OSError, ValueError):

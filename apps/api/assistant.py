@@ -111,7 +111,7 @@ def build_user_message(question, records, history, filters):
     return '\n\n'.join(parts)
 
 
-def validate_answer(payload, records):
+def validate_answer(payload, records, question=None):
     """(ok, reason). An answer must cite >= 1 supplied id and only supplied ids."""
     ok, reason = gw.validate_output(TASK, payload)
     if not ok:
@@ -124,10 +124,32 @@ def validate_answer(payload, records):
     if not payload['answer_fa'].strip():
         return False, 'empty_answer'
     if not cited and not inline:
+        # An explicit "not enough evidence" reply is shown as the fixed
+        # insufficiency message, never as an uncited answer.
+        if payload['confidence'] == 'low' and payload['limitations']:
+            return False, 'insufficient_evidence'
         return False, 'no_citation'
     unknown = (set(cited) | inline) - ids
     if unknown:
         return False, 'unknown_citation:' + ','.join(sorted(unknown))[:40]
+    corpus = ' '.join(f"{r.get('title') or ''} {r.get('excerpt') or ''} {r.get('published_at') or ''} {r.get('source_name') or ''}"
+                      for r in records) + ' ' + (question or '')  # numbers echoed from the question are not invented
+    import translation_tg as _tg
+    if _tg._FOREIGN.search(payload['answer_fa']) or _tg._MIXED.search(_CITE.sub(' ', payload['answer_fa'])):
+        return False, 'foreign_or_mixed_script'
+    import content_validator as cv
+    answer_nums = cv.extract_numbers(_CITE.sub(' ', payload['answer_fa']))
+    evidence_nums = cv.extract_numbers(corpus)
+    def _norm(n):
+        return n.replace(',', '').lstrip('0') or '0'
+    known_nums = {_norm(e) for e in evidence_nums}
+    invented = {n for n in answer_nums if _norm(n) not in known_nums}
+    if invented:
+        return False, 'number_not_in_evidence:' + ','.join(sorted(invented))[:40]
+    urls = set(re.findall(r'https?://\S+', payload['answer_fa']))
+    known = {(r.get('canonical_url') or '').rstrip('/') for r in records}
+    if any(u.rstrip('/.,)') not in known for u in urls):
+        return False, 'url_not_in_evidence'
     return True, None
 
 
@@ -284,7 +306,7 @@ def answer(job, adapter=None):
     status, reason, payload_in = 'available', None, None
     try:
         payload_in = json.loads(resp.raw_text)
-        ok, reason = validate_answer(payload_in, records)
+        ok, reason = validate_answer(payload_in, records, job.question)
         status = 'available' if ok else 'rejected'
     except (json.JSONDecodeError, TypeError):
         status, reason = 'invalid_response', 'output_not_valid_json'
@@ -296,6 +318,12 @@ def answer(job, adapter=None):
               'tokens_in': resp.tokens_in, 'tokens_out': resp.tokens_out, 'cache_hit': False,
               'evidence': [{k: r[k] for k in ('evidence_id', 'type', 'record_id', 'title', 'source_name', 'published_at',
                                               'canonical_url', 'internal_url')} for r in records]}
+    if status != 'available' and reason == 'insufficient_evidence':
+        payload = {**common, 'answer': INSUFFICIENT_FA, 'confidence': 'low', 'citations': [],
+                   'limitations': [str(x)[:300] for x in payload_in['limitations']][:5], 'follow_up_suggestions': [],
+                   'kind': 'no_evidence'}
+        _save_answer(job, payload)
+        return job.set('done', result=payload)
     if status != 'available':
         payload = {**common, 'answer': REJECTED_FA, 'confidence': 'low', 'citations': [],
                    'limitations': ['پاسخ تولیدشده رد شد: ' + (reason or 'invalid')], 'follow_up_suggestions': [],
