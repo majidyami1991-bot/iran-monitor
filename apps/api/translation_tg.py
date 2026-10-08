@@ -27,8 +27,8 @@ import content_validator as cv
 import x_translation_validator as xv
 
 PROMPT_VERSION = 'translategemma-official-en-fa-v1'
-GLOSSARY_VERSION = 'defence-glossary-fa-v1.0.0'
-VALIDATOR_VERSION = 'translation-validator-v2.0.0'
+GLOSSARY_VERSION = 'defence-glossary-fa-v1.1.0'
+VALIDATOR_VERSION = 'translation-validator-v2.1.0'
 
 PROMPT = ('You are a professional English (en) to Persian (fa-IR) translator. Your goal is to accurately convey the meaning '
           'and nuances of the original English text while adhering to Persian grammar, vocabulary and cultural sensitivities.\n'
@@ -74,6 +74,13 @@ GLOSSARY = [
     {'en': r'\bIzium\b', 'fa': ['ایزیوم', 'ایزیم', 'Izium']},
     {'en': r'\bLockheed Martin\b', 'fa': ['لاکهید مارتین', 'لاکهید', 'Lockheed Martin']},
     {'en': r'\bReuters\b', 'fa': ['رویترز', 'Reuters']},
+    # v1.1.0
+    {'en': r'\bstrikes?\b', 'when': r'\b(drone|missile|air|rocket|artillery|depot|target|base)s?\b', 'fa': ['حمله', 'ضربه', 'اصابت']},
+    {'en': r'\bdepots?\b', 'fa': ['انبار', 'زرادخانه', 'مخزن']},
+    {'en': r'\bRheinmetall\b', 'fa': ['راین‌متال', 'راینمتال', 'راین متال', 'Rheinmetall']},
+    {'en': r'\bSaab\b', 'fa': ['ساب', 'Saab']},
+    {'en': r'\bArmin Papperger\b', 'fa': ['آرمین پاپرگر', 'Armin Papperger']},
+    {'en': r'\bStockholm\b', 'fa': ['استکهلم', 'Stockholm']},
 ]
 
 HARD = frozenset(xv.HARD_FAIL | {'placeholder_missing', 'placeholder_duplicated', 'placeholder_residue', 'foreign_script',

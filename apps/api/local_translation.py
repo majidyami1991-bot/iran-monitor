@@ -75,7 +75,7 @@ class Settings:
 
 
 def load_settings(allow_proposed=None):
-    ai = local_ai.load_settings(allow_proposed=allow_proposed)
+    ai = local_ai.load_settings(allow_proposed=allow_proposed, role='translation')
     s = Settings(ai=ai, enabled=(os.getenv('LOCAL_TRANSLATION_ENABLED') or 'false').strip().lower() == 'true',
                  sleep_seconds=max(0.0, min(float(os.getenv('LOCAL_TRANSLATION_SLEEP_SECONDS', '2') or 2), 3.0)),
                  max_attempts=2)

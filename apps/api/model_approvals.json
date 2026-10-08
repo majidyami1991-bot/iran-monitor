@@ -143,6 +143,176 @@
       "glossary_version": "defence-glossary-fa-v1.0.0",
       "validator_version": "translation-validator-v2.0.0",
       "converted_from_manifest": "c49d986b0764f5881c476eb21435bb62b7abc62347aab3d4a6071e811be510a1"
+    },
+    {
+      "tag": "qwen3:8b",
+      "ollama_version": "0.40.1",
+      "runner": "llamacpp",
+      "runner_process": "llama-server.exe",
+      "manifest_digest": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
+      "tag_entry_digests": [
+        "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41"
+      ],
+      "model_blob_sha256": "a3de86cd1c132c822487ededd47a324c50491393e6565cd14bafa40d0b8e686f",
+      "mmproj_blob_sha256": null,
+      "source": "ollama registry pull 2026-10-08 (owner-authorised, once)",
+      "license": "Apache-2.0",
+      "id": "assistant_extractive_v1-qwen3-8b-500a1f067a9f",
+      "role": "assistant_extractive",
+      "contract": "ASSISTANT_EXTRACTIVE_CONTRACT",
+      "runtime": {
+        "temperature": 0.0,
+        "seed": 42,
+        "num_ctx": 4096,
+        "num_thread": 8,
+        "think": false,
+        "assistant_max_output_tokens": 384,
+        "concurrency": 1,
+        "output": "json_schema_fact_table"
+      },
+      "prompt_versions": [
+        "assistant-extractive-fa-v1.0.0"
+      ],
+      "glossary_version": null,
+      "validator_version": "extractive-validator-v1.0.0",
+      "mode": "extractive: model selects verbatim quotes; code composes the Persian answer"
+    },
+    {
+      "id": "translategemma-12b-c2f9a9ca1ec7",
+      "role": "translation",
+      "contract": "TRANSLATION_MODEL_CONTRACT",
+      "tag": "translategemma:12b",
+      "ollama_version": "0.40.1",
+      "runner": "llamacpp",
+      "runner_process": "llama-server.exe",
+      "manifest_digest": "c2f9a9ca1ec7149f2422581c89937ab0363d9399d9355514d753ee012e99c252",
+      "tag_entry_digests": [
+        "c2f9a9ca1ec7149f2422581c89937ab0363d9399d9355514d753ee012e99c252"
+      ],
+      "model_blob_sha256": "1b2b95e2f0eb9a98a839249ed41dfca71b300f9c389e14581210649fada910ed",
+      "mmproj_blob_sha256": "1b2b95e2f0eb9a98a839249ed41dfca71b300f9c389e14581210649fada910ed",
+      "quantization": "Q4_K_M",
+      "parameter_size": "12.2B",
+      "source": "ollama registry pull 2026-10-08 11:25-11:37 (owner-authorised, once)",
+      "license": "Gemma Terms of Use",
+      "runtime": {
+        "temperature": 0.1,
+        "seed": 42,
+        "num_ctx": 4096,
+        "num_thread": 8,
+        "think": null,
+        "translation_max_output_tokens": 1536,
+        "concurrency": 1,
+        "output": "plain_text"
+      },
+      "prompt_versions": [
+        "translategemma-official-en-fa-v1"
+      ],
+      "glossary_version": "defence-glossary-fa-v1.1.0",
+      "validator_version": "translation-validator-v2.1.0"
+    },
+    {
+      "id": "translategemma-12b-ollama0401-llamacpp-3189e9a01b8a",
+      "role": "translation",
+      "contract": "TRANSLATION_MODEL_CONTRACT",
+      "tag": "translategemma:12b",
+      "ollama_version": "0.40.1",
+      "runner": "llamacpp",
+      "runner_process": "llama-server.exe",
+      "manifest_digest": "3189e9a01b8ad4d4e6a9ed4ef09a60e57e9b5335cd5f98c024ebc409b4f1d0d0",
+      "tag_entry_digests": [
+        "3189e9a01b8ad4d4e6a9ed4ef09a60e57e9b5335cd5f98c024ebc409b4f1d0d0",
+        "d5af4780113572d67a7202beba1152f2c222d1d56cbdf507e47333a9d595f5ca"
+      ],
+      "model_blob_sha256": "164105f10a913ee435fd6aec49a171b09496f32fe47a0742302a370d11db48a0",
+      "mmproj_blob_sha256": "7fd02408fa83c142904ab47c642a2452c86dcd59df91cbbb85dd965ed5b6df52",
+      "quantization": "Q4_K_M",
+      "parameter_size": "12.2B",
+      "source": "Ollama 0.40.1 llamacpp conversion on first load of the authorised pull",
+      "license": "Gemma Terms of Use",
+      "runtime": {
+        "temperature": 0.1,
+        "seed": 42,
+        "num_ctx": 4096,
+        "num_thread": 8,
+        "think": null,
+        "translation_max_output_tokens": 1536,
+        "concurrency": 1,
+        "output": "plain_text"
+      },
+      "prompt_versions": [
+        "translategemma-official-en-fa-v1"
+      ],
+      "glossary_version": "defence-glossary-fa-v1.1.0",
+      "validator_version": "translation-validator-v2.1.0",
+      "converted_from_manifest": "c2f9a9ca1ec7149f2422581c89937ab0363d9399d9355514d753ee012e99c252"
+    },
+    {
+      "tag": "qwen3:8b",
+      "ollama_version": "0.40.1",
+      "runner": "llamacpp",
+      "runner_process": "llama-server.exe",
+      "manifest_digest": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
+      "tag_entry_digests": [
+        "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41"
+      ],
+      "model_blob_sha256": "a3de86cd1c132c822487ededd47a324c50491393e6565cd14bafa40d0b8e686f",
+      "mmproj_blob_sha256": null,
+      "source": "ollama registry pull 2026-10-08 (owner-authorised, once)",
+      "license": "Apache-2.0",
+      "id": "assistant_extractive_v1.1-qwen3-8b-500a1f067a9f",
+      "role": "assistant_extractive",
+      "contract": "ASSISTANT_EXTRACTIVE_CONTRACT",
+      "runtime": {
+        "temperature": 0.0,
+        "seed": 42,
+        "num_ctx": 4096,
+        "num_thread": 8,
+        "think": false,
+        "assistant_max_output_tokens": 384,
+        "concurrency": 1,
+        "output": "json_schema_fact_table"
+      },
+      "prompt_versions": [
+        "assistant-extractive-fa-v1.0.0"
+      ],
+      "glossary_version": null,
+      "validator_version": "extractive-validator-v1.1.0",
+      "mode": "extractive: model selects verbatim quotes; code composes the Persian answer"
+    },
+    {
+      "tag": "qwen3:8b",
+      "ollama_version": "0.40.1",
+      "runner": "llamacpp",
+      "runner_process": "llama-server.exe",
+      "manifest_digest": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
+      "tag_entry_digests": [
+        "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41"
+      ],
+      "model_blob_sha256": "a3de86cd1c132c822487ededd47a324c50491393e6565cd14bafa40d0b8e686f",
+      "mmproj_blob_sha256": null,
+      "source": "ollama registry pull 2026-10-08 (owner-authorised, once)",
+      "license": "Apache-2.0",
+      "id": "assistant_extractive_v1.2-qwen3-8b-500a1f067a9f",
+      "role": "assistant_extractive",
+      "contract": "ASSISTANT_EXTRACTIVE_CONTRACT",
+      "runtime": {
+        "temperature": 0.0,
+        "seed": 42,
+        "num_ctx": 4096,
+        "num_thread": 8,
+        "think": false,
+        "assistant_max_output_tokens": 384,
+        "concurrency": 1,
+        "output": "json_schema_fact_table"
+      },
+      "prompt_versions": [
+        "assistant-extractive-fa-v1.0.0"
+      ],
+      "glossary_version": null,
+      "validator_version": "extractive-validator-v1.2.0",
+      "mode": "extractive: model selects verbatim quotes; code composes the Persian answer",
+      "evidence_policy": "original-language text only; stored machine translations are never evidence"
     }
   ],
   "events": [
@@ -215,6 +385,90 @@
       "event": "rejected_quality_gate",
       "by": "quality_gate",
       "note": "Assistant gate (17 model + 9 deterministic/technical fixtures): citations, injection resistance, insufficiency, timeout, cancellation PASS; faithfulness/language FAIL on human review (hallucinated place/day/count/direction, Cyrillic and Latin fragments inside Persian words, 'drone' rendered as 'inside', English answer to an English question). See docs/LOCAL TRANSLATION AND ASSISTANT MODEL EVALUATION.md."
+    },
+    {
+      "at": "2026-10-08",
+      "approval": "assistant_extractive_v1-qwen3-8b-500a1f067a9f",
+      "event": "proposed",
+      "by": "owner",
+      "note": "Extractive role for the same qwen3:8b artifact (free-answer role stays rejected); approval only after the extractive gate."
+    },
+    {
+      "at": "2026-10-08",
+      "approval": "translategemma-12b-c2f9a9ca1ec7",
+      "event": "proposed",
+      "by": "owner",
+      "note": "Authorised translategemma:12b pull."
+    },
+    {
+      "at": "2026-10-08",
+      "approval": "translategemma-12b-c2f9a9ca1ec7",
+      "event": "superseded",
+      "by": "identity_guard",
+      "note": "Converted by Ollama 0.40.1 on first load; the runner executes the llamacpp entry."
+    },
+    {
+      "at": "2026-10-08",
+      "approval": "translategemma-12b-ollama0401-llamacpp-3189e9a01b8a",
+      "event": "proposed",
+      "by": "owner",
+      "note": "Executed (converted) form of translategemma:12b; approval only after the translation gate."
+    },
+    {
+      "at": "2026-10-08",
+      "approval": "translategemma-12b-ollama0401-llamacpp-3189e9a01b8a",
+      "event": "rejected_quality_gate",
+      "by": "quality_gate",
+      "note": "Translation gate (35 fixtures, 16 invalid outputs; human review of all outputs): factual additions (invented titles for Austin/Gallant, 'organization', 'station'), critical terminology (live-fire->'simulated', brigade->'battalion'), dates replaced by bracket text, numbers/AH-64E dropped in a summary, '[currency]' and stray 'b' inserted, '96 Apache'->'model 96', garbled 'Rheinmetall CEO'. Improvements over 4b noted. Validator false positives found (Arabic comma adjacency, ordinal '3rd') do not change the verdict. See docs/LOCAL AI PHASE 3 EVALUATION.md."
+    },
+    {
+      "at": "2026-10-08",
+      "approval": "assistant_extractive_v1-qwen3-8b-500a1f067a9f",
+      "event": "superseded",
+      "by": "quality_gate",
+      "note": "Gate review found a misleading generated conflict note and duplicate syndicated quotes in the composer; fixed in extractive-validator-v1.1.0."
+    },
+    {
+      "at": "2026-10-08",
+      "approval": "assistant_extractive_v1.1-qwen3-8b-500a1f067a9f",
+      "event": "proposed",
+      "by": "owner",
+      "note": "Extractive composer v1.1.0 (no generated judgements, quote de-duplication); approval only after a fresh gate."
+    },
+    {
+      "at": "2026-10-08",
+      "approval": "assistant_extractive_v1.1-qwen3-8b-500a1f067a9f",
+      "event": "approved",
+      "by": "quality_gate",
+      "note": "Extractive gate v1.1.0: 17/17 model fixtures + 5/5 deterministic; human review of all answers: verbatim quotes only, correct records, no added place/day/count/direction/number/URL, injection and foreign-script text filtered. Limitation: quotes stay in the source language while no translator is approved."
+    },
+    {
+      "at": "2026-10-08",
+      "approval": "assistant_extractive_v1.1-qwen3-8b-500a1f067a9f",
+      "event": "revoked",
+      "by": "real_question_review",
+      "note": "Real-question run: retrieval fed stored machine translations (from the superseded gemma4 smoke and an earlier pilot) as evidence; the composer labelled them as verbatim source text and one carried a known factual addition ('candidate' in a headline). Pipeline defect, not an extraction error. Fixed in v1.2 (original-language evidence only)."
+    },
+    {
+      "at": "2026-10-08",
+      "approval": "assistant_extractive_v1.2-qwen3-8b-500a1f067a9f",
+      "event": "proposed",
+      "by": "owner",
+      "note": "v1.2: original-language evidence only; approval only after a fresh gate and real-question review."
+    },
+    {
+      "at": "2026-10-08",
+      "approval": "assistant_extractive_v1.2-qwen3-8b-500a1f067a9f",
+      "event": "approved",
+      "by": "quality_gate",
+      "note": "Extractive gate v1.2: 17/17 + 5/5; human review of all answers clean; evidence is original-language text only."
+    },
+    {
+      "at": "2026-10-08",
+      "approval": "assistant_extractive_v1.2-qwen3-8b-500a1f067a9f",
+      "event": "revoked",
+      "by": "real_question_review",
+      "note": "5 controlled real questions: 7/7 citations valid against the DB, no fabricated fact; but 2/5 answers fail human review on relevance (Q3 'common event' quoted three unrelated records; Q4 'narrative difference' quoted one source plus an unrelated record). Q1/Q2/Q5 correctly declined. Assistant stays disabled."
     }
   ]
 }

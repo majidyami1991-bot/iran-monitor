@@ -129,11 +129,13 @@ WHERE coalesce(btrim(p.original_text), '') <> '' AND p.availability_status <> 'w
            handle_hit=_hit('p.author_handle', 2))
 
 
-def _excerpt(r):
-    """Persian when a validated translation exists, the original otherwise."""
-    title = r['title_fa'] or r['title'] or ''
-    body = r['summary_fa'] or r['summary'] or ''
-    lang = 'fa' if (r['title_fa'] or r['summary_fa']) else 'original'
+def _excerpt(r, use_translations=True):
+    """Persian when a validated translation exists (and allowed), the original
+    otherwise. The extractive assistant passes use_translations=False: a stored
+    machine translation is never evidence for a verbatim quote."""
+    title = (r['title_fa'] if use_translations else None) or r['title'] or ''
+    body = (r['summary_fa'] if use_translations else None) or r['summary'] or ''
+    lang = 'fa' if use_translations and (r['title_fa'] or r['summary_fa']) else 'original'
     text = normalize(body)[:EXCERPT_CHARS]
     if len(normalize(body)) > EXCERPT_CHARS:
         text = text.rsplit(' ', 1)[0] + ' …'
@@ -141,7 +143,7 @@ def _excerpt(r):
 
 
 def search(dsn, question, *, window=None, source_id=None, topic=None, content_type='all', taxonomy_version='3.0.0',
-           now=None, use_cache=True):
+           now=None, use_cache=True, use_translations=True):
     """Returns {'records': [...], 'mode': 'keyword'|'recent', 'tokens': [...], 'window': label, 'context_chars': n}."""
     now = now or datetime.now(timezone.utc)
     q = normalize(question)[:500]
@@ -155,7 +157,7 @@ def search(dsn, question, *, window=None, source_id=None, topic=None, content_ty
         since, label = detected_since, detected_label
     else:
         since, label = now - timedelta(days=30), '30d'
-    key = (q.lower(), label, source_id, topic, content_type, int(since.timestamp() // 60))
+    key = (q.lower(), label, source_id, topic, content_type, int(since.timestamp() // 60), use_translations)
     if use_cache and key in _CACHE and time.monotonic() - _CACHE[key][0] < CACHE_TTL:
         out = dict(_CACHE[key][1])
         out['cache_hit'] = True
@@ -186,7 +188,7 @@ def search(dsn, question, *, window=None, source_id=None, topic=None, content_ty
             continue
         if r['event_id'] and r['event_id'] in seen_event:
             continue
-        title, text, lang = _excerpt(r)
+        title, text, lang = _excerpt(r, use_translations)
         size = len(title) + len(text)
         if total + size > CONTEXT_CHARS:
             if records:

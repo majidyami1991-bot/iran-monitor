@@ -44,6 +44,8 @@ import retrieval
 LOG = logging.getLogger('defence_monitor.assistant')
 DSN = os.environ['DATABASE_URL']
 PROMPT_VERSION = 'assistant-rag-fa-v1.0.0'
+# The free-answer role (qwen3) was rejected; only the extractive role is served.
+ASSISTANT_ROLE = os.getenv('ASSISTANT_ROLE', 'assistant_extractive')
 TASK = 'assistant_answer'
 MAX_HISTORY_TURNS = 4
 HISTORY_CHARS = 400
@@ -233,22 +235,66 @@ def _log(result):
         LOG.warning('ai_requests_log write failed')
 
 
+def _answer_extractive(job, s, adapter, records, base, started, cache_key):
+    """Extractive path: the model only returns a verbatim fact table; the
+    Persian answer is composed by code (assistant_extractive)."""
+    import assistant_extractive as ax
+    job.set('waiting_for_model')
+    try:
+        with local_ai.inference_lock(DSN, wait_seconds=s.timeout_seconds, should_cancel=job.cancel.is_set):
+            job.set('generating')
+            t0 = time.monotonic()
+            out, problems, resp = ax.run(adapter, job.question, records, neutralise, should_cancel=job.cancel.is_set)
+            infer_ms = int((time.monotonic() - t0) * 1000)
+    except local_ai.Busy as exc:
+        return job.set('cancelled' if str(exc) == 'cancelled' else 'error', error=str(exc))
+    except gw.GatewayError as exc:
+        reason = str(exc).split(':', 1)[0]
+        _log(gw.GatewayResult('error', None, 'ollama/local', s.model, ax.PROMPT_VERSION, TASK, '', error=reason,
+                              latency_ms=int((time.monotonic() - started) * 1000)))
+        return job.set('cancelled' if reason == 'cancelled' else 'error', error=reason)
+    _log(gw.GatewayResult('available' if out['kind'] == 'answer' else 'invalid_response', None, 'ollama/local', s.model,
+                          ax.PROMPT_VERSION, TASK, gw.content_hash(TASK, job.question, ax.PROMPT_VERSION),
+                          latency_ms=infer_ms, tokens_in=resp.tokens_in, tokens_out=resp.tokens_out, estimated_cost_usd=0,
+                          error=';'.join(problems)[:200] or None, response_model=resp.response_model, reported_cost_usd=0))
+    payload = {**base, 'prompt_version': ax.PROMPT_VERSION, 'validator_version': ax.VALIDATOR_VERSION,
+               'approval_id': s.approval['id'], 'mode': 'extractive', 'answer': out['answer'], 'kind': out['kind'],
+               'confidence': 'medium' if out['kind'] == 'answer' else 'low', 'citations': out['citations'],
+               'facts': out['facts'], 'extraction_problems': problems,
+               'limitations': ['پاسخ فقط از نقل‌قول عین متن اسناد بازیابی‌شده ساخته شده است؛ تحلیل یا جمع‌بندی مدل در آن نیست.',
+                               'نقل‌قول‌ها به زبان اصلی منبع نمایش داده می‌شوند.'],
+               'follow_up_suggestions': [], 'latency_ms': int((time.monotonic() - started) * 1000), 'inference_ms': infer_ms,
+               'tokens_in': resp.tokens_in, 'tokens_out': resp.tokens_out, 'cache_hit': False,
+               'evidence': [{k: r[k] for k in ('evidence_id', 'type', 'record_id', 'title', 'source_name', 'published_at',
+                                               'canonical_url', 'internal_url')} for r in records]}
+    if cache_key and out['kind'] == 'answer':
+        _ANSWERS[cache_key] = (time.monotonic(), payload)
+    _save_answer(job, payload)
+    LOG.info('assistant request=%s mode=extractive kind=%s records=%d facts=%d latency_ms=%d', job.request_id, out['kind'],
+             len(records), len(out['facts']), payload['latency_ms'])
+    return job.set('done', result=payload)
+
+
 def answer(job, adapter=None):
     """Runs one job to completion. Separated from the thread for tests."""
-    s = local_ai.load_settings()
+    s = local_ai.load_settings(role=ASSISTANT_ROLE)
     started = time.monotonic()
     job.set('retrieving')
     f = job.filters
     import experience
+    import model_identity as _mi
+    extractive = bool(s.approval) and _mi.role_of(s.approval) == 'assistant_extractive'
     found = retrieval.search(DSN, job.question, window=f.get('window'), source_id=f.get('source_id'),
                              topic=f.get('topic'), content_type=f.get('content_type') or 'all',
-                             taxonomy_version=experience.TAXV)
+                             taxonomy_version=experience.TAXV, use_translations=not extractive)
     records = found['records']
     base = {'model': s.model, 'provider': 'ollama/local', 'prompt_version': PROMPT_VERSION,
             'context_record_count': len(records), 'context_chars': found['context_chars'],
             'retrieval_mode': found['mode'], 'window': found['window'], 'cost_usd': 0}
     if not records:
-        payload = {**base, 'answer': INSUFFICIENT_FA, 'confidence': 'low', 'citations': [], 'evidence': [],
+        import assistant_extractive as _ax
+        no_ev = _ax.INSUFFICIENT if extractive else INSUFFICIENT_FA  # extractive mode: the one exact sentence
+        payload = {**base, 'answer': no_ev, 'confidence': 'low', 'citations': [], 'evidence': [],
                    'limitations': ['هیچ رکوردی با این پرسش و فیلترها در پایگاه داده پیدا نشد.'],
                    'follow_up_suggestions': [], 'kind': 'no_evidence', 'latency_ms': int((time.monotonic() - started) * 1000),
                    'tokens_in': 0, 'tokens_out': 0, 'cache_hit': False}
@@ -283,6 +329,8 @@ def answer(job, adapter=None):
         return job.set('error', error=str(exc).split(':', 1)[0])
     if isinstance(adapter, gw.OllamaAdapter) and adapter.post_check is None and s.approval:
         adapter.post_check = lambda: mi.check_loaded(s.approval, s.base_url)
+    if mi.role_of(s.approval) == 'assistant_extractive':
+        return _answer_extractive(job, s, adapter, records, base, started, cache_key)
     adapter.json_schema = gw.OUTPUT_JSON_SCHEMAS[TASK]
     adapter.predict_override = s.max_output_tokens
     system = gw.prompt_for(TASK, PROMPT_VERSION)
@@ -434,7 +482,7 @@ def register_assistant(app):
 
     @app.get('/api/v1/assistant/status')
     def assistant_status():
-        s = local_ai.load_settings()
+        s = local_ai.load_settings(role=ASSISTANT_ROLE)
         reachable, found, digest = local_ai.probe(s)
         with _db() as c:
             batch = local_ai.lock_held(c, local_ai.BATCH_LOCK)
@@ -533,9 +581,38 @@ def register_assistant(app):
             raise HTTPException(404, 'session_not_found')
         return {'deleted': True, 'session_id': session_id}
 
+    @app.get('/api/v1/local-ai/models')
+    def local_ai_models():
+        """Every model contract and its current state (from the append-only
+        events), plus whether each feature is enabled. Read-only."""
+        import model_identity as mi
+        from urllib.request import ProxyHandler, Request, build_opener
+        c = mi.load_contract()
+        state = mi.approval_state(c)
+        try:
+            s = local_ai.load_settings(role='translation')
+            with build_opener(ProxyHandler({})).open(Request(s.base_url.rstrip('/') + '/api/tags'), timeout=3) as r:
+                present = {m.get('digest') for m in json.loads(r.read().decode('utf-8')).get('models', [])}
+        except Exception:
+            present = None
+        rows = []
+        for a in c['approvals']:
+            rows.append({'id': a['id'], 'role': mi.role_of(a), 'contract': a.get('contract'), 'tag': a['tag'],
+                         'state': state.get(a['id'], 'unknown'),
+                         'available_in_ollama': None if present is None else a['manifest_digest'] in present,
+                         'manifest_digest': a['manifest_digest'][:12], 'runner': a.get('runner'),
+                         'ollama_version': a.get('ollama_version'), 'prompt_versions': a.get('prompt_versions'),
+                         'glossary_version': a.get('glossary_version'), 'validator_version': a.get('validator_version'),
+                         'license': a.get('license')})
+        on = {role: mi.active_approval(c, role=role) is not None for role in ('translation', 'assistant_extractive', 'assistant')}
+        return {'models': rows,
+                'features': {'translation': on['translation'], 'assistant': on['assistant'] or on['assistant_extractive'],
+                             'assistant_mode': 'extractive' if on['assistant_extractive'] else ('free' if on['assistant'] else None)},
+                'ollama_reachable': present is not None, 'scheduler': False, 'external_providers': False}
+
     @app.get('/api/v1/assistant/usage')
     def assistant_usage():
-        s = local_ai.load_settings()
+        s = local_ai.load_settings(role=ASSISTANT_ROLE)
         reachable, found, _ = local_ai.probe(s)
         with _db() as c:
             r = c.execute('''SELECT

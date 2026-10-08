@@ -737,7 +737,11 @@ APPROVED_MODELS = {
     # different, unreviewed build). The digest pin is checked on every call.
     # gemma4:e2b-ollama0401-llamacpp-d1e84c607e13: Ollama 0.40.1's llamacpp conversion
     # of the same weights, proposed 2026-10-08 (model_approvals.json is the gate).
-    'ollama': {'gemma4:e2b', 'gemma4:e2b-approved-7fbdbf8f5e45', 'gemma4:e2b-ollama0401-llamacpp-d1e84c607e13'},
+    # Owner-authorised pulls of 2026-10-08. Being listed here only means the tag
+    # may be called at all; whether a role may use it is decided by the
+    # approval events in model_approvals.json (most are rejected).
+    'ollama': {'gemma4:e2b', 'gemma4:e2b-approved-7fbdbf8f5e45', 'gemma4:e2b-ollama0401-llamacpp-d1e84c607e13',
+               'translategemma:4b', 'translategemma:12b', 'qwen3:8b'},
 }
 
 # Free-only mode (AI_FREE_ONLY=true, or any configured ':free' model):

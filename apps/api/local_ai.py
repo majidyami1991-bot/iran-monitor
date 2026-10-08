@@ -51,7 +51,7 @@ def _int(name, default):
         return default
 
 
-def load_settings(allow_proposed=None):
+def load_settings(allow_proposed=None, role=None):
     """allow_proposed: an approval id admitted for an offline evaluation run
     only (quality gate). Stored content is never produced in that mode."""
     s = LocalAISettings(
@@ -69,7 +69,7 @@ def load_settings(allow_proposed=None):
     )
     try:
         contract = mi.load_contract()
-        s.approval = mi.active_approval(contract, allow_proposed=allow_proposed)
+        s.approval = mi.active_approval(contract, allow_proposed=allow_proposed, role=role)
     except (OSError, ValueError, KeyError):
         s.approval = None
     if s.approval is None:
@@ -78,11 +78,16 @@ def load_settings(allow_proposed=None):
         rt = s.approval.get('runtime') or {}
         s.seed = rt.get('seed')
         s.translation_max_output_tokens = rt.get('translation_max_output_tokens', 1536)
-        if s.model and s.model != s.approval['tag']:
+        if role is None and mi.role_of(s.approval) != 'both':
+            s.errors.append('role_required_for_role_scoped_approval')  # never serve a role-scoped model to an unspecified caller
+        if s.model and s.model != s.approval['tag'] and role is None:
             s.errors.append('OLLAMA_MODEL is not the approved immutable tag')
         if s.expected_digest and not s.approval['manifest_digest'].startswith(s.expected_digest):
             s.errors.append('OLLAMA_MODEL_DIGEST does not match the approved manifest digest')
         s.expected_digest = s.approval['manifest_digest']
+        s.model = s.approval['tag']  # the contract names the exact tag; env may not redirect it
+        s.max_output_tokens = min(s.max_output_tokens, rt.get('assistant_max_output_tokens') or s.max_output_tokens)
+        s.temperature = rt.get('temperature', s.temperature)
     if s.provider != 'ollama':
         s.errors.append('LOCAL_AI_PROVIDER must be ollama')
     if s.concurrency != 1:
