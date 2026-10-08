@@ -12,6 +12,8 @@ from social import register_social
 register_social(app)
 from media_api import register_media
 register_media(app)
+from assistant import register_assistant
+register_assistant(app)
 def q(sql,args=()):
  with psycopg.connect(DSN) as c:
   with c.cursor() as cur:

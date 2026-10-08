@@ -18,6 +18,7 @@ export const NAV: NavItem[] = [
   { label: 'رویدادها', href: '/events' },
   { label: 'موضوعات', href: '/topics' },
   { label: 'منابع', href: '/sources' },
+  { label: 'دستیار هوشمند', href: '/assistant' },
   { label: 'تحلیل', children: [
     { label: 'تحلیل آماری', href: '/analytics', note: 'حجم، زمان انتشار، پوشش موضوعی' },
     { label: 'نقشه', href: '/map', note: 'وضعیت اتصال داده مکانی' },
