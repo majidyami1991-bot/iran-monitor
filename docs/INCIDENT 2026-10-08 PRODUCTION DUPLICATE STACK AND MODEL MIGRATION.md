@@ -52,3 +52,19 @@ installation, not this repository):
    re-run the gate.
 3. Treat the converted llamacpp artifacts (`aed33392…` + `0012c271…`) as a
    new model and run a full fixture and quality review before approving it.
+
+## 4. Option 3 (converted artifact as a new model) — not approved
+
+The owner chose option 3: the converted llamacpp artifact got the immutable
+tag `gemma4:e2b-ollama0401-llamacpp-d1e84c607e13`, a versioned identity
+contract (`apps/api/model_approvals.json`, append-only) and host attestation
+(`scripts/attest_local_model.py`).
+
+| Gate | Result |
+|---|---|
+| Identity, attestation, technical checks, stability | passed |
+| Translation quality | **failed**: 8 of 23 fixtures (mangled names including Korean/Hebrew characters, acronyms not preserved, English model commentary with special-token debris, wrong military terms, an added sentence) |
+
+The contract now records `rejected_quality_gate`, so no approval is active
+and the local-AI stack stays fail-closed. No real content was translated.
+Details: `docs/OLLAMA CONVERTED MODEL QUALITY APPROVAL.md`.
