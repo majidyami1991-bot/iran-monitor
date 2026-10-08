@@ -58,12 +58,15 @@ def test_settings_enforce_local_single_model(monkeypatch):
     monkeypatch.setenv('LOCAL_AI_CONCURRENCY', '3')
     monkeypatch.setenv('LOCAL_AI_MAX_OUTPUT_TOKENS', '4096')
     monkeypatch.setenv('LOCAL_AI_NUM_CTX', '32768')
-    s = local_ai.load_settings()
+    s = local_ai.load_settings(role='translation')  # no approved translator: env limits apply
     assert 'LOCAL_AI_CONCURRENCY must be 1' in s.errors
     assert s.max_output_tokens == 512 and s.num_ctx == 4096 and s.timeout_seconds <= 900
     monkeypatch.setenv('OLLAMA_MODEL', 'llama3:70b')
     monkeypatch.setenv('LOCAL_AI_CONCURRENCY', '1')
-    assert 'OLLAMA_MODEL is not an approved model' in local_ai.load_settings().errors
+    assert 'OLLAMA_MODEL is not an approved model' in local_ai.load_settings(role='translation').errors
+    # an unspecified caller never receives a role-scoped approval
+    errs = local_ai.load_settings().errors
+    assert 'role_required_for_role_scoped_approval' in errs or 'no_approved_model_artifact' in errs
 
 
 def test_gateway_builds_ollama_for_new_task_types():

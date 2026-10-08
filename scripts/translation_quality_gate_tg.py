@@ -30,6 +30,10 @@ TERMS = [
     ('term_frigate', 'text', {'text': 'The frigate escorted the tanker through the strait.'}, {}),
     ('term_missile', 'text', {'text': 'The cruise missile hit a fuel depot near the port.'}, {}),
     ('term_deployment', 'text', {'text': 'The deployment of 2,000 troops was completed within a week.'}, {}),
+    ('term_strike_depot', 'text', {'text': 'A drone strike hit an ammunition depot near the border overnight.'}, {}),
+    ('names_companies', 'text', {'text': 'Rheinmetall CEO Armin Papperger met Saab executives in Stockholm on Thursday.'}, {}),
+    ('money_amount', 'text', {'text': 'The contract is valued at $1.2 billion and covers 48 launchers.'}, {}),
+    ('empty_text', 'text', {'text': ''}, {}),
 ]
 EXTRA_NEG = [  # (case, source, bad_output_after_restore_or_raw, mode, expected_flag)
     ('placeholder_removed', 'Spending rose 12% this year.', None, 'drop_token', 'placeholder_missing'),

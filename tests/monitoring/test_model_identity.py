@@ -76,12 +76,12 @@ def test_history_is_append_only_and_state_derived():
 def test_proposed_artifact_only_for_explicit_evaluation():
     c = copy.deepcopy(CONTRACT)
     c['events'] = [e for e in c['events'] if not (e['approval'] == NEW and e['event'] != 'proposed')]
-    assert mi.active_approval(c) is None
-    assert mi.active_approval(c, allow_proposed=NEW)['id'] == NEW
+    assert mi.active_approval(c, role='assistant') is None
+    assert mi.active_approval(c, allow_proposed=NEW, role='assistant')['id'] == NEW
     c['events'].append({'approval': NEW, 'event': 'approved'})
-    assert mi.active_approval(c)['id'] == NEW
+    assert mi.active_approval(c, role='assistant')['id'] == NEW
     c['events'].append({'approval': NEW, 'event': 'revoked'})
-    assert mi.active_approval(c) is None
+    assert mi.active_approval(c, role='assistant') is None
 
 
 def test_fingerprint_changes_with_any_identity_input():
@@ -179,8 +179,12 @@ def test_verify_model_accepts_any_entry_with_pinned_digest(base):
 
 def test_rejected_artifact_is_never_active_or_evaluable():
     assert mi.approval_state(CONTRACT)[NEW] == 'rejected_quality_gate'
-    assert mi.active_approval(CONTRACT) is None
-    assert mi.active_approval(CONTRACT, allow_proposed=NEW) is None
+    for role in ('translation', 'assistant'):
+        assert mi.active_approval(CONTRACT, role=role) is None
+        assert mi.active_approval(CONTRACT, allow_proposed=NEW, role=role) is None
+    assert mi.active_approval(CONTRACT, role='assistant_extractive') is None
+    hist = [e['event'] for e in CONTRACT['events'] if e['approval'] == 'assistant_extractive_v1.2-qwen3-8b-500a1f067a9f']
+    assert hist == ['proposed', 'approved', 'revoked']  # approval history kept, never rewritten
 
 
 def proposed_contract(tmp_path, monkeypatch):
