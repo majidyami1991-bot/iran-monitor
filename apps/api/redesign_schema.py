@@ -356,6 +356,35 @@ DROP TRIGGER IF EXISTS x_post_translation_history_no_change ON x_post_translatio
 CREATE TRIGGER x_post_translation_history_no_change BEFORE UPDATE OR DELETE ON x_post_translation_history
   FOR EACH ROW EXECUTE FUNCTION x_post_translation_history_immutable();
 '''),
+    ('2026.10.07-01', 'local AI platform: translation attempts, append-only news translation history, '
+                      'trigram retrieval, assistant sessions', '''
+ALTER TABLE news_item_translations ADD COLUMN IF NOT EXISTS attempt_count integer NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS news_item_translations_status_idx ON news_item_translations(status, prompt_version);
+CREATE OR REPLACE FUNCTION news_item_translation_history_immutable() RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'news_item_translation_history is append-only';
+END $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS news_item_translation_history_no_change ON news_item_translation_history;
+CREATE TRIGGER news_item_translation_history_no_change BEFORE UPDATE OR DELETE ON news_item_translation_history
+  FOR EACH ROW EXECUTE FUNCTION news_item_translation_history_immutable();
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX IF NOT EXISTS news_items_title_trgm ON news_items USING gin (title gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS news_item_translations_text_trgm ON news_item_translations USING gin (text gin_trgm_ops);
+CREATE TABLE IF NOT EXISTS assistant_sessions(
+  session_id text PRIMARY KEY,
+  title text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  last_active_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT assistant_sessions_id_chk CHECK (session_id ~ '^[A-Za-z0-9_-]{32,64}$'));
+CREATE TABLE IF NOT EXISTS assistant_messages(
+  id bigserial PRIMARY KEY,
+  session_id text NOT NULL REFERENCES assistant_sessions(session_id) ON DELETE CASCADE,
+  role text NOT NULL CHECK (role IN ('user','assistant')),
+  content text NOT NULL,
+  payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS assistant_messages_session_idx ON assistant_messages(session_id, id);
+'''),
 ]
 
 # Integration registry rows are facts about this deployment, not data about

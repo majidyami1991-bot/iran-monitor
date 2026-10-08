@@ -87,7 +87,7 @@ def validate(source_text, translated_text):
 
     src_wo_urls = URL_RE.sub(' ', source_text or '')
     out_wo_urls = URL_RE.sub(' ', out)
-    extra = [ch for ch in _MARKUP_CHARS if out_wo_urls.count(ch) > src_wo_urls.count(ch)]
+    extra = [ch for ch in _MARKUP_CHARS + '।|' if out_wo_urls.count(ch) > src_wo_urls.count(ch)]
     if extra or (_TEMPLATE_RE.search(out_wo_urls) and not _TEMPLATE_RE.search(src_wo_urls)):
         flags.append('stray_markup')
         reasons['stray_markup'] = f'Output contains bracket/template characters not in the source: {extra or "template tag"}'
