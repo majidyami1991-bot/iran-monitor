@@ -69,6 +69,8 @@ class Settings:
     enabled: bool
     sleep_seconds: float
     max_attempts: int
+    single_request: bool = True     # one inference per news item (title + whole summary)
+    output_tokens: int = 1536       # translation-only output cap (assistant keeps LOCAL_AI_MAX_OUTPUT_TOKENS)
     errors: list = field(default_factory=list)
 
 
@@ -77,6 +79,13 @@ def load_settings():
     s = Settings(ai=ai, enabled=(os.getenv('LOCAL_TRANSLATION_ENABLED') or 'false').strip().lower() == 'true',
                  sleep_seconds=max(0.0, min(float(os.getenv('LOCAL_TRANSLATION_SLEEP_SECONDS', '2') or 2), 3.0)),
                  max_attempts=2)
+    s.single_request = (os.getenv('LOCAL_TRANSLATION_SINGLE_REQUEST') or 'true').strip().lower() == 'true'
+    try:
+        s.output_tokens = max(128, min(int(os.getenv('LOCAL_TRANSLATION_MAX_OUTPUT_TOKENS', '1536')), 2048))
+    except ValueError:
+        s.output_tokens = 1536
+    if not s.single_request:
+        s.output_tokens = min(s.output_tokens, ai.max_output_tokens)
     s.errors = list(ai.errors)
     return s
 
@@ -309,13 +318,15 @@ class Infer:
 
     def __init__(self, s, dsn, report, gateways=None, use_cache=True, sleep=time.sleep, fresh_gateways=None):
         self.s, self.dsn, self.report, self.sleep = s, dsn, report, sleep
-        self.g = gateways or {t: local_ai.build_gateway(s.ai, dsn, t, use_cache) for t in ('translate_news', 'translate_text')}
+        import dataclasses
+        self.ai = dataclasses.replace(s.ai, max_output_tokens=s.output_tokens)  # translation-only cap
+        self.g = gateways or {t: local_ai.build_gateway(self.ai, dsn, t, use_cache) for t in ('translate_news', 'translate_text')}
         self._fresh = fresh_gateways
 
     def fresh(self, task):
         """Cache-bypassing gateway for the one decoding-glitch re-ask."""
         if self._fresh is None:
-            self._fresh = {t: local_ai.build_gateway(self.s.ai, self.dsn, t, use_cache=False)
+            self._fresh = {t: local_ai.build_gateway(self.ai, self.dsn, t, use_cache=False)
                            for t in ('translate_news', 'translate_text')}
         return self._fresh[task]
 
@@ -324,7 +335,7 @@ class Infer:
         content = json.dumps(payload, ensure_ascii=False)
         for attempt in (1, 2):
             if isinstance(g.adapter, gw.OllamaAdapter):
-                g.adapter.predict_override = predict_for(chars, self.s.ai.max_output_tokens)
+                g.adapter.predict_override = predict_for(chars, self.s.output_tokens)
             try:
                 with local_ai.inference_lock(self.dsn, wait_seconds=self.s.ai.timeout_seconds,
                                              should_cancel=lambda: Stop.requested):
@@ -405,7 +416,9 @@ def translate_news_job(conn, job, infer, s, report):
     results, failure = {}, None
     want_title, want_summary = 'title' in fields, 'summary' in fields
     parts = []
-    if want_summary:
+    if want_summary and s.single_request:
+        parts = [re.sub(r'\s+', ' ', src['summary'].strip())]   # one request: title + whole summary
+    elif want_summary:
         first_budget = CHUNK_CHARS - (len(src['title']) if want_title else 0)
         parts = chunks(src['summary'], max(200, first_budget), CHUNK_CHARS)
     if want_title:

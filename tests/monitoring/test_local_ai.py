@@ -159,3 +159,13 @@ def test_window_detection():
 
 def test_like_escapes_wildcards():
     assert retrieval._like('50%_x\\') == '%50\\%\\_x\\\\%'
+
+
+def test_single_request_translation_cap(monkeypatch):
+    monkeypatch.setenv('OLLAMA_MODEL', 'gemma4:e2b-approved-7fbdbf8f5e45')
+    monkeypatch.delenv('LOCAL_TRANSLATION_SINGLE_REQUEST', raising=False)
+    monkeypatch.setenv('LOCAL_TRANSLATION_MAX_OUTPUT_TOKENS', '99999')
+    s = lt.load_settings()
+    assert s.single_request is True and s.output_tokens == 2048 and s.ai.max_output_tokens == 512 and not s.errors
+    monkeypatch.setenv('LOCAL_TRANSLATION_SINGLE_REQUEST', 'false')
+    assert lt.load_settings().output_tokens == 512

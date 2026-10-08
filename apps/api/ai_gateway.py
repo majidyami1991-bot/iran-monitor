@@ -715,7 +715,10 @@ APPROVED_MODELS = {
     'openrouter': {'anthropic/claude-haiku-4.5', 'anthropic/claude-sonnet-5', 'openrouter/free',
                    'google/gemma-4-31b-it:free'},
     # Local CPU model for X post translation (owner-approved 2026-10-06).
-    'ollama': {'gemma4:e2b'},
+    # gemma4:e2b-approved-7fbdbf8f5e45: the approved build restored from the offline
+    # archive on 2026-10-08 under an immutable tag (the plain tag now points to a
+    # different, unreviewed build). The digest pin is checked on every call.
+    'ollama': {'gemma4:e2b', 'gemma4:e2b-approved-7fbdbf8f5e45'},
 }
 
 # Free-only mode (AI_FREE_ONLY=true, or any configured ':free' model):
