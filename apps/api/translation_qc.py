@@ -36,7 +36,7 @@ import re
 
 import assistant_relevance as ar
 
-QC_VERSION = 'translation-qc-v1.0.0'
+QC_VERSION = 'translation-qc-v1.0.1'  # v1.0.0 frozen at commit 9eec064, sha256 bfaa3c55…
 
 _FA_DIGITS = str.maketrans('۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩', '01234567890123456789')
 _FA_LETTERS = str.maketrans({'ي': 'ی', 'ك': 'ک', 'ة': 'ه', 'ۀ': 'ه'})
@@ -55,15 +55,16 @@ WEEKDAYS = {'monday': 'دوشنبه', 'tuesday': 'سه شنبه', 'wednesday': '
             'saturday': 'شنبه', 'sunday': 'یکشنبه'}
 # role / title: English source patterns ↔ Persian output forms
 ROLES = [
-    (r'\bprime minister\b', ['نخست وزیر']),
-    (r'\b(?:minister|secretary of (?:state|defen[cs]e|war)|defen[cs]e secretary|war minister)\b', ['وزیر']),
-    (r'\bpresident\b', ['رئیس جمهور', 'رییس جمهور']),
-    (r'\bchancellor\b', ['صدراعظم', 'صدر اعظم']),
-    (r'\b(?:ceo|chief executive)\b', ['مدیرعامل', 'مدیر عامل', 'مدیر اجرایی']),
-    (r'\b(?:spokesman|spokeswoman|spokesperson)\b', ['سخنگو']),
-    (r'\bambassador\b', ['سفیر']),
-    (r'\bgeneral\b', ['ژنرال']),
-    (r'\bcommander\b', ['فرمانده']),
+    (r'\bprime ministers?\b', ['نخست وزیر']),
+    # v1.0.1: plurals ("Foreign ministers")
+    (r'\b(?:ministers?|secretar(?:y|ies) of (?:state|defen[cs]e|war)|defen[cs]e secretar(?:y|ies)|war ministers?)\b', ['وزیر']),
+    (r'\bpresidents?\b', ['رئیس جمهور', 'رییس جمهور']),
+    (r'\bchancellors?\b', ['صدراعظم', 'صدر اعظم']),
+    (r'\b(?:ceos?|chief executives?)\b', ['مدیرعامل', 'مدیر عامل', 'مدیر اجرایی']),
+    (r'\b(?:spokes(?:man|men|woman|women|person|persons|people))\b', ['سخنگو']),
+    (r'\bambassadors?\b', ['سفیر']),
+    (r'\bgenerals?\b', ['ژنرال']),
+    (r'\bcommanders?\b', ['فرمانده']),
 ]
 # military echelons and ship types: English ↔ accepted Persian
 ECHELONS = {'brigade': ['تیپ'], 'battalion': ['گردان'], 'division': ['لشکر'], 'regiment': ['هنگ'], 'corps': ['سپاه']}
@@ -71,7 +72,7 @@ ECHELON_FA = {'تیپ', 'گردان', 'لشکر', 'هنگ'}
 SHIPS = {'frigate': ['ناوچه', 'فریگیت', 'فرگات'], 'corvette': ['ناوچه', 'کوروت'], 'destroyer': ['ناوشکن'],
          'submarine': ['زیردریایی', 'زیر دریایی'], 'aircraft carrier': ['ناو هواپیمابر', 'هواپیمابر']}
 # nouns that signal invented context when the source has no equivalent
-SUSPICIOUS = [('ایستگاه', r'\bstation'), ('سازمان', r'\b(?:organi[sz]ation|agency|organ)'), ('مدل', r'\b(?:model|type|variant)'),
+SUSPICIOUS = [('ایستگاه', r'\bstation'), ('سازمان', r'\b(?:organi[sz]ations?|agenc(?:y|ies)|organs?)'), ('مدل', r'\b(?:model|type|variant)'),
               ('نسخه', r'\b(?:version|variant)'), ('وبگاه', r'\b(?:website|site)'), ('وب سایت', r'\b(?:website|site)'),
               ('ویکی پدیا', r'\bwikipedia'), ('سپاه', r'\b(?:corps|irgc|revolutionary guard)'),
               ('شبیه سازی', r'\bsimulat'), ('اعتصاب', r'\b(?:labou?r|union|workers|walkout|industrial action)')]
@@ -165,7 +166,10 @@ def check_placeholders(src, out):
 # Transliteration variants accepted by QC only (assistant_relevance's lexicon is
 # not modified). A variant may only satisfy 'missing'; it never adds entities.
 QC_ALIASES = {'Kharkiv': ['خارکف', 'خرکف', 'خارکیو', 'خارکوف'], 'Lockheed Martin': ['لوکهید', 'لاکید'],
-              'Rheinmetall': ['راین متال', 'رینمتال'], 'Volodymyr Zelensky': ['زلینسکی']}
+              'Rheinmetall': ['راین متال', 'رینمتال'], 'Volodymyr Zelensky': ['زلینسکی'],
+              # v1.0.1: "Kyiv" implies Ukraine and "naval" implies Navy in the English
+              # patterns; their Persian renderings satisfy the 'missing' check.
+              'Ukraine': ['کی یف', 'کییف', 'کیف'], 'Navy': ['دریایی']}
 
 
 def check_entities(src, out):

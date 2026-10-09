@@ -60,3 +60,19 @@ def test_equipment_code_not_billion():
 
 def test_empty_output_suspect():
     assert qc.check('Text.', '')['suspect']
+
+
+# v1.0.1 fixes (bugs found by the phase-7 held-out run)
+def test_v101_plural_agencies_not_unsupported():
+    assert not any(f.startswith('unsupported_word') for f in
+                   flags('The attack affected 200 government agencies.', 'این حمله 200 سازمان دولتی را تحت تأثیر قرار داد.'))
+
+
+def test_v101_plural_ministers_not_role_added():
+    assert not any(f.startswith('role_added') for f in
+                   flags('Foreign ministers met in Rome.', 'وزیران امور خارجه در رم دیدار کردند.'))
+
+
+def test_v101_kyiv_and_naval_not_missing():
+    assert not any(f.startswith('entity_missing') for f in flags('The Kyiv Independent reported it.', 'کی‌یف ایندپندنت آن را گزارش داد.'))
+    assert not any(f.startswith('entity_missing') for f in flags('They attacked a naval base.', 'آن‌ها به یک پایگاه دریایی حمله کردند.'))
