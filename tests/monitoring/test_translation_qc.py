@@ -95,3 +95,39 @@ def test_v102_secretary_general_is_not_general_and_nato_is_an_organisation():
 
 def test_v102_kremlin_satisfies_russia():
     assert not any(f.startswith('entity_missing') for f in flags('Moscow alleged it.', 'کرملین چنین ادعا کرد.'))
+
+
+# ---- translation pipeline v2 (fact extraction / verification), dev-style cases only
+import translation_v2 as v2
+
+
+def test_v2_level_vs_change_conflict():
+    d, det = v2.decide('Unemployment rose to 7.2% in September.', 'نرخ بیکاری در ماه سپتامبر به میزان 7.2% افزایش یافت.')
+    assert d == 'REJECT_CRITICAL' and any('level_rendered_as_change' in x for x in det['critical'])
+
+
+def test_v2_percentage_points():
+    d, det = v2.decide('Unemployment rose by 0.4 percentage points.', 'نرخ بیکاری 0.4 درصد افزایش یافت.')
+    assert d == 'REJECT_CRITICAL'
+
+
+def test_v2_number_unit_and_relabel():
+    assert v2.decide('The 15-kilometre zone.', 'منطقه یک کیلومتری 15.')[0] == 'REJECT_CRITICAL'
+    assert v2.decide('Ukraine received 31 Abrams tanks.', 'اوکراین تانک‌های آبرامز مدل 31 دریافت کرد.')[0] == 'REJECT_CRITICAL'
+
+
+def test_v2_correct_level_accepted():
+    d, det = v2.decide('Oil exports fell by a third to 1.1 million barrels a day.',
+                       'حجم صادرات نفت یک‌سوم کاهش یافت و به میزان 1.1 میلیون بشکه در روز رسید.')
+    assert d == 'ACCEPT', det
+
+
+def test_v2_quote_attribution_negation():
+    assert v2.decide('The commander said «پیروزی نزدیک است» in Tehran.', 'فرمانده در تهران گفت «پیروزی در نزدیکی است».')[0] == 'REJECT_CRITICAL'
+    assert v2.decide('The group may have used gas, investigators said.', 'گزارش‌ها می‌گویند این گروه ممکن است از گاز استفاده کرده باشد.')[0] == 'REJECT_CRITICAL'
+    assert v2.decide('The missile did not hit its target.', 'موشک به هدف اصابت کرد.')[0] == 'REJECT_CRITICAL'
+
+
+def test_v2_month_may_is_not_modal():
+    facts = v2.extract('Elections, originally set for May, were postponed until October.')
+    assert not any(f['type'] == 'certainty' for f in facts)
