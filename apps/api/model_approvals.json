@@ -401,6 +401,76 @@
         "compare"
       ],
       "refusal_sentence": "در اخبار موجود، شواهد کافی و قابل اتکایی برای پاسخ به این پرسش یافت نشد."
+    },
+    {
+      "id": "translategemma-27b-21b597a243ec",
+      "role": "translation",
+      "contract": "TRANSLATION_MODEL_CONTRACT",
+      "tag": "translategemma:27b",
+      "ollama_version": "0.40.1",
+      "runner": "llamacpp",
+      "runner_process": "llama-server.exe",
+      "manifest_digest": "21b597a243ec4fd2f05bc0ce8ef9ef174a89b09255c330d670852dfaaaa74f72",
+      "tag_entry_digests": [
+        "21b597a243ec4fd2f05bc0ce8ef9ef174a89b09255c330d670852dfaaaa74f72"
+      ],
+      "model_blob_sha256": "d87ec9a33af49e86461d8309e28e6bdb663f852c09dfca5ff581bd796cdaf583",
+      "mmproj_blob_sha256": "d87ec9a33af49e86461d8309e28e6bdb663f852c09dfca5ff581bd796cdaf583",
+      "quantization": "Q4_K_M",
+      "parameter_size": "27.4B",
+      "source": "ollama registry pull 2026-10-09 04:26-04:47 (owner-authorised, once, no retry)",
+      "license": "Gemma Terms of Use",
+      "runtime": {
+        "temperature": 0.1,
+        "seed": 42,
+        "num_ctx": 4096,
+        "num_thread": 8,
+        "think": null,
+        "translation_max_output_tokens": 1536,
+        "concurrency": 1,
+        "output": "plain_text"
+      },
+      "prompt_versions": [
+        "translategemma-official-en-fa-v1"
+      ],
+      "glossary_version": "defence-glossary-fa-v1.1.0",
+      "validator_version": "translation-validator-v2.1.0"
+    },
+    {
+      "id": "translategemma-27b-ollama0401-llamacpp-90696e5eca44",
+      "role": "translation",
+      "contract": "TRANSLATION_MODEL_CONTRACT",
+      "tag": "translategemma:27b",
+      "ollama_version": "0.40.1",
+      "runner": "llamacpp",
+      "runner_process": "llama-server.exe",
+      "manifest_digest": "90696e5eca4460b2d3012c09f210d22283e2022c144c3562de9bd2a9805d6591",
+      "tag_entry_digests": [
+        "90696e5eca4460b2d3012c09f210d22283e2022c144c3562de9bd2a9805d6591",
+        "a74426617111514aaf10637510922934e523be71264a91d52f807c59bb28fb65"
+      ],
+      "model_blob_sha256": "e80bfc0763c8a8e433f94efe7994037c9e209f9553c3bba8f76bac8607a15760",
+      "mmproj_blob_sha256": "81a92a6d7e0bbc31b52438d79dcc224cab7d046a385b574669fdaafaf6940941",
+      "quantization": "Q4_K_M",
+      "parameter_size": "27.4B",
+      "source": "Ollama 0.40.1 llamacpp conversion on first load of the authorised pull (local; no download)",
+      "license": "Gemma Terms of Use",
+      "runtime": {
+        "temperature": 0.1,
+        "seed": 42,
+        "num_ctx": 4096,
+        "num_thread": 8,
+        "think": null,
+        "translation_max_output_tokens": 1536,
+        "concurrency": 1,
+        "output": "plain_text"
+      },
+      "prompt_versions": [
+        "translategemma-official-en-fa-v1"
+      ],
+      "glossary_version": "defence-glossary-fa-v1.1.0",
+      "validator_version": "translation-validator-v2.1.0",
+      "converted_from_manifest": "21b597a243ec4fd2f05bc0ce8ef9ef174a89b09255c330d670852dfaaaa74f72"
     }
   ],
   "events": [
@@ -592,6 +662,34 @@
       "event": "pending_human_review",
       "by": "quality_gate",
       "note": "Machine gate v1.3.1 (fresh, full): synthetic 14/14; real DB 19/19 in run A and 19/19 in run B after a model unload/reload (18/19 identical answers; R01 chose different but verbatim, relevant quotes); UI suggestions 6/6 answered; 106/106 real quotes verified verbatim against original DB text. Human review pack: docs/ASSISTANT V1.3 HUMAN REVIEW PACK.md, no box pre-filled. Not approved, not served."
+    },
+    {
+      "at": "2026-10-09",
+      "approval": "translategemma-27b-21b597a243ec",
+      "event": "proposed",
+      "by": "owner",
+      "note": "Phase 9: authorised single pull of translategemma:27b, for automated evaluation only; never served or activated."
+    },
+    {
+      "at": "2026-10-09",
+      "approval": "translategemma-27b-21b597a243ec",
+      "event": "superseded",
+      "by": "identity_guard",
+      "note": "Converted by Ollama 0.40.1 on first load; the runner executes the llamacpp entry (attestation of the registry form failed as expected)."
+    },
+    {
+      "at": "2026-10-09",
+      "approval": "translategemma-27b-ollama0401-llamacpp-90696e5eca44",
+      "event": "proposed",
+      "by": "owner",
+      "note": "Executed (converted) form of translategemma:27b; automated evaluation only; never served or activated."
+    },
+    {
+      "at": "2026-10-09",
+      "approval": "translategemma-27b-ollama0401-llamacpp-90696e5eca44",
+      "event": "rejected_quality_gate",
+      "by": "automated_gate",
+      "note": "AUTO_GATE_FAIL (translation-auto-gate-v1.0.0, frozen 169a1ff before the download): 31 FAIL / 28 UNVERIFIED / 64 VERIFIED over 123 fields (dev 35, p7 40, p8 48); 29 of 31 FAILs are genuine critical errors on AI audit (wrong numbers and years, by-vs-to, invented roles, number relabelled as model, wrong echelon, placeholders spelled out in Persian). Technical criteria met (RSS peak 17.96 GB, 3001 92/92 healthy, negatives 16/16, attestation passed). See docs/TRANSLATEGEMMA 27B AUTOMATED EVALUATION.md."
     }
   ]
 }
