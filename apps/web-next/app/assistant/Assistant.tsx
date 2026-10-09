@@ -49,12 +49,16 @@ interface Usage {
 
 const SESSION_KEY = 'dm.assistant.session';
 const TERMINAL = ['done', 'rejected', 'cancelled', 'error'];
+// Contract v1.3: each suggestion is one allowed intent with concrete anchors
+// that exist in the stored news (checked by tests/monitoring/test_assistant_v13
+// and the `suggestions` suite of scripts/assistant_v13_gate.py). No ranking,
+// prediction or open analysis questions.
 const SUGGESTIONS = [
-  'در ۲۴ ساعت گذشته چه اتفاقاتی افتاده است؟',
-  'مهم‌ترین اخبار امروز چیست؟',
-  'درباره F-35 چه خبرهایی منتشر شده است؟',
-  'کدام منابع درباره پهپادها نوشته‌اند و روایتشان چه تفاوتی دارد؟',
-  'آیا اطلاعات موجود درباره آزمایش موشکی کافی است؟',
+  'کدام منابع درباره قرارداد F/A-XX بوئینگ گزارش داده‌اند؟',
+  'تفاوت روایت منابع درباره سقوط F-16 در میشیگان چیست؟',
+  'درباره آزمایش موشک هایپرسونیک کره شمالی چه گزارش شده است؟',
+  'اخبار مرتبط با راینمتال',
+  'کدام منابع درباره یک رویداد مشترک گزارش داده‌اند؟',
 ];
 const CONF_FA: Record<string, [string, 'ok' | 'warn' | 'uncertain']> = {
   high: ['اطمینان زیاد', 'ok'], medium: ['اطمینان متوسط', 'warn'], low: ['اطمینان کم', 'uncertain'],
@@ -273,7 +277,7 @@ export function Assistant() {
           <form className="as-input" onSubmit={(e) => { e.preventDefault(); ask(text); }}>
             <label htmlFor="as-q" className="sr-only">پرسش</label>
             <textarea id="as-q" value={text} onChange={(e) => setText(e.target.value)} maxLength={1000} rows={3}
-              placeholder="مثلاً: کدام منابع درباره رزمایش‌های اخیر نوشته‌اند؟" disabled={disabled}
+              placeholder="مثلاً: کدام منابع درباره قرارداد PAC-3 بوئینگ گزارش داده‌اند؟" disabled={disabled}
               onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); ask(text); } }} />
             <div className="as-input-actions">
               {pending
