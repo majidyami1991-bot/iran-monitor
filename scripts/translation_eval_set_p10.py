@@ -11,17 +11,21 @@ Categories (6 each): numbers, dates, currency, names, roles, military,
 negation, relations; plus 4 'tokens' items (URL / mention / hashtag / code),
 which test what removing the placeholders does to verbatim tokens.
 """
-SET_VERSION = 'translation-eval-p10-v1.0.0'
+SET_VERSION = 'translation-eval-p10-v1.0.1'
+# v1.0.1 (calibrated on TranslateGemma 12B pipeline-v2 output, BEFORE any 27B
+# pipeline-v2 output existed; sentences unchanged): N01 accepts «کشتی»;
+# N03 «از مجموع ۳۱ … ۹»; T03 «بین تاریخ‌های ۱ تا ۵»; R02 «وانس»; R04 «هالهوی»;
+# G04 'denied only' no longer matches «رد» inside «مورد».
 N, R, F = 'num', 'req', 'forbid'
 
 ITEMS = [
     # numbers and quantities
     ('N01', 'numbers', 'The navy ordered 14 patrol boats and 3 tankers.',
-     [(N, [14, 3]), (R, 'boats_14', r'14 (فروند )?(قایق|شناور)|(قایق|شناور)\S*[^.]{0,20}14'), (R, 'tankers', r'نفتکش|تانکر'), (F, 'swapped', r'3 (فروند )?(قایق|شناور)|14 (فروند )?(نفتکش|تانکر)')]),
+     [(N, [14, 3]), (R, 'boats_14', r'14 (فروند )?(قایق|شناور|کشتی)|(قایق|شناور|کشتی)\S*[^.]{0,20}14'), (R, 'tankers', r'نفتکش|تانکر'), (F, 'swapped', r'3 (فروند )?(قایق|شناور)|14 (فروند )?(نفتکش|تانکر)')]),
     ('N02', 'numbers', 'About 2.4 million people have fled the region since 2022.',
      [(N, [2.4, 2022]), (R, 'million', r'میلیون'), (R, 'about', r'حدود|تقریبا|تقریباً|نزدیک به|حدودا'), (R, 'since', r'از (سال )?2022')]),
     ('N03', 'numbers', 'The brigade lost 9 of its 31 tanks.',
-     [(N, [9, 31]), (R, 'brigade', r'تیپ'), (R, 'of_total', r'9 (دستگاه )?(تانک )?از (مجموع )?31|از 31[^.]{0,20}9')]),
+     [(N, [9, 31]), (R, 'brigade', r'تیپ'), (R, 'of_total', r'9 (دستگاه )?(تانک )?از (مجموع )?31|از (مجموع )?31[^.]{0,25}9')]),
     ('N04', 'numbers', 'Turnout was 61.3%, the lowest since 1999.',
      [(N, [61.3, 1999]), (R, 'percent', r'%|درصد'), (R, 'lowest', r'کمترین|پایین ترین|پایین‌ترین')]),
     ('N05', 'numbers', 'More than 300 drones were launched in a single night.',
@@ -34,7 +38,7 @@ ITEMS = [
     ('T02', 'dates', 'The strike happened at 02:40 on Thursday morning.',
      [(R, 'time', r'0?2:40'), (R, 'thursday', r'پنج ?شنبه'), (R, 'morning', r'صبح|بامداد')]),
     ('T03', 'dates', 'Between 1 and 5 March, 40 flights were cancelled.',
-     [(N, [1, 5, 40]), (R, 'march', r'مارس'), (R, 'range', r'(بین|از) 1 (تا|و) 5'), (R, 'cancelled', r'لغو')]),
+     [(N, [1, 5, 40]), (R, 'march', r'مارس'), (R, 'range', r'(بین|از) (تاریخ ?های )?1 (تا|و) 5'), (R, 'cancelled', r'لغو')]),
     ('T04', 'dates', 'The law takes effect on 1 January 2027 and expires in 2030.',
      [(N, [1, 2027, 2030]), (R, 'january', r'ژانویه'), (R, 'expires', r'منقضی|پایان|اعتبار')]),
     ('T05', 'dates', 'Talks resumed on Monday after a pause of 11 days.',
@@ -71,11 +75,11 @@ ITEMS = [
     ('R01', 'roles', 'Former president Donald Trump criticised the deal.',
      [(R, 'former', r'سابق|پیشین'), (R, 'president', r'رئیس ?جمهور|رییس ?جمهور'), (R, 'trump', r'ترامپ')]),
     ('R02', 'roles', 'Vice President JD Vance arrived in Munich.',
-     [(R, 'vice', r'معاون'), (R, 'president', r'رئیس ?جمهور|رییس ?جمهور'), (R, 'vance', r'ونس|ونس'), (R, 'munich', r'مونیخ'), (F, 'pres_only', r'(?<!معاون )(?<!معاون)رئیس ?جمهور ج')]),
+     [(R, 'vice', r'معاون'), (R, 'president', r'رئیس ?جمهور|رییس ?جمهور'), (R, 'vance', r'ونس|وانس'), (R, 'munich', r'مونیخ'), (F, 'pres_only', r'(?<!معاون )(?<!معاون)رئیس ?جمهور ج')]),
     ('R03', 'roles', 'Interim Prime Minister Michel Barnier resigned.',
      [(R, 'interim', r'موقت|سرپرست'), (R, 'pm', r'نخست ?وزیر'), (R, 'barnier', r'بارنیه'), (R, 'resigned', r'استعفا|کناره')]),
     ('R04', 'roles', 'Army chief of staff General Herzi Halevi visited the border.',
-     [(R, 'chief_of_staff', r'رئیس ستاد|رییس ستاد|فرمانده ستاد'), (R, 'general', r'ژنرال|سپهبد|سرلشکر'), (R, 'halevi', r'هالوی|هلوی'), (R, 'border', r'مرز')]),
+     [(R, 'chief_of_staff', r'رئیس ستاد|رییس ستاد|فرمانده ستاد'), (R, 'general', r'ژنرال|سپهبد|سرلشکر'), (R, 'halevi', r'هالوی|هلوی|هالهوی'), (R, 'border', r'مرز')]),
     ('R05', 'roles', 'Foreign Minister Abbas Araghchi denied the report.',
      [(R, 'fm', r'وزیر (امور )?خارجه'), (R, 'araghchi', r'عراقچی'), (R, 'denied', r'رد کرد|تکذیب')]),
     ('R06', 'roles', 'A senior Pentagon official, speaking anonymously, confirmed the move.',
@@ -101,7 +105,7 @@ ITEMS = [
     ('G03', 'negation', 'The pilot never lost contact with the base.',
      [(R, 'never_lost', r'هرگز|هیچ ?گاه|هیچ وقت|ارتباط (خود را )?(با پایگاه )?از دست نداد'), (R, 'base', r'پایگاه')]),
     ('G04', 'negation', 'Officials confirmed, rather than denied, the transfer.',
-     [(R, 'confirmed', r'تایید|تأیید'), (F, 'denied_only', r'^((?!تایید|تأیید).)*(رد|تکذیب)')]),
+     [(R, 'confirmed', r'تایید|تأیید'), (F, 'denied_only', r'^(?!.*(تایید|تأیید)).*(رد کرد|تکذیب کرد|انکار کرد)')]),
     ('G05', 'negation', 'The talks did not collapse, but no deal was signed.',
      [(R, 'not_collapse', r'(فرو ?نپاشید|شکست نخورد|متوقف نشد|به بن ?بست نرسید)'), (R, 'no_deal', r'(هیچ|بدون) (توافق|قرارداد)|امضا نشد|امضا نکرد')]),
     ('G06', 'negation', 'None of the 20 detainees has been released.',
