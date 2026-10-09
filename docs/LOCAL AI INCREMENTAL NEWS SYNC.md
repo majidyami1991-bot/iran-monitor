@@ -93,15 +93,18 @@
 **Production — separate finding, not changed**
 - Production's events were last updated **2026-10-08 07:39:45 UTC**.
 - 189 Production items have no topic assignment.
-- **Cause, confirmed read-only:**
-  - since the restart at **2026-10-08 16:46:54 UTC**, `news-api` has run
-    image `9d1ee6d5`, the one tagged `rollback-pre-redesign` (built
-    2026-09-27);
-  - that image has **no `experience.py`**, so Production runs no topic,
-    clustering, briefing or story jobs.
+- **Cause, confirmed read-only (corrected; see
+  `docs/PRODUCTION NEWS ENRICHMENT RECOVERY PLAN.md` in the redesign
+  worktree):**
+  - the 3001 `news-api` runs `rollback-pre-redesign` (`9d1ee6d5`)
+    *intentionally* since 2026-09-28; it has never had `experience.py`;
+  - the jobs ran in the preview API (`news-api-preview`, `restart: "no"`);
+  - after the host/Docker outage of 2026-10-08 (07:53–16:46 UTC) the preview
+    did not come back.
+- An earlier wording here called this a "Production regression"; that was
+  imprecise.
 - This does not affect the sync: derived tables are never read from
-  Production. It is a Production regression for its owner to decide on;
-  nothing was changed.
+  Production. Nothing was changed.
 
 ## 6. Proposed schedule — NOT enabled, waiting for permission
 
