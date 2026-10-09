@@ -36,8 +36,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 LEXICON_VERSION = 'assistant-lexicon-fa-en-v1.1.0'
-RELEVANCE_VERSION = 'relevance-gate-v1.0.0'
+RELEVANCE_VERSION = 'relevance-gate-v1.1.0'
 MAX_EVENT_HOURS = 72
+# v1.1.0 (assistant v1.3.2): two reports that the precision-first clusterer
+# left apart (FP-7, F/A-XX) may still be ONE event when they share a RARE code
+# anchor — a code that appears in at most RARE_TITLE_MAX titles of the whole
+# corpus — AND every other same-event condition holds (<= 72 h, shared event
+# type, >= 2 shared entities with >= 1 non-country, no place conflict).
+RARE_TITLE_MAX = 5
 
 _FA_NORM = str.maketrans({'ي': 'ی', 'ك': 'ک', 'ۀ': 'ه', 'ة': 'ه', 'ؤ': 'و', 'إ': 'ا', 'أ': 'ا', 'ٔ': None,
                           '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4', '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9',
@@ -567,11 +573,18 @@ def event_types_in(text):
     return {t for t, rx in _EVENT_REGEX.items() if rx.search(text or '')}
 
 
-def same_event(a, b, plan=None):
-    """(ok, reasons). All conditions must hold; see module docstring."""
+def codes_in(text):
+    return {_code_anchor(m.group(1)).canonical for m in _CODE.finditer(text or '')}
+
+
+def same_event(a, b, plan=None, rare_codes=None):
+    """(ok, reasons). All conditions must hold; see module docstring.
+    rare_codes: {code: number of corpus titles containing it} (v1.1.0)."""
     ta, tb = _text(a), _text(b)
     r = {}
     r['same_cluster'] = bool(a.get('event_id')) and a.get('event_id') == b.get('event_id')
+    shared_codes = codes_in(ta) & codes_in(tb)
+    r['rare_anchor'] = sorted(c for c in shared_codes if rare_codes and 0 < rare_codes.get(c, RARE_TITLE_MAX + 1) <= RARE_TITLE_MAX)
     da, db = _parse_dt(a.get('published_at')), _parse_dt(b.get('published_at'))
     r['hours_apart'] = round(abs((da - db).total_seconds()) / 3600, 1) if da and db else None
     r['time_ok'] = r['hours_apart'] is not None and r['hours_apart'] <= MAX_EVENT_HOURS
@@ -585,11 +598,12 @@ def same_event(a, b, plan=None):
     r['entities_ok'] = len(shared) >= 2 and bool(shared - countries)
     pa, pb = places_in(ta), places_in(tb)
     r['place_conflict'] = bool(pa) and bool(pb) and not (pa & pb)
-    ok = r['same_cluster'] and r['time_ok'] and r['event_type_ok'] and r['entities_ok'] and not r['place_conflict']
+    r['link'] = 'cluster' if r['same_cluster'] else ('rare_anchor' if r['rare_anchor'] else None)
+    ok = bool(r['link']) and r['time_ok'] and r['event_type_ok'] and r['entities_ok'] and not r['place_conflict']
     return ok, r
 
 
-def verified_groups(records, plan=None):
+def verified_groups(records, plan=None, rare_codes=None):
     """Complete-linkage groups of records that are pairwise the same event.
     Returns [{'members': [records], 'pairs': [...]}] with ≥ 2 members, most
     members first, then most recent."""
@@ -597,7 +611,7 @@ def verified_groups(records, plan=None):
     for rec in records:
         placed = False
         for g in groups:
-            checks = [same_event(rec, m, plan) for m in g['members']]
+            checks = [same_event(rec, m, plan, rare_codes) for m in g['members']]
             if all(ok for ok, _ in checks):
                 g['members'].append(rec)
                 g['pairs'].extend({'a': rec['evidence_id'], 'b': m['evidence_id'], **why}

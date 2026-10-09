@@ -26,9 +26,18 @@ Safety model
     are idempotent. Rows existing only in 3003 are never deleted (reported).
   * A data backup of every written 3003 table is saved before an apply.
 
+  * Schema guard (v1.1.0): the columns (name, type, order) of every synced
+    table must be identical on both sides, else the run stops before
+    staging anything.
+  * Backup (v1.1.0): only the pre-image of rows that an apply will UPDATE is
+    saved (plus the list of inserted keys, which is the complete rollback of
+    the inserts). A no-op run writes no data file.
+
   python scripts/news_sync.py dry-run
   python scripts/news_sync.py apply --limit-new 20      # limited trial: N oldest new items + their item rows only
   python scripts/news_sync.py apply                     # full incremental run (manual)
+  python scripts/news_sync.py apply --max-new 500       # scheduled run: all changes; at most N new items
+                                                        # (oldest first), the rest in the next run
 """
 import argparse
 import csv
@@ -46,8 +55,10 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / 'runtime' / 'news-sync'
 PROD = 'defence-monitor-news-news-db-1'
 LOCAL = 'iran-monitor-local-ai-ai-db-1'
-SYNC_VERSION = 'news-sync-v1.0.0'
+SYNC_VERSION = 'news-sync-v1.1.0'
 csv.field_size_limit(1 << 30)
+# No console window per docker call when run from a scheduled task (Windows).
+_NOWIN = {'creationflags': subprocess.CREATE_NO_WINDOW} if sys.platform == 'win32' else {}
 
 # (table, natural key, serial columns, policy, item-scoped column)
 TABLES = [
@@ -74,7 +85,7 @@ def psql(container, sql, *, read_only):
     env = ['-e', 'PGOPTIONS=-c default_transaction_read_only=on'] if read_only else []
     cmd = ['docker', 'exec', '-i', *env, container, 'sh', '-c',
            'psql -X -q -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -F "\t"']
-    r = subprocess.run(cmd, input=sql.encode('utf-8'), capture_output=True)
+    r = subprocess.run(cmd, input=sql.encode('utf-8'), capture_output=True, **_NOWIN)
     if r.returncode != 0:
         raise RuntimeError(f'psql {container} failed: {r.stderr.decode("utf-8", "replace")[:1500]}')
     return r.stdout.decode('utf-8')
@@ -108,7 +119,37 @@ def contract_hash():
     return hashlib.sha256((ROOT / 'apps' / 'api' / 'model_approvals.json').read_bytes()).hexdigest()
 
 
-def plan(limit_new=None):
+def schema_guard():
+    """Columns (name, type, position) of every synced table must match exactly."""
+    q = ("SELECT table_name AS t, string_agg(column_name || ':' || data_type, ',' ORDER BY ordinal_position) AS cols "
+         "FROM information_schema.columns WHERE table_schema='public' AND table_name IN ("
+         + ','.join(f"'{t}'" for t, *_ in TABLES) + ') GROUP BY 1')
+    side = lambda c: {r['t']: r['cols'] for r in csv.DictReader(io.StringIO(copy_out(c, q, read_only=True)))}
+    prod, local = side(PROD), side(LOCAL)
+    bad = sorted(t for t, *_ in TABLES if prod.get(t) != local.get(t))
+    if bad:
+        raise RuntimeError(f'schema guard: column layout differs between Production and 3003 for {bad} — stop')
+    return {t: hashlib.sha256(prod[t].encode()).hexdigest()[:12] for t in sorted(prod)}
+
+
+def _cap_new(p, n):
+    """Keep only the n oldest new news items (and their item-scoped rows)."""
+    order = [r['item_id'] for r in csv.DictReader(io.StringIO(copy_out(PROD, 'SELECT item_id FROM news_items ORDER BY collected_at, item_id', read_only=True)))]
+    newset = set(p['news_items']['new'])
+    chosen = set([i for i in order if i in newset][:n])
+    deferred = len(newset) - len(chosen)
+    for table, keys, _, _, scoped in TABLES:
+        if table == 'news_items':
+            p[table]['new'] = sorted(chosen)
+        elif scoped == 'item_id':
+            rows = copy_out(PROD, f'SELECT {key_expr(keys)} AS k, t.item_id FROM {table} t', read_only=True)
+            item_of = {r['k']: r['item_id'] for r in csv.DictReader(io.StringIO(rows))}
+            # new rows of deferred items wait; rows of items already in 3003 or chosen now go in
+            p[table]['new'] = [k for k in p[table]['new'] if item_of.get(k) not in newset or item_of.get(k) in chosen]
+    return chosen, deferred
+
+
+def plan(limit_new=None, max_new=None):
     """Compare both sides (read-only on both) → per-table plan."""
     for table, expr in VERSION_GUARD.items():
         vals = lambda c: {r['v'] for r in csv.DictReader(io.StringIO(copy_out(c, f'SELECT DISTINCT {expr} AS v FROM {table}', read_only=True)))}
@@ -138,6 +179,8 @@ def plan(limit_new=None):
                 p[table]['changed'] = []      # a new source (if any) is still inserted for the FK
             else:
                 p[table]['new'], p[table]['changed'] = [], []
+    if max_new is not None and limit_new is None and len(p['news_items']['new']) > max_new:
+        _, p['_deferred_new_items'] = _cap_new(p, max_new)
     stale = []
     changed_items = set(p['news_items']['changed']) | set(p['news_item_content']['changed'])
     if changed_items:
@@ -156,10 +199,12 @@ def payload(table, keys, wanted):
 
 def build_apply_sql(p, run_id, mode):
     parts = ['BEGIN ISOLATION LEVEL REPEATABLE READ;',
+             # recorded by the 3003 item_classification_history trigger as the writer of every change in this run
+             f"SET LOCAL app.classification_writer = 'news_sync:{run_id}';",
              """CREATE TABLE IF NOT EXISTS news_sync_runs (run_id text PRIMARY KEY, sync_version text, mode text, started_at timestamptz,
                 finished_at timestamptz, status text, source text, counts jsonb, protected_check text, note text);""",
              f'CREATE TEMP TABLE fp_before ON COMMIT DROP AS {fp_query(PROTECTED)};']
-    counts = {}
+    counts = {'_deferred_new_items': p.get('_deferred_new_items', 0)}
     for table, keys, serials, policy, _ in TABLES:
         wanted = p[table]['new'] + p[table]['changed']
         counts[table] = {'inserted': len(p[table]['new']), 'updated': len(p[table]['changed']),
@@ -189,32 +234,59 @@ def build_apply_sql(p, run_id, mode):
     return '\n'.join(parts) + '\n', counts
 
 
+def record_failure(run_id, mode, error):
+    """Failed runs are recorded too (own small transaction; the apply was rolled back)."""
+    err = error.replace("'", "''")[:2000]
+    psql(LOCAL, f"""CREATE TABLE IF NOT EXISTS news_sync_runs (run_id text PRIMARY KEY, sync_version text, mode text, started_at timestamptz,
+        finished_at timestamptz, status text, source text, counts jsonb, protected_check text, note text);
+        INSERT INTO news_sync_runs VALUES ('{run_id}', '{SYNC_VERSION}', '{mode}', now(), clock_timestamp(), 'failed',
+        '{PROD} (read-only)', NULL, NULL, '{err}') ON CONFLICT (run_id) DO NOTHING;""", read_only=False)
+
+
+def pre_images(p):
+    """CSV pre-image of exactly the 3003 rows an apply will UPDATE (inserts are rolled back by key)."""
+    parts = []
+    for table, keys, _, policy, _ in TABLES:
+        if policy == 'upsert' and p[table]['changed']:
+            lit = ','.join("'" + k.replace("'", "''") + "'" for k in p[table]['changed'])
+            parts.append(f"COPY (SELECT '{table}' AS _table, t.* FROM {table} t WHERE {key_expr(keys)} IN ({lit})) TO STDOUT WITH (FORMAT csv, HEADER true);\n")
+    return psql(LOCAL, 'BEGIN READ ONLY;\n' + ''.join(parts) + 'COMMIT;\n', read_only=True) if parts else ''
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('mode', choices=['dry-run', 'apply'])
-    ap.add_argument('--limit-new', type=int)
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument('--limit-new', type=int)
+    g.add_argument('--max-new', type=int)
     a = ap.parse_args()
     run_id = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:6]
     rd = RUNS / run_id
     rd.mkdir(parents=True, exist_ok=False)
-    log = {'run_id': run_id, 'sync_version': SYNC_VERSION, 'mode': a.mode, 'limit_new': a.limit_new,
+    mode = 'trial' if a.limit_new else ('scheduled' if a.max_new else 'full')
+    log = {'run_id': run_id, 'sync_version': SYNC_VERSION, 'mode': a.mode, 'limit_new': a.limit_new, 'max_new': a.max_new,
            'started': datetime.now(timezone.utc).isoformat(), 'status': 'started'}
     t0 = time.time()
     try:
         log['contract_sha256_before'] = contract_hash()
+        log['schema'] = schema_guard()
         log['protected_before'] = fingerprint(PROTECTED)
         log['written_tables_before'] = fingerprint([t for t, *_ in TABLES])
-        p, stale = plan(a.limit_new)
+        p, stale = plan(a.limit_new, a.max_new)
+        log['deferred_new_items'] = p.pop('_deferred_new_items', 0)
         log['plan'] = {t: {k: (v if isinstance(v, int) else len(v)) for k, v in d.items()} for t, d in p.items()}
-        log['plan_keys'] = {t: {k: d[k] for k in ('new', 'changed', 'changed_not_applied', 'local_only')} for t, d in p.items()}
+        log['plan_keys'] = {t: {k: d[k] for k in ('new', 'changed', 'changed_not_applied') if d[k]} for t, d in p.items()}
         log['translations_whose_source_changed'] = stale
         if a.mode == 'apply':
-            backup = psql(LOCAL, 'BEGIN READ ONLY;\n' + ''.join(
-                f'COPY (SELECT * FROM {t}) TO STDOUT WITH (FORMAT csv, HEADER true);\n' for t, *_ in TABLES) + 'COMMIT;\n', read_only=True)
-            (rd / 'backup-3003-written-tables.csv').write_text(backup, encoding='utf-8')
-            log['backup_sha256'] = hashlib.sha256(backup.encode('utf-8')).hexdigest()
-            sql, counts = build_apply_sql(p, run_id, 'trial' if a.limit_new else 'full')
-            (rd / 'apply.sql').write_text(sql, encoding='utf-8')
+            p['_deferred_new_items'] = log['deferred_new_items']
+            backup = pre_images(p)
+            if backup:
+                (rd / 'pre-image-updated-rows.csv').write_text(backup, encoding='utf-8')
+                log['pre_image_sha256'] = hashlib.sha256(backup.encode('utf-8')).hexdigest()
+            log['rollback'] = 'restore pre-image-updated-rows.csv for updated rows; delete plan_keys[*].new for inserted rows'
+            sql, counts = build_apply_sql(p, run_id, mode)
+            if any(c.get('inserted') or c.get('updated') for t, c in counts.items() if not t.startswith('_')):
+                (rd / 'apply.sql').write_text(sql, encoding='utf-8')
             psql(LOCAL, sql, read_only=False)
             log['applied'] = counts
             log['contract_sha256_after'] = contract_hash()
@@ -226,9 +298,15 @@ def main():
     except Exception as exc:
         log['status'] = 'failed'
         log['error'] = str(exc)[:3000]
+        if a.mode == 'apply':
+            try:
+                record_failure(run_id, mode, log['error'])
+            except Exception as exc2:  # noqa: BLE001 - the run.json below still records the failure
+                log['record_failure_error'] = str(exc2)[:300]
     log['seconds'] = round(time.time() - t0, 1)
     (rd / 'run.json').write_text(json.dumps(log, ensure_ascii=False, indent=1), encoding='utf-8')
-    summary = {k: log.get(k) for k in ('run_id', 'mode', 'limit_new', 'status', 'error', 'seconds', 'plan', 'applied', 'residual_after')}
+    summary = {k: log.get(k) for k in ('run_id', 'mode', 'limit_new', 'max_new', 'status', 'error', 'seconds', 'deferred_new_items',
+                                       'plan', 'applied', 'residual_after')}
     summary['translations_whose_source_changed'] = len(log.get('translations_whose_source_changed') or [])
     print(json.dumps(summary, ensure_ascii=False, indent=1))
     sys.exit(0 if log['status'] == 'succeeded' else 1)

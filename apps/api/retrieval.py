@@ -174,6 +174,22 @@ def _literal_hints(anchor):
     return hints
 
 
+def code_title_counts(dsn, codes):
+    """{code: number of news titles in the whole corpus that contain it as a
+    token} — the rarity measure of relevance gate v1.1.0 (assistant v1.3.2).
+    Read-only; every value is a bound parameter."""
+    codes = sorted({c for c in codes if c and len(c) <= 16})[:40]
+    if not codes:
+        return {}
+    out = {}
+    with psycopg.connect(dsn) as c:
+        c.execute('SET TRANSACTION READ ONLY')
+        for code in codes:
+            rx = '(^|[^A-Za-z0-9])' + re.escape(code).replace('\\-', '-?') + '($|[^A-Za-z0-9])'
+            out[code] = c.execute('SELECT count(*) FROM news_items WHERE title ~ %s', (rx,)).fetchone()[0]
+    return out
+
+
 def search_v13(dsn, plan, *, now=None, limit=200):
     """Candidate records for the v1.3 extractive assistant: original text
     only (stored machine translations are never evidence), no dedup by event

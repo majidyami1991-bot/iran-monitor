@@ -7,7 +7,9 @@ import { useApi, useNow } from '../../design/useApi';
 import type { FeedItem } from '../../design/types';
 import { fmt, fmtDateTime, fmtPercent, fmtRelative, hostOf, safeUrl, sourceColor } from '../../design/format';
 import { usePrefs } from '../../design/prefs';
-import { BreakingTag, CategoryTag, Empty, Failure, ImportanceTag, SourceMark, Tag, TranslationTag, Bone, CardBones } from '../../design/ui';
+import { BreakingTag, CategoryTag, Empty, Failure, ImportanceTag, SourceMark, Tag, TranslationTag, Bone, CardBones, MACHINE_LABEL } from '../../design/ui';
+import { useEffect, useState } from 'react';
+import type { TranslationQc } from '../../design/types';
 import { MediaViewer } from '../../components/MediaViewer';
 import { NewsCard } from '../../components/NewsCard';
 
@@ -51,6 +53,15 @@ export function NewsDetailPage() {
   const c = useApi<Context>(`feed/${encodeURIComponent(id)}/context`, [id]);
   const now = useNow();
   const { contentLang } = usePrefs();
+  // The translation appears without a manual refresh: poll while it is queued or running.
+  const waiting = ['translation_pending', 'processing', 'pending'].includes(c.data?.item.title_fa_status ?? '')
+    || ['translation_pending', 'processing', 'pending'].includes(c.data?.item.summary_fa_status ?? '');
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setInterval(() => { c.reload(); }, 20000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waiting, id]);
 
   if (d.error || c.error) return <Shell><Failure onRetry={() => { d.reload(); c.reload(); }}>این خبر پیدا نشد یا دریافت آن ناموفق بود.</Failure></Shell>;
   // Loading skeleton mirrors the final layout (breadcrumb, flags, title,
@@ -100,17 +111,12 @@ export function NewsDetailPage() {
             <div className="bilingual">
               <div className="lang-col">
                 <h4>فارسی <TranslationTag status={it.title_fa_status} review={it.title_fa_review} /></h4>
-                {faTitle ? <p className="t">{faTitle}</p>
-                  : it.title_fa_status === 'needs_review'
-                    ? <p className="muted">ترجمه عنوان در کنترل کیفیت رد شد و نمایش داده نمی‌شود؛ برای بازبینی ذخیره شده است.</p>
-                    : <p className="muted">عنوان فارسی ذخیره نشده است ({it.title_fa_status === 'error' ? 'آخرین تلاش ترجمه ناموفق بود' : 'در صف ترجمه'}). متنی حدس زده یا جایگزین نمی‌شود.</p>}
-                {faSummary ? <p className="s">{faSummary}</p>
-                  : it.summary_fa_status === 'needs_review'
-                    ? <p className="muted">ترجمه خلاصه در کنترل کیفیت رد شد و نمایش داده نمی‌شود؛ برای بازبینی یا ترجمه دوباره ذخیره شده است.</p>
-                    : <p className="muted">خلاصه فارسی ذخیره نشده است.</p>}
-                {it.machine_translated && (
-                  <small className="muted">{it.translation_provider === 'ollama/local' ? 'ترجمه ماشینی محلی' : 'ترجمه ماشینی'} · <bdi>{it.translation_provider}</bdi> · مدل درخواستی <bdi>{it.translation_model}</bdi>
-                    {it.translation_served_by && <> · مدل پاسخ‌دهنده <bdi>{it.translation_served_by}</bdi></>} · بازبینی انسانی نشده</small>
+                <FaField label="عنوان" cls="t" text={faTitle} unverified={it.title_fa_unverified ?? null} status={it.title_fa_status} qc={it.title_fa_qc ?? null} />
+                <FaField label="خلاصه" cls="s" text={faSummary} unverified={it.summary_fa_unverified ?? null} status={it.summary_fa_status} qc={it.summary_fa_qc ?? null} />
+                {(it.title_fa_status === 'translation_pending' || it.title_fa_status === 'pending') && <RequestTranslation id={it.item_id} />}
+                {(it.machine_translated || it.title_fa_unverified || it.summary_fa_unverified) && (
+                  <small className="muted">{MACHINE_LABEL} · ترجمه محلی <bdi>{it.translation_provider}</bdi> · مدل <bdi>{it.translation_model}</bdi>
+                    {it.title_fa_qc?.pipeline && <> · کنترل کیفیت <bdi>{it.title_fa_qc.pipeline}</bdi></>} · عبور از کنترل کیفیت به معنی صحت قطعی نیست؛ متن اصلی ملاک است.</small>
                 )}
               </div>
               <div className="lang-col" dir="ltr" lang="en">
@@ -208,5 +214,33 @@ export function NewsDetailPage() {
         </aside>
       </div>
     </Shell>
+  );
+}
+
+/** One Persian field: shown as a translation only when QC found no objection;
+ *  a QC-warning text only with a warning; a rejected one never. */
+function FaField({ label, cls, text, unverified, status, qc }: { label: string; cls: string; text: string | null; unverified: string | null; status: string; qc: TranslationQc | null }) {
+  const scope = qc?.scope === 'lead' && qc.lead_chars && qc.full_chars
+    ? <p className="bi-note">ترجمه بخش آغازین {label} ({fmt(qc.lead_chars)} از {fmt(qc.full_chars)} نویسه)؛ متن کامل در ستون انگلیسی است.</p> : null;
+  if (text) return <><p className={cls}>{text}</p>{scope}</>;
+  if (unverified) return (
+    <><p className={cls}>{unverified}</p>
+      <p className="bi-warn">هشدار کنترل کیفیت: {qc ? `${fmt(qc.uncertain)} مورد (عدد، نام، اصطلاح یا رابطه)` : 'برخی موارد'} به‌طور خودکار قابل تأیید نبود. این ترجمه فقط در کنار متن اصلی نمایش داده می‌شود و متن اصلی ملاک است.</p>{scope}</>);
+  if (status === 'qc_failed') return <p className="bi-fail">ترجمه {label} در کنترل کیفیت خطای بحرانی داشت{qc?.critical ? ` (${fmt(qc.critical)} مورد)` : ''} و نمایش داده نمی‌شود؛ متن اصلی انگلیسی معتبر است.</p>;
+  if (status === 'translation_error') return <p className="muted">ترجمه {label} ناموفق بود و خودکار با تأخیر دوباره تلاش می‌شود.</p>;
+  if (status === 'not_required') return <p className="muted">متن اصلی {label} فارسی است.</p>;
+  if (status === 'processing') return <p className="muted">ترجمه {label} در حال انجام است…</p>;
+  if (status === 'needs_review') return <p className="muted">ترجمه {label} در کنترل کیفیت رد شد و نمایش داده نمی‌شود.</p>;
+  return <p className="muted">{label} فارسی هنوز آماده نیست (در انتظار ترجمه خودکار). متنی حدس زده یا جایگزین نمی‌شود.</p>;
+}
+
+function RequestTranslation({ id }: { id: string }) {
+  const [state, setState] = useState<'idle' | 'sent' | 'error'>('idle');
+  if (state === 'sent') return <p className="bi-note">در صف ترجمه قرار گرفت؛ پس از آماده شدن، بدون نیاز به بارگذاری دوباره نمایش داده می‌شود.</p>;
+  return (
+    <button type="button" className="btn-ghost" onClick={() => fetch(`/api/v1/news/${encodeURIComponent(id)}/translation/request`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+      .then((r) => setState(r.ok ? 'sent' : 'error')).catch(() => setState('error'))}>
+      {state === 'error' ? 'ثبت درخواست ناموفق بود؛ دوباره تلاش کنید' : 'اولویت دادن به ترجمه این خبر'}
+    </button>
   );
 }

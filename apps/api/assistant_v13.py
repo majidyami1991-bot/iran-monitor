@@ -20,7 +20,8 @@ import assistant_extractive as ax
 import assistant_relevance as ar
 
 PROMPT_VERSION = 'assistant-extractive-fa-v1.3.0'
-VALIDATOR_VERSION = 'extractive-validator-v1.3.1'
+VALIDATOR_VERSION = 'extractive-validator-v1.3.2'
+OVERVIEW_EVENTS = 8   # v1.3.2: broad coverage questions list up to 8 verified events (was 5)
 # The one exact refusal sentence of contract v1.3 (v1.2 kept its own).
 INSUFFICIENT = 'در اخبار موجود، شواهد کافی و قابل اتکایی برای پاسخ به این پرسش یافت نشد.'
 MAX_RECORDS = 6
@@ -101,8 +102,10 @@ def _proof(group):
     hours = max((p['hours_apart'] or 0) for p in pairs) if pairs else 0
     types = sorted({t for p in pairs for t in p['shared_event_types']})
     ents = sorted(set.intersection(*[set(p['shared_entities']) for p in pairs])) if pairs else []
+    rare = sorted({c for p in pairs if p.get('link') == 'rare_anchor' for c in p.get('rare_anchor') or []})
+    link = (f'، پیوند از راه شناسه کمیاب مشترک {", ".join(rare)} (خوشه‌بندی خودکار این اخبار را جدا نگه داشته بود)' if rare else '')
     return (f'تعلق اسناد به یک رویداد واحد به‌صورت خودکار احراز شد: فاصله زمانی حداکثر {_fa(hours)} ساعت، '
-            f'نوع رویداد مشترک: {"، ".join(ETYPE_FA.get(t, t) for t in types)}، موجودیت‌های مشترک: {", ".join(ents)}، بدون تعارض مکانی')
+            f'نوع رویداد مشترک: {"، ".join(ETYPE_FA.get(t, t) for t in types)}، موجودیت‌های مشترک: {", ".join(ents)}، بدون تعارض مکانی{link}')
 
 
 def compose(plan, facts, records, group=None, copies=()):
@@ -166,7 +169,7 @@ def _groups_view(groups):
     return [{'members': [m['record_id'] for m in g['members']], 'pairs': g['pairs']} for g in groups]
 
 
-def select(plan, candidates):
+def select(plan, candidates, rare_codes=None):
     """Deterministic selection before the model.
     Returns (records_for_model, group, copies, refusal_reason, trace)."""
     trace = {'plan': plan.view(), 'candidates': len(candidates), 'relevance': []}
@@ -200,7 +203,7 @@ def select(plan, candidates):
     if plan.intent == 'entity_lookup':
         return _renumber(relevant[:MAX_RECORDS]), None, set(), None, trace
     relevant = _renumber(relevant[:24])
-    groups = ar.verified_groups(relevant, plan)
+    groups = ar.verified_groups(relevant, plan, rare_codes)
     trace['verified_groups'] = _groups_view(groups)
     grouped = {m['evidence_id'] for g in groups for m in g['members']}
     events = groups + [{'members': [r], 'pairs': []} for r in relevant if r['evidence_id'] not in grouped]
@@ -325,7 +328,7 @@ def finish(plan, payload, records, group, copies):
     return compose(plan, facts, records, group, copies), problems
 
 
-def run(adapter, question, candidates, neutralise, should_cancel=lambda: False, now=None, plan=None):
+def run(adapter, question, candidates, neutralise, should_cancel=lambda: False, now=None, plan=None, rare_codes=None):
     """Full v1.3 pipeline on retrieved candidates.
     Returns (result, problems, response_or_None, trace)."""
     plan = plan or ar.analyse(question, now)
@@ -335,14 +338,14 @@ def run(adapter, question, candidates, neutralise, should_cancel=lambda: False, 
         return refusal(pre, plan, trace), [pre], None, trace
     if plan.intent == 'common_coverage' and not plan.anchors and not plan.event_types:
         recs = _renumber(candidates)
-        groups = ar.verified_groups(recs, plan)
+        groups = ar.verified_groups(recs, plan, rare_codes)
         trace = {'plan': plan.view(), 'candidates': len(candidates), 'verified_groups': _groups_view(groups)}
-        out = compose_overview(groups[:5])
+        out = compose_overview(groups[:OVERVIEW_EVENTS])
         if out is None:
             return refusal('same_event_not_established', plan, trace), ['no_verified_group'], None, trace
         out['trace'] = trace
         return out, [], None, trace
-    records, group, copies, reason, trace = select(plan, candidates)
+    records, group, copies, reason, trace = select(plan, candidates, rare_codes)
     if reason:
         return refusal(reason, plan, trace), [reason], None, trace
     adapter.json_schema = SCHEMA
@@ -353,6 +356,29 @@ def run(adapter, question, candidates, neutralise, should_cancel=lambda: False, 
     except (json.JSONDecodeError, TypeError):
         return refusal('no_valid_quote', plan, trace), ['invalid_json'], resp, trace
     out, problems = finish(plan, payload, records, group, copies)
+    # v1.3.2: entity_lookup lists independent records (nothing is merged). When
+    # the model altered the quote of some records, the WHOLE tainted extraction
+    # is still discarded (validator unchanged); one fresh extraction runs on the
+    # remaining records only, must pass the same validator in full, and the
+    # answer discloses how many records were set aside.
+    altered = sorted({p.split(':', 1)[1] for p in problems if p.startswith('not_verbatim:')})
+    if plan.intent == 'entity_lookup' and out.get('refusal_reason') == 'no_valid_quote' and altered:
+        kept = [r for r in records if r['evidence_id'] not in altered]
+        trace['retry_without_altered'] = [r['record_id'] for r in records if r['evidence_id'] in altered]
+        if kept and not should_cancel():
+            records = _renumber(kept)
+            resp = adapter.stream_complete(SYSTEM, build_user_message(plan, records, neutralise), should_cancel)
+            try:
+                payload = json.loads(resp.raw_text)
+            except (json.JSONDecodeError, TypeError):
+                payload = None
+            if payload is not None:
+                out, problems2 = finish(plan, payload, records, None, set())
+                problems = problems + ['retry_after_altered_quote'] + problems2
+                if out['kind'] == 'answer':
+                    out['answer'] += (f'\nتوجه: نقل‌قولی که مدل برای {_fa(len(altered))} خبر برگزیده بود با متن اصلی منطبق نبود؛ '
+                                      f'آن {"خبر" if len(altered) == 1 else "اخبار"} کنار گذاشته شد و پاسخ فقط از نقل‌قول‌های عین متن ساخته شد.')
+                    out['set_aside_altered'] = trace['retry_without_altered']
     excluded = trace.get('excluded_unverified') or []
     if out['kind'] == 'answer' and excluded:
         out['answer'] += (f'\nتوجه: {_fa(len(excluded))} خبر مرتبط دیگر با همین موجودیت‌ها پیدا شد که تعلقشان به همین رویداد '

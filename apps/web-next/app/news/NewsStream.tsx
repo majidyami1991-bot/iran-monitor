@@ -19,7 +19,7 @@ const LABELS: Partial<Record<Key, Record<string, string>>> = {
   window: { '1h': 'یک ساعت', '24h': '۲۴ ساعت', '7d': '۷ روز', '30d': '۳۰ روز' },
   lang: { en: 'انگلیسی', fa: 'فارسی', unknown: 'زبان نامشخص' },
   importance: { high: 'اهمیت زیاد', medium: 'اهمیت متوسط', low: 'اهمیت کم' },
-  translation: { available: 'ترجمه موجود', pending: 'ترجمه در انتظار', error: 'ترجمه ناموفق' },
+  translation: { available: 'ترجمه خودکار بدون ایراد کیفیت', warning: 'ترجمه با هشدار کیفیت', failed: 'ترجمه ردشده در کنترل کیفیت', pending: 'ترجمه در انتظار', error: 'خطای ترجمه' },
 };
 
 /** All filter state lives in the URL, so every view is shareable and the

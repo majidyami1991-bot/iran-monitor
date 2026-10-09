@@ -182,7 +182,8 @@ def main():
         ad.stream_complete = counted
         t0 = time.monotonic()
         try:
-            out, problems, resp, trace = v13.run(ad, q, recs, asst.neutralise, plan=plan)
+            rare = retrieval.code_title_counts(os.environ['DATABASE_URL'], {c for r in recs for c in ar.codes_in(ar._text(r))})                 if (recs and a.suite != 'synthetic' and hasattr(retrieval, 'code_title_counts')) else None
+            out, problems, resp, trace = v13.run(ad, q, recs, asst.neutralise, plan=plan, rare_codes=rare)
             err = None
         except Exception as exc:  # recorded, counted as failure
             out, problems, resp, trace, err = {'answer': '', 'kind': 'error', 'citations': [], 'facts': []}, ['exception'], None, {}, str(exc)[:200]

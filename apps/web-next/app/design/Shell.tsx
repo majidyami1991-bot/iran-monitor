@@ -32,6 +32,7 @@ export const NAV: NavItem[] = [
     { label: 'سناریوها', href: '/foresight/scenarios', note: 'نیازمند تحلیلگر' },
   ] },
   { label: 'پایش سامانه', children: [
+    { label: 'پنل مدیریت هوش مصنوعی محلی', href: '/admin', note: 'همگام‌سازی، صف ترجمه، دستیار، پشتیبان، هشدارها' },
     { label: 'وضعیت پایش', href: '/monitoring', note: 'گردآورنده و منابع' },
     { label: 'بازبینی محتوا', href: '/review/content', note: 'صف بازبینی ترجمه' },
     { label: 'هشدارها', href: '/alerts', note: 'قواعد و اعلان‌های سامانه' },
@@ -121,6 +122,7 @@ function LangToggle() {
       <Languages size={15} aria-hidden="true" />
       <button type="button" role="radio" aria-checked={contentLang === 'fa'} onClick={() => setContentLang('fa')} title="نمایش ترجمه فارسی در صورت وجود">فا</button>
       <button type="button" role="radio" aria-checked={contentLang === 'en'} onClick={() => setContentLang('en')} title="نمایش متن اصلی منبع">EN</button>
+      <button type="button" role="radio" aria-checked={contentLang === 'bi'} onClick={() => setContentLang('bi')} title="ترجمه فارسی و متن اصلی منبع کنار هم">دوزبانه</button>
     </div>
   );
 }

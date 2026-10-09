@@ -740,8 +740,10 @@ APPROVED_MODELS = {
     # Owner-authorised pulls of 2026-10-08. Being listed here only means the tag
     # may be called at all; whether a role may use it is decided by the
     # approval events in model_approvals.json (most are rejected).
+    # translategemma:27b: authorised single pull of 2026-10-09 (phase 9); servable only
+    # through its contract state (rejected_quality_gate -> lab_activated for the 3003 lab).
     'ollama': {'gemma4:e2b', 'gemma4:e2b-approved-7fbdbf8f5e45', 'gemma4:e2b-ollama0401-llamacpp-d1e84c607e13',
-               'translategemma:4b', 'translategemma:12b', 'qwen3:8b'},
+               'translategemma:4b', 'translategemma:12b', 'translategemma:27b', 'qwen3:8b'},
 }
 
 # Free-only mode (AI_FREE_ONLY=true, or any configured ':free' model):

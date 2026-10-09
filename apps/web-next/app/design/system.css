@@ -234,6 +234,21 @@ a.cat-tag:hover { color: var(--ink); text-decoration: underline; text-underline-
 .card-lead .card-body { padding: var(--s5); }
 .card-flags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .card-original { color: var(--ink-3); font-size: var(--fs-sm); }
+/* bilingual mode (3003 lab): the Persian line under the original headline */
+.card-fa { margin-top: 4px; color: var(--ink-2); font-size: var(--fs-sm); line-height: 1.7; border-inline-start: 3px solid var(--line, #d0d7de); padding-inline-start: 8px; }
+.card-fa-warn { border-inline-start-color: #c9a227; }
+.card-fa-missing { color: var(--ink-4); font-style: italic; }
+.fa-warn-mark { color: #9a6b00; margin-inline-end: 6px; }
+.bi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+@media (max-width: 760px) { .bi-grid { grid-template-columns: 1fr; } }
+.bi-pane { border: 1px solid var(--line, #d0d7de); border-radius: 10px; padding: 12px 14px; background: var(--surface, transparent); }
+.bi-pane h4 { margin: 0 0 6px; font-size: var(--fs-sm); color: var(--ink-3); font-weight: 600; }
+.bi-pane .bi-title { font-size: 1.15rem; font-weight: 700; line-height: 1.6; margin: 0 0 8px; }
+.bi-pane .bi-text { line-height: 1.9; margin: 0; }
+.bi-note { margin-top: 8px; font-size: var(--fs-sm); color: var(--ink-3); }
+.bi-warn { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: rgba(201,162,39,.12); color: #7a5600; font-size: var(--fs-sm); }
+.bi-fail { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: rgba(200,60,60,.10); color: #8a1f1f; font-size: var(--fs-sm); }
+
 .card-summary { color: var(--ink-2); font-size: var(--fs-sm); line-height: 1.8; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
 .card-summary[dir='ltr'] { line-height: 1.6; }
 .card-summary-missing { color: var(--ink-4); font-style: normal; }
@@ -619,3 +634,11 @@ details > summary { cursor: pointer; display: flex; align-items: center; gap: 6p
 /* extractive answers are line-structured (one cited quote per line) */
 .as-answer { white-space: pre-line; }
 .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; filter: grayscale(0.4); }
+/* 3003 admin panel */
+.admin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; align-items: start; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0 0 10px; font-size: var(--fs-sm); }
+.kv dt { color: var(--ink-3); } .kv dd { margin: 0; color: var(--ink); }
+.tbl { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.tbl th, .tbl td { text-align: start; padding: 6px 8px; border-bottom: 1px solid var(--line-2); }
+.tbl code { font-size: 11px; }
+@media (max-width: 560px) { .admin-grid { grid-template-columns: 1fr; } .kv { grid-template-columns: 1fr; } }

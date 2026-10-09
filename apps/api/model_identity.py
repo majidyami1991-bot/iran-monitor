@@ -24,6 +24,18 @@ from pathlib import Path
 from urllib.request import Request, ProxyHandler, build_opener
 
 CONTRACT_PATH = Path(os.getenv('LOCAL_AI_MODEL_CONTRACT') or Path(__file__).with_name('model_approvals.json'))
+# 'lab_activated' = the owner activated an artifact for the isolated 3003 lab
+# with mandatory "not human-verified" labelling, WITHOUT a quality approval.
+# It is servable only where LOCAL_AI_LAB_MODE=true (set only by the 3003 stack).
+LAB_STATE = 'lab_activated'
+
+
+def lab_mode():
+    return (os.getenv('LOCAL_AI_LAB_MODE') or 'false').strip().lower() == 'true'
+
+
+def servable_states():
+    return ('approved', LAB_STATE) if lab_mode() else ('approved',)
 ATTESTATION_PATH = Path(os.getenv('LOCAL_AI_ATTESTATION') or '/attest/attestation.json')
 ATTESTATION_DIR = Path(os.getenv('LOCAL_AI_ATTESTATION_DIR') or '/attest')
 
@@ -60,9 +72,16 @@ def active_approval(contract, allow_proposed=None, role=None):
     # still an artifact under evaluation, never served.
     if allow_proposed and allow_proposed in by_id and state.get(allow_proposed) in ('proposed', 'pending_human_review'):
         return by_id[allow_proposed]
-    approved = [e['approval'] for e in contract['events'] if e['event'] == 'approved'
-                and e['approval'] in by_id and state.get(e['approval']) == 'approved']
+    ok = servable_states()
+    approved = [e['approval'] for e in contract['events'] if e['event'] in ok
+                and e['approval'] in by_id and state.get(e['approval']) in ok]
     return by_id[approved[-1]] if approved else None
+
+
+def servable_tags(contract):
+    """Tags of every artifact currently servable for any role (approved, or lab_activated in lab mode)."""
+    state, ok = approval_state(contract), servable_states()
+    return {a['tag'] for a in contract['approvals'] if state.get(a['id']) in ok}
 
 
 def fingerprint(approval):
@@ -135,8 +154,16 @@ def check_api(approval, base_url, timeout=5):
     return {'ollama_version': ver, 'tag_entries': entries}
 
 
-def check_loaded(approval, base_url, timeout=5):
-    """Check 5: the model actually loaded is the approved runner manifest, on CPU."""
+def check_loaded(approval, base_url, timeout=5, allowed_other_tags=None):
+    """Check 5: the model actually loaded is the approved runner manifest, on CPU.
+    Another resident model is tolerated only if it is itself a servable
+    artifact (e.g. the translator while the assistant answers); anything else
+    fails closed."""
+    if allowed_other_tags is None:
+        try:
+            allowed_other_tags = servable_tags(load_contract()) - {approval['tag']}
+        except (OSError, ValueError, KeyError):
+            allowed_other_tags = set()
     try:
         loaded = _get(base_url, '/api/ps', timeout).get('models', [])
     except Exception as exc:
@@ -148,9 +175,11 @@ def check_loaded(approval, base_url, timeout=5):
         raise IdentityError(f'identity_loaded_digest_mismatch:{str(m.get("digest"))[:12]}')
     if m.get('size_vram') not in (0, None):
         raise IdentityError('identity_gpu_in_use')
-    others = [x.get('name') for x in loaded if x.get('name') != approval['tag']]
+    others = [x.get('name') for x in loaded if x.get('name') != approval['tag'] and x.get('name') not in allowed_other_tags]
     if others:
         raise IdentityError('identity_other_model_loaded')
+    if any(x.get('size_vram') not in (0, None) for x in loaded):
+        raise IdentityError('identity_gpu_in_use')
     return m
 
 

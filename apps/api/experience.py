@@ -62,6 +62,8 @@ SELECT n.item_id, n.title, COALESCE(n.summary_text, n.summary) AS summary, n.sum
   ts.status AS summary_fa_status, ts.text AS summary_fa, ts.review_status AS summary_fa_review,
   COALESCE(tt.provider, ts.provider) AS translation_provider, COALESCE(tt.model, ts.model) AS translation_model,
   COALESCE(tt.response_model, ts.response_model) AS translation_served_by,
+  tt.quality_flags AS title_fa_flags, ts.quality_flags AS summary_fa_flags,
+  COALESCE(ts.updated_at, tt.updated_at) AS translation_updated_at,
   img.url AS image_url, img.alt_text AS image_alt, img.verification_status AS image_verification,
   img.media_id AS pm_id, img.caption AS pm_caption, img.credit AS pm_credit, img.width AS pm_width, img.height AS pm_height,
   img.source_method AS pm_source_method, img.validation_status AS pm_validation_status, img.thumbnail_url AS pm_thumbnail_url,
@@ -152,10 +154,22 @@ def card(r):
     for f in ('title', 'summary'):
         if r[f + '_fa_status'] == 'available' and r.get(f + '_fa_review') == 'needs_review':
             r[f + '_fa_status'] = 'needs_review'
-    if r['title_fa_status'] != 'available':
-        r['title_fa'] = None
-    if r['summary_fa_status'] != 'available':
-        r['summary_fa'] = None
+    # 3003 lab pipeline (translation_worker_v2): translated_auto = QC found no
+    # objection (shown, labelled "not human-verified"); qc_warning = shown only
+    # next to the original with a warning (separate *_fa_unverified field);
+    # qc_failed / errors = never shown as a translation.
+    for f in ('title', 'summary'):
+        st, text = r[f + '_fa_status'], r.get(f + '_fa')
+        flags = r.pop(f + '_fa_flags', None) or {}
+        if not isinstance(flags, dict):
+            flags = {}
+        r[f + '_fa_unverified'] = text if st == 'qc_warning' else None
+        if st not in ('available', 'translated_auto'):
+            r[f + '_fa'] = None
+        r[f + '_fa_qc'] = {'decision': flags.get('decision'), 'critical': len(flags.get('critical') or []),
+                           'uncertain': len(flags.get('uncertain') or []), 'scope': flags.get('source_scope'),
+                           'lead_chars': flags.get('lead_chars'), 'full_chars': flags.get('full_chars'),
+                           'pipeline': flags.get('pipeline'), 'human_verified': False} if flags.get('decision') else None
     r['machine_translated'] = r['title_fa'] is not None or r['summary_fa'] is not None
     r['primary_media'], r['media_status'] = media_fields(r)
     r['breaking'] = is_breaking(r)
@@ -194,11 +208,14 @@ def feed_query(*, q=None, source_id=None, category=None, topic=None, window='all
     if lang == 'en':
         where.append("n.content_language ILIKE 'en%%'")
     elif lang == 'fa':
-        where.append("(n.content_language ILIKE 'fa%%' OR tt.status = 'available')")
+        where.append("(n.content_language ILIKE 'fa%%' OR tt.status IN ('available', 'translated_auto'))")
     elif lang == 'unknown':
         where.append('n.content_language IS NULL')
-    if translation in ('available', 'pending', 'error'):
-        where.append("COALESCE(tt.status, 'pending') = %(tr)s"); args['tr'] = translation
+    # 3003 lab statuses map onto the existing filter values (+ warning / failed)
+    groups = {'available': ('available', 'translated_auto'), 'pending': ('pending', 'translation_pending', 'processing', 'stale'),
+              'error': ('error', 'failed', 'translation_error'), 'warning': ('qc_warning',), 'failed': ('qc_failed', 'needs_review')}
+    if translation in groups:
+        where.append("COALESCE(tt.status, 'pending') = ANY(%(tr)s)"); args['tr'] = list(groups[translation])
     if has_image is not None:
         where.append('img.url IS ' + ('NOT NULL' if has_image else 'NULL'))
     base = ITEM_SQL + (' WHERE ' + ' AND '.join(where) if where else '')

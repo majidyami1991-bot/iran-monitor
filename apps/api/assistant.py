@@ -304,13 +304,15 @@ def _answer_v13(job, s, adapter, started):
     if not pre:
         found = retrieval.search_v13(DSN, plan)
     candidates = found['records']
+    # relevance gate v1.1.0: corpus rarity of the code anchors the candidates share
+    rare_codes = retrieval.code_title_counts(DSN, {c for r in candidates for c in ar.codes_in(ar._text(r))}) if candidates else {}
     base = {'model': s.model, 'provider': 'ollama/local', 'prompt_version': v13.PROMPT_VERSION,
             'validator_version': v13.VALIDATOR_VERSION, 'lexicon_version': ar.LEXICON_VERSION,
             'relevance_version': ar.RELEVANCE_VERSION, 'approval_id': s.approval['id'], 'mode': 'extractive_v13',
             'retrieval_mode': found['mode'], 'window': found['window'], 'context_record_count': len(candidates),
             'context_chars': found['context_chars'], 'cost_usd': 0, 'cache_hit': False, 'follow_up_suggestions': []}
     overview = plan.intent == 'common_coverage' and not plan.anchors and not plan.event_types
-    needs_model = not pre and not overview and v13.select(plan, candidates)[3] is None
+    needs_model = not pre and not overview and v13.select(plan, candidates, rare_codes)[3] is None
     if needs_model:
         if s.errors:
             return job.set('error', error='configuration_error')
@@ -332,10 +334,11 @@ def _answer_v13(job, s, adapter, started):
             with local_ai.inference_lock(DSN, wait_seconds=s.timeout_seconds, should_cancel=job.cancel.is_set):
                 job.set('generating')
                 t0 = time.monotonic()
-                out, problems, resp, trace = v13.run(adapter, job.question, candidates, neutralise, job.cancel.is_set, plan=plan)
+                out, problems, resp, trace = v13.run(adapter, job.question, candidates, neutralise, job.cancel.is_set, plan=plan,
+                                                     rare_codes=rare_codes)
                 infer_ms = int((time.monotonic() - t0) * 1000)
         else:
-            out, problems, resp, trace = v13.run(_NoModel(), job.question, candidates, neutralise, plan=plan)
+            out, problems, resp, trace = v13.run(_NoModel(), job.question, candidates, neutralise, plan=plan, rare_codes=rare_codes)
     except local_ai.Busy as exc:
         return job.set('cancelled' if str(exc) == 'cancelled' else 'error', error=str(exc))
     except gw.GatewayError as exc:

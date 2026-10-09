@@ -14,6 +14,8 @@ from media_api import register_media
 register_media(app)
 from assistant import register_assistant
 register_assistant(app)
+from lab_ops import register_lab_ops
+register_lab_ops(app)
 def q(sql,args=()):
  with psycopg.connect(DSN) as c:
   with c.cursor() as cur:

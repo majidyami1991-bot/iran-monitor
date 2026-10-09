@@ -369,15 +369,42 @@ def migrate():
         # this phase — the old single-label v1 classify() no longer runs here.
         # A human correction (human_locked) must never be overwritten by this
         # routine backfill, which runs on every API startup.
-        locked={r[0] for r in c.execute('SELECT item_id FROM item_classifications WHERE human_locked').fetchall()}
+        # 3003 lab: item_classifications is owned by the one-way news sync (it
+        # mirrors Production's collector); a hidden whole-corpus rewrite on every
+        # API start is disabled there (CLASSIFICATION_STARTUP_BACKFILL=false) and
+        # every change is recorded in the append-only item_classification_history.
+        if os.getenv('LOCAL_AI_LAB_MODE','false').strip().lower()=='true':
+            c.execute('''CREATE TABLE IF NOT EXISTS item_classification_history(history_id bigserial PRIMARY KEY, item_id text NOT NULL,
+                  snapshot jsonb NOT NULL, change_kind text NOT NULL, changed_by text NOT NULL, recorded_at timestamptz NOT NULL DEFAULT now());
+                CREATE INDEX IF NOT EXISTS item_classification_history_item_idx ON item_classification_history(item_id, recorded_at);
+                CREATE OR REPLACE FUNCTION log_item_classification() RETURNS trigger AS $$ BEGIN
+                  IF TG_OP='UPDATE' AND to_jsonb(OLD) - 'classified_at' = to_jsonb(NEW) - 'classified_at' THEN RETURN NEW; END IF;
+                  INSERT INTO item_classification_history(item_id, snapshot, change_kind, changed_by)
+                  VALUES (NEW.item_id, to_jsonb(NEW), lower(TG_OP), COALESCE(NULLIF(current_setting('app.classification_writer', true), ''), 'unspecified'));
+                  RETURN NEW; END $$ LANGUAGE plpgsql;
+                DROP TRIGGER IF EXISTS item_classification_history_trg ON item_classifications;
+                CREATE TRIGGER item_classification_history_trg AFTER INSERT OR UPDATE ON item_classifications FOR EACH ROW EXECUTE FUNCTION log_item_classification();
+                CREATE OR REPLACE FUNCTION item_classification_history_immutable() RETURNS trigger AS $$ BEGIN
+                  RAISE EXCEPTION 'item_classification_history is append-only'; END $$ LANGUAGE plpgsql;
+                DROP TRIGGER IF EXISTS item_classification_history_no_change ON item_classification_history;
+                CREATE TRIGGER item_classification_history_no_change BEFORE UPDATE OR DELETE ON item_classification_history
+                  FOR EACH ROW EXECUTE FUNCTION item_classification_history_immutable();''')
+        if os.getenv('CLASSIFICATION_STARTUP_BACKFILL','true').strip().lower()!='true':
+            rows=[]
+            locked=set()
+        else:
+            locked={r[0] for r in c.execute('SELECT item_id FROM item_classifications WHERE human_locked').fetchall()}
+            c.execute("SET app.classification_writer='api_startup_backfill:classify_v2:title+COALESCE(original_text,summary_text,summary)'")
+            rows=None
         # Use the richer extracted article body when available (same input
         # enrichment_worker.process_classification uses) — not just the RSS
         # summary — so this routine backfill never silently downgrades an
         # item that was classified from fuller text. Real regression found
         # live: 431 -> 378 security_defense items after a restart because this
         # query used to read only news_items.summary.
-        rows=c.execute('''SELECT n.item_id,n.title,COALESCE(cn.original_text,n.summary_text,n.summary)
-            FROM news_items n LEFT JOIN news_item_content cn USING(item_id) ORDER BY n.item_id''').fetchall()
+        if rows is None:
+            rows=c.execute('''SELECT n.item_id,n.title,COALESCE(cn.original_text,n.summary_text,n.summary)
+                FROM news_items n LEFT JOIN news_item_content cn USING(item_id) ORDER BY n.item_id''').fetchall()
         for iid,title,summary in rows:
             if iid in locked:continue
             r=cv.classify(title,summary)
@@ -561,9 +588,22 @@ def register_ops(app):
         return block
 
     def _translation_block(item_id):
-        rows=objects('''SELECT field,target_language,status,text,provider,model,content_version,source_chars,error,updated_at
+        rows=objects('''SELECT field,target_language,status,text,provider,model,content_version,source_chars,error,updated_at,quality_flags,review_status
             FROM news_item_translations WHERE item_id=%s''',
-            ['field','target_language','status','text','provider','model','content_version','source_chars','error','updated_at'],(item_id,))
+            ['field','target_language','status','text','provider','model','content_version','source_chars','error','updated_at','quality_flags','review_status'],(item_id,))
+        # Display policy (same as experience.card): only a translation without a
+        # QC objection is exposed as `text`; a qc_warning text only as
+        # `text_unverified`; qc_failed / errors / needs_review text never leaves the API.
+        for r in rows:
+            fl=r.pop('quality_flags',None) or {}
+            fl=fl if isinstance(fl,dict) else {}
+            review=r.pop('review_status',None)
+            r['text_unverified']=r['text'] if r['status']=='qc_warning' else None
+            if r['status'] not in ('available','translated_auto') or review=='needs_review':
+                r['text']=None
+            r['qc']={'decision':fl.get('decision'),'critical':fl.get('critical') or [],'uncertain':len(fl.get('uncertain') or []),
+                     'scope':fl.get('source_scope'),'lead_chars':fl.get('lead_chars'),'full_chars':fl.get('full_chars'),
+                     'pipeline':fl.get('pipeline'),'human_verified':False} if fl.get('decision') else None
         found={r['field']:r for r in rows}
         cfg_mode=aig.load_config().mode
         default_status='not_generated' if cfg_mode in (aig.Mode.EXTERNAL_PROVIDER,aig.Mode.LOCAL) else 'provider_not_configured'

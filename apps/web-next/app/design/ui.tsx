@@ -33,7 +33,20 @@ export function BreakingTag() {
 
 /** The client's rule: a machine translation is always visibly labelled, with
  *  its review state. Absent translations say why, never show a guess. */
+export const MACHINE_LABEL = 'ترجمه خودکار ـ تأیید انسانی نشده';
+
 export function TranslationTag({ status, review }: { status: string | null | undefined; review?: string | null }) {
+  // 3003 lab pipeline (TranslateGemma 27B + QC v2.1): passing QC is not proof of correctness.
+  if (status === 'translated_auto')
+    return <Tag tone="ai" icon={<Languages size={12} />} title="کنترل کیفیت خودکار اشکالی نیافت؛ این به معنی صحت قطعی نیست">{MACHINE_LABEL}</Tag>;
+  if (status === 'qc_warning')
+    return <Tag tone="uncertain" icon={<Languages size={12} />} title="برخی اعداد، نام‌ها یا اصطلاحات قابل تأیید خودکار نبود؛ متن اصلی ملاک است">ترجمه با هشدار کیفیت</Tag>;
+  if (status === 'qc_failed')
+    return <Tag tone="uncertain" icon={<Languages size={12} />} title="کنترل کیفیت خطای بحرانی یافت؛ ترجمه نمایش داده نمی‌شود">ترجمه رد شد (خطای کیفیت)</Tag>;
+  if (status === 'translation_pending' || status === 'processing')
+    return <Tag tone="uncertain" icon={<Languages size={12} />} title="در صف ترجمه خودکار؛ تا آماده شدن، متن اصلی نمایش داده می‌شود">{status === 'processing' ? 'در حال ترجمه' : 'در انتظار ترجمه'}</Tag>;
+  if (status === 'translation_error')
+    return <Tag tone="uncertain" icon={<Languages size={12} />} title="ترجمه خودکار ناموفق بود و با تأخیر دوباره تلاش می‌شود">خطای ترجمه</Tag>;
   if (status === 'available') {
     const reviewed = review === 'approved' ? ' · بازبینی‌شده' : review === 'pending_review' ? ' · در صف بازبینی' : ' · بازبینی‌نشده';
     return <Tag tone="ai" icon={<Languages size={12} />} title="ترجمه ماشینی؛ متن اصلی منبع حفظ شده است">ترجمه ماشینی{reviewed}</Tag>;

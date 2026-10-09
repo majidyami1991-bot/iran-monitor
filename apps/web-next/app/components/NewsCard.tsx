@@ -7,18 +7,34 @@ import { usePrefs } from '../design/prefs';
 import { BreakingTag, CategoryTag, ImportanceTag, SourceMark, TranslationTag } from '../design/ui';
 import { ItemImage } from './Visual';
 
-/** Which text leads. Persian leads only when a stored translation exists and
- *  the viewer prefers Persian; otherwise the publisher's original, marked LTR. */
+/** Which text leads. 'fa': the stored Persian translation when it passed QC
+ *  (translated_auto / reviewed), else the publisher's original. 'en': the
+ *  original. 'bi': the original leads and the Persian follows — a QC-warning
+ *  translation only here, visibly marked. A QC-failed translation never
+ *  reaches the client. The original is always kept and shown. */
 export function useHeadline(item: FeedItem) {
   const { contentLang } = usePrefs();
   const fa = contentLang === 'fa' && item.title_fa;
+  const bi = contentLang === 'bi';
   return {
     title: fa ? item.title_fa! : item.title,
     titleDir: fa ? 'rtl' : 'ltr',
     original: fa ? item.title : null,
     summary: contentLang === 'fa' && item.summary_fa ? item.summary_fa : item.summary,
     summaryDir: contentLang === 'fa' && item.summary_fa ? 'rtl' : 'ltr',
+    bi,
+    biTitle: bi ? (item.title_fa ?? item.title_fa_unverified ?? null) : null,
+    biTitleWarn: bi && !item.title_fa && !!item.title_fa_unverified,
   } as const;
+}
+
+/** Persian line under the original in bilingual mode (or the reason it is absent). */
+export function BiLine({ text, warn, status }: { text: string | null; warn: boolean; status: string }) {
+  if (text) return <p className={warn ? 'card-fa card-fa-warn' : 'card-fa'} dir="rtl">{warn && <span className="fa-warn-mark" title="ترجمه با هشدار کیفیت؛ متن اصلی ملاک است">⚠</span>}{text}</p>;
+  const why = status === 'qc_failed' ? 'ترجمه این عنوان در کنترل کیفیت رد شد؛ فقط متن اصلی معتبر است.'
+    : status === 'translation_error' ? 'ترجمه ناموفق بود؛ دوباره تلاش می‌شود.'
+    : status === 'not_required' ? null : 'در انتظار ترجمه خودکار…';
+  return why ? <p className="card-fa card-fa-missing" dir="rtl">{why}</p> : null;
 }
 
 function Meta({ item, now, withSource = true }: { item: FeedItem; now: number; withSource?: boolean }) {
@@ -53,6 +69,7 @@ export function NewsCard({ item, now, variant = 'standard' }: { item: FeedItem; 
       <article className="card-compact">
         <div className="card-flags">{item.breaking && <BreakingTag />}<CategoryTag id={item.category_id} label={item.category_label} /></div>
         <h3 dir={h.titleDir}><Link href={href}>{h.title}</Link></h3>
+        {h.bi && <BiLine text={h.biTitle} warn={h.biTitleWarn} status={item.title_fa_status} />}
         <Meta item={item} now={now} />
       </article>
     );
@@ -74,6 +91,7 @@ export function NewsCard({ item, now, variant = 'standard' }: { item: FeedItem; 
           </div>
           <h3 dir={h.titleDir}><Link href={href}>{h.title}</Link></h3>
           {h.original && <p className="card-original" dir="ltr">{h.original}</p>}
+          {h.bi && <BiLine text={h.biTitle} warn={h.biTitleWarn} status={item.title_fa_status} />}
           <Summary item={item} text={h.summary} dir={h.summaryDir} lines={2} />
           <div className="card-foot">
             <Meta item={item} now={now} />
@@ -98,6 +116,7 @@ export function NewsCard({ item, now, variant = 'standard' }: { item: FeedItem; 
         </div>
         <h3 dir={h.titleDir}><Link href={href}>{h.title}</Link></h3>
         {h.original && <p className="card-original" dir="ltr">{h.original}</p>}
+        {h.bi && <BiLine text={h.biTitle} warn={h.biTitleWarn} status={item.title_fa_status} />}
         <Summary item={item} text={h.summary} dir={h.summaryDir} lines={variant === 'lead' ? 4 : 3} />
         <div className="card-foot">
           <Meta item={item} now={now} />

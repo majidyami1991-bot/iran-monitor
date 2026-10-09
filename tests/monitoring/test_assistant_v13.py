@@ -225,7 +225,7 @@ def test_overview_without_anchor_uses_verified_groups_only_and_no_model():
 
 def test_refusal_is_exact_sentence_and_versions():
     assert v13.INSUFFICIENT == REFUSAL
-    assert v13.PROMPT_VERSION == 'assistant-extractive-fa-v1.3.0' and ar.RELEVANCE_VERSION == 'relevance-gate-v1.0.0'
+    assert v13.PROMPT_VERSION == 'assistant-extractive-fa-v1.3.0' and ar.RELEVANCE_VERSION == 'relevance-gate-v1.1.0'
 
 
 def test_money_conflict_checked_on_full_text_not_only_chosen_quote():
@@ -267,7 +267,7 @@ import local_ai
 import model_identity as mi
 import retrieval
 
-V13_APPROVAL = next(a for a in mi.load_contract()['approvals'] if a['id'] == 'assistant_extractive_v1.3.1-qwen3-8b-500a1f067a9f')
+V13_APPROVAL = next(a for a in mi.load_contract()['approvals'] if a['id'] == 'assistant_extractive_v1.3.2-qwen3-8b-500a1f067a9f')
 
 
 def _wire(monkeypatch, records, approval=V13_APPROVAL):
@@ -279,6 +279,8 @@ def _wire(monkeypatch, records, approval=V13_APPROVAL):
     monkeypatch.setattr(local_ai, 'inference_lock', lambda *a, **k: contextlib.nullcontext())
     monkeypatch.setattr(retrieval, 'search_v13', lambda dsn, plan, **k: (calls.__setitem__('search', calls['search'] + 1),
                         {'records': [dict(r) for r in records], 'mode': 'anchored_v13', 'window': 'all', 'context_chars': 1})[1])
+    # relevance gate v1.1.0 asks the DB for corpus rarity of shared codes: stubbed (none rare) and counted
+    monkeypatch.setattr(retrieval, 'code_title_counts', lambda dsn, codes: (calls.__setitem__('rarity', calls.get('rarity', 0) + 1), {})[1])
     monkeypatch.setattr(asst, '_save_answer', lambda job, payload: saved.append(payload))
     monkeypatch.setattr(asst, '_log', lambda r: None)
     return saved, calls
@@ -309,18 +311,25 @@ def test_api_path_ambiguous_refusal_skips_model(monkeypatch):
     assert saved[0]['refusal_reason'] == 'ambiguous_event' and calls['preflight'] == 0
 
 
-def test_v13_contract_is_pending_human_review_not_active():
+def test_v13_contract_is_pending_human_review_not_active(monkeypatch):
     c = mi.load_contract()
     st = mi.approval_state(c)
-    assert st[V13_APPROVAL['id']] in ('proposed', 'pending_human_review')
+    # v1.3.2: machine gate passed (pending_human_review), then owner lab activation for 3003 only
+    assert st[V13_APPROVAL['id']] in ('proposed', 'pending_human_review', 'lab_activated')
+    assert any(e['approval'] == V13_APPROVAL['id'] and e['event'] == 'pending_human_review' for e in c['events'])
+    monkeypatch.setenv('LOCAL_AI_LAB_MODE', 'true')
+    assert mi.active_approval(c, role='assistant_extractive')['id'] == V13_APPROVAL['id']
+    monkeypatch.setenv('LOCAL_AI_LAB_MODE', 'false')
     assert st['assistant_extractive_v1.3-qwen3-8b-500a1f067a9f'] == 'superseded'
+    assert st['assistant_extractive_v1.3.1-qwen3-8b-500a1f067a9f'] == 'superseded'
     # the contract binds exactly the versions the code runs (no silent drift)
     assert V13_APPROVAL['validator_version'] == v13.VALIDATOR_VERSION
     assert V13_APPROVAL['lexicon_version'] == ar.LEXICON_VERSION
     assert V13_APPROVAL['relevance_version'] == ar.RELEVANCE_VERSION
     assert v13.PROMPT_VERSION in V13_APPROVAL['prompt_versions']
     # under evaluation: admitted only for an offline gate run, never served
-    assert mi.active_approval(c, allow_proposed=V13_APPROVAL['id'], role='assistant_extractive')['id'] == V13_APPROVAL['id']
+    if st[V13_APPROVAL['id']] in ('proposed', 'pending_human_review'):   # before lab activation: offline gate runs only
+        assert mi.active_approval(c, allow_proposed=V13_APPROVAL['id'], role='assistant_extractive')['id'] == V13_APPROVAL['id']
     assert mi.active_approval(c, role='assistant_extractive') is None
     assert asst._is_v13(V13_APPROVAL) and not asst._is_v13(next(a for a in c['approvals'] if a['id'].startswith('assistant_extractive_v1.2')))
 

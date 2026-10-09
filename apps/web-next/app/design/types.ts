@@ -28,6 +28,11 @@ export interface FeedItem {
   summary_fa: string | null;
   summary_fa_status: string;
   summary_fa_review: string | null;
+  /** qc_warning only: Persian text shown solely next to the original, with a warning. */
+  title_fa_unverified?: string | null;
+  summary_fa_unverified?: string | null;
+  title_fa_qc?: TranslationQc | null;
+  summary_fa_qc?: TranslationQc | null;
   translation_provider: string | null;
   translation_model: string | null;
   translation_served_by: string | null;
@@ -91,3 +96,6 @@ export interface EventRow {
   pulses: { t: string | null; item_id: string }[] | null;
   image_url: string | null;
 }
+
+export interface TranslationQc { decision: string | null; critical: number; uncertain: number; scope: 'lead' | 'full' | null;
+  lead_chars: number | null; full_chars: number | null; pipeline: string | null; human_verified: false }
