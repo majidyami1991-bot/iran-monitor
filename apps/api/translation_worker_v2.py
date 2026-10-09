@@ -48,10 +48,11 @@ import local_ai
 import model_identity as mi
 import translation_tg as tg
 import translation_v21 as v21
+import translation_v22 as v22
 import x_translation_validator as xv
 
 LOG = logging.getLogger('defence_monitor.translation_worker_v2')
-WORKER_VERSION = 'translation-worker-v2.1.0'
+WORKER_VERSION = 'translation-worker-v2.2.0'
 PV = f'{tg.PROMPT_VERSION}+{v21.PIPELINE_VERSION}'          # prompt_version column value of this pipeline
 STATUS = {'ACCEPT': 'translated_auto', 'REJECT_UNCERTAIN': 'qc_warning', 'REJECT_CRITICAL': 'qc_failed'}
 DONE = ('translated_auto', 'qc_warning', 'qc_failed', 'not_required')
@@ -68,12 +69,25 @@ def _env_int(name, default, lo, hi):
 
 SUMMARY_LEAD_CHARS = _env_int('LOCAL_TRANSLATION_SUMMARY_CHARS', 600, 200, 2000)
 NEW_HOURS = _env_int('LOCAL_TRANSLATION_NEW_HOURS', 24, 1, 168)
-BACKFILL_DAYS = _env_int('LOCAL_TRANSLATION_BACKFILL_DAYS', 3, 0, 60)
+BACKFILL_DAYS = _env_int('LOCAL_TRANSLATION_BACKFILL_DAYS', 3, 0, 36500)   # 36500 = the whole archive
 SLEEP_SECONDS = _env_int('LOCAL_TRANSLATION_SLEEP_SECONDS', 5, 0, 300)
+# Backfill (items older than NEW_HOURS, not requested) runs with a longer pause between jobs so the
+# CPU stays mostly free; fresh and requested items always come first and use SLEEP_SECONDS.
+BACKFILL_SLEEP_SECONDS = _env_int('LOCAL_TRANSLATION_BACKFILL_SLEEP_SECONDS', 30, 0, 3600)
 IDLE_SECONDS = _env_int('LOCAL_TRANSLATION_IDLE_SECONDS', 30, 5, 600)
 MAX_ATTEMPTS = _env_int('LOCAL_TRANSLATION_MAX_ATTEMPTS', 3, 1, 10)
 KEEP_ALIVE = os.getenv('LOCAL_TRANSLATION_KEEP_ALIVE', '30m')
-CALL_GAP_SECONDS = 2.0        # between two model calls: lets a waiting assistant take the inference lock
+# QC version (decision only; the translation itself and PV are unchanged, so switching never re-translates).
+QC_VERSION = (os.getenv('LOCAL_TRANSLATION_QC') or 'v2.1').strip().lower()
+
+
+def qc_decide(field, src, text, summary):
+    if QC_VERSION == 'v2.2':
+        return v22.decide(src, text, context=summary if field == 'title' else None)
+    return v21.decide(src, text)
+CALL_GAP_SECONDS = 2.0
+# no background call within this many seconds after an assistant message (follow-ups keep their model)
+ASSISTANT_GRACE_SECONDS = _env_int('LOCAL_TRANSLATION_ASSISTANT_GRACE_SECONDS', 120, 0, 1800)        # between two model calls: lets a waiting assistant take the inference lock
 
 
 class Stop:
@@ -158,7 +172,9 @@ def reconcile(conn, item_ids=None):
     """Queue fields of in-window items (and requested ones) whose current row is
     missing, from another pipeline, or stale (source changed). Never touches
     human-reviewed rows. Persian sources -> not_required."""
-    where = f"""(n.collected_at >= now() - make_interval(days => %(bd)s) OR n.collected_at >= now() - make_interval(hours => %(nh)s)
+    # seed records have no collected_at: fall back to published_at / created_at so no item is left without a status
+    ts = "COALESCE(n.collected_at, n.published_at, n.created_at, 'epoch'::timestamptz)"
+    where = f"""({ts} >= now() - make_interval(days => %(bd)s) OR {ts} >= now() - make_interval(hours => %(nh)s)
                  OR n.item_id IN (SELECT item_id FROM translation_queue_requests))"""
     args = {'bd': BACKFILL_DAYS, 'nh': NEW_HOURS}
     if item_ids:
@@ -174,7 +190,15 @@ def reconcile(conn, item_ids=None):
     for r in rows:
         for f, p in (('title', 't'), ('summary', 's')):
             src = source_of(f, r['title'], r['summary'])
-            if not src or not src.strip() or r[p + '_h']:
+            if r[p + '_h']:
+                continue
+            if not src or not src.strip():
+                # nothing to translate (e.g. the publisher sent no summary): recorded explicitly, never silently skipped
+                if r[p + '_status'] is None:
+                    conn.execute('''INSERT INTO news_item_translations(item_id,field,target_language,status,prompt_version,source_chars,
+                        provider,review_status,attempt_count) VALUES(%s,%s,'fa','no_source_text',%s,0,'rule','not_applicable',0)
+                        ON CONFLICT DO NOTHING''', (r['item_id'], f, PV))
+                    c['no_source_text'] = c.get('no_source_text', 0) + 1
                 continue
             h, status, pv = sha(src), r[p + '_status'], r[p + '_pv']
             persian = xv.is_persian_source(src)
@@ -185,7 +209,7 @@ def reconcile(conn, item_ids=None):
                     ON CONFLICT DO NOTHING''', (r['item_id'], f, new, h, PV, len(src), 'rule' if persian else None))
             elif status == 'processing':
                 continue
-            elif pv != PV or (r[p + '_hash'] != h and status in DONE + ('translation_error',)):
+            elif pv != PV or (r[p + '_hash'] != h and status in DONE + ('translation_error', 'translation_failed', 'no_source_text')):
                 stale = pv == PV
                 conn.execute('''UPDATE news_item_translations SET status=%s, input_text_sha256=%s, prompt_version=%s, source_chars=%s,
                     attempt_count=0, error=NULL, review_status='machine_unreviewed', updated_at=now()
@@ -214,7 +238,8 @@ def next_job(conn, item_ids=None):
     if item_ids:
         extra, args['ids'] = ' AND n.item_id = ANY(%(ids)s)', list(item_ids)
     return conn.execute(f'''SELECT n.item_id, n.title, {SUMMARY_SQL} AS summary,
-        array_agg(t.field ORDER BY t.field DESC) AS fields, max(t.attempt_count) AS attempts
+        array_agg(t.field ORDER BY t.field DESC) AS fields, max(t.attempt_count) AS attempts,
+        (q.requested_at IS NULL AND COALESCE(n.collected_at, 'epoch'::timestamptz) < now() - make_interval(hours => %(nh)s)) AS backfill
         FROM news_item_translations t JOIN news_items n ON n.item_id=t.item_id
         LEFT JOIN translation_queue_requests q ON q.item_id=n.item_id
         WHERE t.target_language='fa' AND t.field IN ('title','summary') AND t.prompt_version=%(pv)s AND NOT COALESCE(t.human_reviewed,false)
@@ -248,7 +273,9 @@ class Model:
         body = tg.request_body(self.approval['tag'], text, seed=self.rt['seed'], num_ctx=self.rt['num_ctx'],
                                num_thread=self.rt['num_thread'], temperature=self.rt['temperature'], num_predict=n, keep_alive=KEEP_ALIVE)
         try:
-            with local_ai.inference_lock(self.dsn, wait_seconds=1800, should_cancel=lambda: Stop.requested):
+            with local_ai.inference_lock(self.dsn, wait_seconds=1800, should_cancel=lambda: Stop.requested, yield_to_priority=True,
+                                        yield_grace_seconds=ASSISTANT_GRACE_SECONDS):
+                local_ai.make_room_for(self.approval['tag'], self.s.base_url)
                 t0 = time.monotonic()
                 try:
                     with self.opener.open(Request(self.s.base_url.rstrip('/') + '/api/chat',
@@ -302,14 +329,16 @@ def run_job(conn, job, model):
             try:
                 text, tin, tout, latency = model.call(src)
             except JobError as exc:
-                flags = {'error': str(exc), 'worker': WORKER_VERSION}
-                _write(conn, item_id, f, 'translation_error', None, h, flags, None, str(exc), attempts, model.approval['tag'],
+                # transient errors are retried with backoff; after MAX_ATTEMPTS the failure is recorded as permanent
+                status_e = 'translation_failed' if attempts >= MAX_ATTEMPTS else 'translation_error'
+                flags = {'error': str(exc), 'worker': WORKER_VERSION, 'attempts': attempts, 'permanent': status_e == 'translation_failed'}
+                _write(conn, item_id, f, status_e, None, h, flags, None, str(exc), attempts, model.approval['tag'],
                        model.approval['id'], len(src))
-                out[f] = 'translation_error'
+                out[f] = status_e
                 continue
             text = unicodedata.normalize('NFC', text.strip())
             try:
-                decision, det = v21.decide(src, text)
+                decision, det = qc_decide(f, src, text, job['summary'])
             except Exception as exc:  # noqa: BLE001 - one item's QC crash must not stop the queue
                 LOG.exception('qc crashed on item=%s field=%s', item_id, f)
                 err = f'qc_internal_error:{type(exc).__name__}'
@@ -320,9 +349,9 @@ def run_job(conn, job, model):
             status = STATUS[decision]
             full = job['summary'] or ''
             flags = {'decision': decision, 'critical': det.get('critical', []), 'uncertain': det.get('uncertain', []),
-                     'verified': len(det.get('verified', [])), 'facts': det.get('facts'), 'pipeline': v21.PIPELINE_VERSION,
-                     'facts_version': v21.FACTS_VERSION, 'worker': WORKER_VERSION, 'tokens_in': tin, 'tokens_out': tout,
-                     'human_verified': False}
+                     'verified': len(det.get('verified', [])), 'facts': det.get('facts'), 'pipeline': det.get('pipeline', v21.PIPELINE_VERSION),
+                     'facts_version': det.get('facts_version', v21.FACTS_VERSION), 'qc_fixes': det.get('v22_fixes', []),
+                     'worker': WORKER_VERSION, 'tokens_in': tin, 'tokens_out': tout, 'human_verified': False}
             if f == 'summary':
                 flags['source_scope'] = 'lead' if len(src) < len(re.sub(r'\s+', ' ', full.strip())) else 'full'
                 flags['lead_chars'], flags['full_chars'] = len(src), len(full)
@@ -350,6 +379,36 @@ def run_job(conn, job, model):
 
 
 # ------------------------------------------------------------------ status / loop
+def requalify(conn, dry_run=True):
+    """Re-run the CURRENT QC version on stored outputs (no model call). Rows whose decision
+    changes get the new status/flags and an appended history row; human-reviewed rows are skipped."""
+    rows = conn.execute(f'''SELECT t.item_id, t.field, t.status, t.text, t.input_text_sha256, t.quality_flags, t.latency_ms,
+        t.attempt_count, t.model, t.response_model, t.source_chars, n.title, {SUMMARY_SQL} AS summary
+        FROM news_item_translations t JOIN news_items n USING (item_id)
+        WHERE t.prompt_version=%s AND t.status = ANY(%s) AND t.text IS NOT NULL AND NOT COALESCE(t.human_reviewed,false)''',
+                        (PV, ['translated_auto', 'qc_warning', 'qc_failed'])).fetchall()
+    changed = {}
+    for r in rows:
+        src = source_of(r['field'], r['title'], r['summary'])
+        if sha(src) != r['input_text_sha256']:
+            continue                                   # source changed since: the worker re-translates it
+        decision, det = qc_decide(r['field'], src, r['text'], r['summary'])
+        status = STATUS[decision]
+        if status == r['status']:
+            continue
+        changed[(r['status'], status)] = changed.get((r['status'], status), 0) + 1
+        if dry_run:
+            continue
+        old = r['quality_flags'] or {}
+        flags = {**old, 'decision': decision, 'critical': det.get('critical', []), 'uncertain': det.get('uncertain', []),
+                 'pipeline': det.get('pipeline'), 'facts_version': det.get('facts_version'), 'qc_fixes': det.get('v22_fixes', []),
+                 'requalified_from': r['status'], 'human_verified': False}
+        _write(conn, r['item_id'], r['field'], status, r['text'], r['input_text_sha256'], flags, r['latency_ms'], None,
+               r['attempt_count'], r['model'], r['response_model'], r['source_chars'], decision)
+    return {'qc_version': QC_VERSION, 'rows_checked': len(rows), 'changes': {f'{a}->{b}': n for (a, b), n in changed.items()},
+            'dry_run': dry_run}
+
+
 def counts(conn):
     rows = conn.execute('''SELECT field, status, count(*) AS n FROM news_item_translations
         WHERE target_language='fa' AND field IN ('title','summary') AND prompt_version=%s GROUP BY 1,2''', (PV,)).fetchall()
@@ -410,7 +469,16 @@ def loop(dsn, once=False, item_ids=None):
                     pause = 0
                     if once:
                         return 0
-                    time.sleep(SLEEP_SECONDS)
+                    # fresh work never waits behind the backfill pause: sleep in 1 s steps, stop early if a fresh item is queued
+                    wait = BACKFILL_SLEEP_SECONDS if job.get('backfill') else SLEEP_SECONDS
+                    for i in range(wait):
+                        if Stop.requested:
+                            break
+                        if i and i % 10 == 0 and job.get('backfill'):
+                            nxt = next_job(conn, item_ids)
+                            if nxt and not nxt.get('backfill'):
+                                break
+                        time.sleep(1)
                 except Paused as exc:
                     pause += 1
                     wait = min(600, 30 * pause)
@@ -451,6 +519,8 @@ def main(argv=None):
     o = sub.add_parser('once')
     o.add_argument('--item-ids')
     sub.add_parser('status')
+    rq = sub.add_parser('requalify')
+    rq.add_argument('--apply', action='store_true')
     a = ap.parse_args(argv)
     dsn = os.environ['DATABASE_URL']
     signal.signal(signal.SIGTERM, _on_signal)
@@ -460,6 +530,10 @@ def main(argv=None):
             ensure_schema(conn)
             st = conn.execute("SELECT * FROM translation_worker_state WHERE worker='ai-translator'").fetchone()
             print(json.dumps({'worker': st, **counts(conn)}, ensure_ascii=False, indent=1, default=str))
+        return 0
+    if a.cmd == 'requalify':
+        with local_ai.connect(dsn) as conn:
+            print(json.dumps(requalify(conn, dry_run=not a.apply), ensure_ascii=False, indent=1))
         return 0
     ids = [x for x in (getattr(a, 'item_ids', None) or '').split(',') if x] or None
     return loop(dsn, once=(a.cmd == 'once'), item_ids=ids)

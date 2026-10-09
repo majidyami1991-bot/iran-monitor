@@ -45,6 +45,10 @@ export function TranslationTag({ status, review }: { status: string | null | und
     return <Tag tone="uncertain" icon={<Languages size={12} />} title="کنترل کیفیت خطای بحرانی یافت؛ ترجمه نمایش داده نمی‌شود">ترجمه رد شد (خطای کیفیت)</Tag>;
   if (status === 'translation_pending' || status === 'processing')
     return <Tag tone="uncertain" icon={<Languages size={12} />} title="در صف ترجمه خودکار؛ تا آماده شدن، متن اصلی نمایش داده می‌شود">{status === 'processing' ? 'در حال ترجمه' : 'در انتظار ترجمه'}</Tag>;
+  if (status === 'translation_failed')
+    return <Tag tone="uncertain" icon={<Languages size={12} />} title="پس از چند تلاش ناموفق ماند؛ متن اصلی معتبر است">ترجمه ناموفق (دائمی)</Tag>;
+  if (status === 'no_source_text')
+    return <Tag tone="neutral" icon={<Languages size={12} />} title="منبع متنی برای ترجمه منتشر نکرده است">بدون متن برای ترجمه</Tag>;
   if (status === 'translation_error')
     return <Tag tone="uncertain" icon={<Languages size={12} />} title="ترجمه خودکار ناموفق بود و با تأخیر دوباره تلاش می‌شود">خطای ترجمه</Tag>;
   if (status === 'available') {

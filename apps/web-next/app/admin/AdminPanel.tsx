@@ -16,7 +16,11 @@ interface Ops {
     last_success: string | null; last_success_age_min: number | null; failures_24h: number | null;
     scheduler: 'unknown' | 'seen' | 'empty'; scheduler_log: { ts: string; event: string; status?: string; reason?: string; inserted_items?: number }[] | null };
   translation: { worker: { state: string; version: string; beat_at: string; detail: Record<string, unknown> } | null; heartbeat_age_min: number | null;
-    by_field: Record<string, Record<string, number>>; queue_fields: number; latency_24h: { avg_ms: number | null; calls: number } | null; pipeline: string };
+    by_field: Record<string, Record<string, number>>; queue_fields: number; latency_24h: { avg_ms: number | null; calls: number } | null; pipeline: string;
+    queue_fresh_items: number | null; queue_archive_items: number | null; items_not_yet_queued: number | null; fields_last_hour: number;
+    fields_last_24h: number | null; errors_24h: number | null; eta_hours_queue: number | null;
+    progress: { titles_processed: number; summaries_processed: number; items_title_fa_shown: number; items_with_any_fa: number;
+      last_accepted_at: string | null; last_processed_at: string | null } | null };
   clustering: { events: number; last_update: string | null; last_update_age_min: number | null; items_without_topic: number };
   assistant: { answers_24h: number; last_answer: string | null; approval: { id: string; state: string; tag: string } | null };
   models: { servable: { id: string; role: string; tag: string; state: string }[]; lab_mode: boolean };
@@ -28,7 +32,7 @@ interface Ops {
 
 const STATUS_FA: Record<string, string> = {
   translated_auto: 'ترجمه خودکار (بدون ایراد کنترل کیفیت)', qc_warning: 'هشدار کنترل کیفیت', qc_failed: 'رد در کنترل کیفیت',
-  translation_pending: 'در صف', processing: 'در حال ترجمه', translation_error: 'خطا (تلاش مجدد)', not_required: 'نیاز ندارد (فارسی)',
+  translation_pending: 'در صف', processing: 'در حال ترجمه', translation_error: 'خطای موقت (تلاش مجدد)', translation_failed: 'ناموفق دائمی', not_required: 'نیاز ندارد (فارسی)', no_source_text: 'بدون متن منبع',
 };
 const ALERT_FA: Record<string, string> = {
   sync_stale: 'همگام‌سازی اخبار بیش از ۴۵ دقیقه موفق نبوده است',
@@ -94,7 +98,18 @@ export function AdminPanel() {
               <Row k="وضعیت سرویس ترجمه" v={d.translation.worker && `${d.translation.worker.state} · آخرین گزارش ${fmtRelative(d.translation.worker.beat_at, now)}`} />
               <Row k="نسخه" v={d.translation.worker?.version} />
               <Row k="خط لوله" v={<bdi>{d.translation.pipeline}</bdi>} />
+              <Row k="عنوان‌های پردازش‌شده / کل اخبار" v={d.translation.progress && `${fmt(d.translation.progress.titles_processed)} از ${fmt(d.news.items)}`} />
+              <Row k="خلاصه‌های پردازش‌شده" v={d.translation.progress && fmt(d.translation.progress.summaries_processed)} />
+              <Row k="اخبار با عنوان فارسی قابل نمایش" v={d.translation.progress && `${fmt(d.translation.progress.items_title_fa_shown)} خبر (${fmt(d.translation.progress.items_with_any_fa)} خبر با متن فارسی، شامل هشدار)`} />
+              <Row k="آخرین ترجمه پذیرفته‌شده" v={d.translation.progress?.last_accepted_at && `${fmtDateTime(d.translation.progress.last_accepted_at)} (${fmtRelative(d.translation.progress.last_accepted_at, now)})`} />
+              <Row k="آخرین خروجی پردازش‌شده" v={d.translation.progress?.last_processed_at && fmtRelative(d.translation.progress.last_processed_at, now)} />
+              <Row k="صف اخبار تازه (اولویت بالا)" v={`${fmt(d.translation.queue_fresh_items ?? 0)} خبر`} />
+              <Row k="صف آرشیو (پس‌زمینه)" v={`${fmt(d.translation.queue_archive_items ?? 0)} خبر`} />
+              <Row k="هنوز وارد صف نشده" v={`${fmt(d.translation.items_not_yet_queued ?? 0)} خبر (هر دقیقه افزوده می‌شود)`} />
               <Row k="طول صف (فیلد)" v={fmt(d.translation.queue_fields)} />
+              <Row k="نرخ پردازش" v={`${fmt(d.translation.fields_last_hour)} فیلد در ساعت گذشته · ${fmt(d.translation.fields_last_24h ?? 0)} در ۲۴ ساعت`} />
+              <Row k="زمان تقریبی تخلیه صف فعلی" v={d.translation.eta_hours_queue != null ? `حدود ${fmt(d.translation.eta_hours_queue)} ساعت` : 'نامشخص'} />
+              <Row k="خطاهای ترجمه (۲۴ ساعت)" v={fmt(d.translation.errors_24h ?? 0)} />
               <Row k="میانگین زمان هر فراخوانی (۲۴ ساعت)" v={d.translation.latency_24h?.avg_ms != null && `${fmt(Math.round(d.translation.latency_24h.avg_ms / 1000))} ثانیه در ${fmt(d.translation.latency_24h.calls)} فراخوانی`} />
             </dl>
             <table className="tbl"><thead><tr><th>وضعیت</th><th>عنوان</th><th>خلاصه</th></tr></thead>

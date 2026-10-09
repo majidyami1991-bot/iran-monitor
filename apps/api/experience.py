@@ -213,7 +213,7 @@ def feed_query(*, q=None, source_id=None, category=None, topic=None, window='all
         where.append('n.content_language IS NULL')
     # 3003 lab statuses map onto the existing filter values (+ warning / failed)
     groups = {'available': ('available', 'translated_auto'), 'pending': ('pending', 'translation_pending', 'processing', 'stale'),
-              'error': ('error', 'failed', 'translation_error'), 'warning': ('qc_warning',), 'failed': ('qc_failed', 'needs_review')}
+              'error': ('error', 'failed', 'translation_error', 'translation_failed'), 'warning': ('qc_warning',), 'failed': ('qc_failed', 'needs_review')}
     if translation in groups:
         where.append("COALESCE(tt.status, 'pending') = ANY(%(tr)s)"); args['tr'] = list(groups[translation])
     if has_image is not None:

@@ -23,6 +23,7 @@ import model_identity as mi
 
 BATCH_LOCK = 7_270_061
 INFERENCE_LOCK = 7_270_062
+ASSISTANT_WAITING = 7_270_063   # shared lock held by interactive assistant requests while they wait for the model
 
 
 @dataclass
@@ -189,19 +190,66 @@ def lock_held(conn, key):
     return r['n'] > 0
 
 
+def make_room_for(tag, base_url, timeout=60):
+    """Unload every OTHER model resident in Ollama before `tag` is used. Called while
+    holding INFERENCE_LOCK, so no other call is running. Keeps the 27B translator and
+    the qwen3 assistant from being resident together (host commit memory is limited:
+    co-residency evicted/reloaded models and once ended in provider_unreachable)."""
+    import json as _json
+    from urllib.request import ProxyHandler as _P, Request as _R, build_opener as _b
+    op = _b(_P({}))
+    try:
+        with op.open(_R(base_url.rstrip('/') + '/api/ps'), timeout=5) as r:
+            loaded = [m.get('name') for m in _json.loads(r.read()).get('models', [])]
+    except OSError:
+        return []
+    others = [m for m in loaded if m and m != tag]
+    for m in others:
+        try:
+            op.open(_R(base_url.rstrip('/') + '/api/generate', _json.dumps({'model': m, 'keep_alive': 0}).encode(),
+                       {'Content-Type': 'application/json'}), timeout=30).read()
+        except OSError:
+            pass
+    deadline = time.monotonic() + timeout
+    while others and time.monotonic() < deadline:
+        try:
+            with op.open(_R(base_url.rstrip('/') + '/api/ps'), timeout=5) as r:
+                if not [m.get('name') for m in _json.loads(r.read()).get('models', []) if m.get('name') in others]:
+                    break
+        except OSError:
+            break
+        time.sleep(1)
+    return others
+
+
 class Busy(RuntimeError):
     """The inference lock could not be taken in time (or the wait was cancelled)."""
 
 
 @contextlib.contextmanager
-def inference_lock(dsn, wait_seconds=0.0, should_cancel=lambda: False, poll=0.5):
+def inference_lock(dsn, wait_seconds=0.0, should_cancel=lambda: False, poll=0.5, priority=False, yield_to_priority=False,
+                   yield_grace_seconds=0):
     """Hold INFERENCE_LOCK for one model call. Waits up to wait_seconds,
-    polling should_cancel(); raises Busy if the lock is not obtained."""
+    polling should_cancel(); raises Busy if the lock is not obtained.
+    priority=True (interactive assistant): announces itself with a SHARED
+    ASSISTANT_WAITING lock while it waits. yield_to_priority=True (background
+    translator): does not start a call while anyone holds ASSISTANT_WAITING."""
     conn = psycopg.connect(dsn, autocommit=True)
     try:
+        if priority:
+            conn.execute('SELECT pg_advisory_lock_shared(%s)', (ASSISTANT_WAITING,))
         deadline = time.monotonic() + wait_seconds
         while True:
-            if conn.execute('SELECT pg_try_advisory_lock(%s)', (INFERENCE_LOCK,)).fetchone()[0]:
+            waiting = yield_to_priority and conn.execute(
+                "SELECT count(*) FROM pg_locks WHERE locktype='advisory' AND granted AND classid=0 AND objid=%s",
+                (ASSISTANT_WAITING,)).fetchone()[0] > 0
+            if yield_to_priority and not waiting and yield_grace_seconds:
+                # a conversation in progress keeps its model: no background call within the grace window
+                waiting = conn.execute("SELECT EXISTS (SELECT 1 FROM assistant_messages WHERE created_at > now() - make_interval(secs => %s))",
+                                       (yield_grace_seconds,)).fetchone()[0]
+            if not waiting and conn.execute('SELECT pg_try_advisory_lock(%s)', (INFERENCE_LOCK,)).fetchone()[0]:
+                if priority:
+                    conn.execute('SELECT pg_advisory_unlock_shared(%s)', (ASSISTANT_WAITING,))
                 break
             if should_cancel():
                 raise Busy('cancelled')

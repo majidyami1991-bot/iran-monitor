@@ -769,6 +769,13 @@
       "event": "lab_activated",
       "by": "owner",
       "note": "Owner instruction (final mission): activate in the isolated 3003 lab after the technical and anti-unsupported-claim gates pass, labelled 'experimental - answers based on the available news sources'. NOT a human quality approval. Servable only where LOCAL_AI_LAB_MODE=true. Attestation with reload passed 2026-10-09."
+    },
+    {
+      "at": "2026-10-09",
+      "approval": "translategemma-27b-ollama0401-llamacpp-90696e5eca44",
+      "event": "lab_activated",
+      "by": "owner",
+      "note": "Owner decision: the current TranslateGemma 27B quality is ACCEPTED FOR EXPERIMENTAL USE in the 3003 lab, with known limitations; translate the whole archive and keep new items translated. This is a usage authorisation, NOT a scientific or quality approval: the automated verdict AUTO_GATE_FAIL (rejected_quality_gate, phase 9) stands unchanged, QC filtering and the 'machine translation, not human-verified' label remain mandatory, QC-failed outputs are never shown as translations."
     }
   ]
 }

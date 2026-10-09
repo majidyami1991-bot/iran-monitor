@@ -227,6 +227,8 @@ function FaField({ label, cls, text, unverified, status, qc }: { label: string; 
     <><p className={cls}>{unverified}</p>
       <p className="bi-warn">هشدار کنترل کیفیت: {qc ? `${fmt(qc.uncertain)} مورد (عدد، نام، اصطلاح یا رابطه)` : 'برخی موارد'} به‌طور خودکار قابل تأیید نبود. این ترجمه فقط در کنار متن اصلی نمایش داده می‌شود و متن اصلی ملاک است.</p>{scope}</>);
   if (status === 'qc_failed') return <p className="bi-fail">ترجمه {label} در کنترل کیفیت خطای بحرانی داشت{qc?.critical ? ` (${fmt(qc.critical)} مورد)` : ''} و نمایش داده نمی‌شود؛ متن اصلی انگلیسی معتبر است.</p>;
+  if (status === 'translation_failed') return <p className="muted">ترجمه {label} پس از چند تلاش ناموفق ماند؛ متن اصلی انگلیسی معتبر است.</p>;
+  if (status === 'no_source_text') return <p className="muted">منبع برای {label} متنی منتشر نکرده است.</p>;
   if (status === 'translation_error') return <p className="muted">ترجمه {label} ناموفق بود و خودکار با تأخیر دوباره تلاش می‌شود.</p>;
   if (status === 'not_required') return <p className="muted">متن اصلی {label} فارسی است.</p>;
   if (status === 'processing') return <p className="muted">ترجمه {label} در حال انجام است…</p>;

@@ -241,7 +241,8 @@ def _answer_extractive(job, s, adapter, records, base, started, cache_key):
     import assistant_extractive as ax
     job.set('waiting_for_model')
     try:
-        with local_ai.inference_lock(DSN, wait_seconds=s.timeout_seconds, should_cancel=job.cancel.is_set):
+        with local_ai.inference_lock(DSN, wait_seconds=s.timeout_seconds, should_cancel=job.cancel.is_set, priority=True):
+            local_ai.make_room_for(s.approval['tag'], s.base_url)   # never co-resident with the translator (memory)
             job.set('generating')
             t0 = time.monotonic()
             out, problems, resp = ax.run(adapter, job.question, records, neutralise, should_cancel=job.cancel.is_set)
@@ -331,7 +332,8 @@ def _answer_v13(job, s, adapter, started):
     try:
         if needs_model:
             job.set('waiting_for_model')
-            with local_ai.inference_lock(DSN, wait_seconds=s.timeout_seconds, should_cancel=job.cancel.is_set):
+            with local_ai.inference_lock(DSN, wait_seconds=s.timeout_seconds, should_cancel=job.cancel.is_set, priority=True):
+                local_ai.make_room_for(s.approval['tag'], s.base_url)   # never co-resident with the translator (memory)
                 job.set('generating')
                 t0 = time.monotonic()
                 out, problems, resp, trace = v13.run(adapter, job.question, candidates, neutralise, job.cancel.is_set, plan=plan,
@@ -435,7 +437,8 @@ def answer(job, adapter=None):
 
     job.set('waiting_for_model')
     try:
-        with local_ai.inference_lock(DSN, wait_seconds=s.timeout_seconds, should_cancel=job.cancel.is_set):
+        with local_ai.inference_lock(DSN, wait_seconds=s.timeout_seconds, should_cancel=job.cancel.is_set, priority=True):
+            local_ai.make_room_for(s.approval['tag'], s.base_url)   # never co-resident with the translator (memory)
             job.set('generating')
             t0 = time.monotonic()
             resp = adapter.stream_complete(system, user, should_cancel=job.cancel.is_set)

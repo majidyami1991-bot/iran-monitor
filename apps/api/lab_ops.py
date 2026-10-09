@@ -88,11 +88,38 @@ def status():
             AND prompt_version LIKE %s GROUP BY 1,2''', ('%translation-pipeline-v2.1.0',))
         lat = _q(c, '''SELECT avg(latency_ms)::int AS avg_ms, count(*) AS calls FROM news_item_translation_history
             WHERE prompt_version LIKE %s AND latency_ms IS NOT NULL AND generated_at > now()-interval '24 hours' ''', ('%translation-pipeline-v2.1.0',), one=True)
+        qs = _q(c, '''SELECT
+              count(DISTINCT t.item_id) FILTER (WHERE COALESCE(n.collected_at, 'epoch'::timestamptz) >= now()-interval '24 hours'
+                                                 OR t.item_id IN (SELECT item_id FROM translation_queue_requests)) AS fresh_items,
+              count(DISTINCT t.item_id) FILTER (WHERE COALESCE(n.collected_at, 'epoch'::timestamptz) < now()-interval '24 hours'
+                                                 AND t.item_id NOT IN (SELECT item_id FROM translation_queue_requests)) AS archive_items
+            FROM news_item_translations t JOIN news_items n USING (item_id)
+            WHERE t.status IN ('translation_pending','processing') AND t.prompt_version LIKE %s''', ('%translation-pipeline-v2.1.0',), one=True)
+        rate = _q(c, '''SELECT count(*) FILTER (WHERE generated_at > now()-interval '1 hour') AS fields_1h,
+              count(*) FILTER (WHERE generated_at > now()-interval '24 hours') AS fields_24h,
+              count(*) FILTER (WHERE status='translation_error' AND generated_at > now()-interval '24 hours') AS errors_24h
+            FROM news_item_translation_history WHERE prompt_version LIKE %s AND status <> 'translation_pending' ''',
+                  ('%translation-pipeline-v2.1.0',), one=True)
+        prog = _q(c, '''SELECT
+              count(*) FILTER (WHERE field='title' AND status IN ('translated_auto','qc_warning','qc_failed','not_required','no_source_text','translation_failed')) AS titles_processed,
+              count(*) FILTER (WHERE field='summary' AND status IN ('translated_auto','qc_warning','qc_failed','not_required','no_source_text','translation_failed')) AS summaries_processed,
+              count(DISTINCT item_id) FILTER (WHERE field='title' AND status='translated_auto') AS items_title_fa_shown,
+              count(DISTINCT item_id) FILTER (WHERE status IN ('translated_auto','qc_warning')) AS items_with_any_fa,
+              max(updated_at) FILTER (WHERE status='translated_auto') AS last_accepted_at,
+              max(updated_at) FILTER (WHERE status IN ('translated_auto','qc_warning','qc_failed')) AS last_processed_at
+            FROM news_item_translations WHERE target_language='fa' AND prompt_version LIKE %s''', ('%translation-pipeline-v2.1.0',), one=True)
+        untouched = _q(c, '''SELECT count(*) AS n FROM news_items n WHERE NOT EXISTS (SELECT 1 FROM news_item_translations t
+            WHERE t.item_id=n.item_id AND t.field='title' AND t.prompt_version LIKE %s)''', ('%translation-pipeline-v2.1.0',), one=True)
         by = {}
         for r in tr or []:
             by.setdefault(r['field'], {})[r['status']] = r['n']
         queue = sum(v for f in by.values() for k, v in f.items() if k in ('translation_pending', 'processing'))
+        r1 = (rate or {}).get('fields_1h') or 0
         out['translation'] = {'worker': w, 'by_field': by, 'queue_fields': queue, 'latency_24h': lat,
+                              'queue_fresh_items': (qs or {}).get('fresh_items'), 'queue_archive_items': (qs or {}).get('archive_items'),
+                              'items_not_yet_queued': (untouched or {}).get('n'), 'fields_last_hour': r1,
+                              'fields_last_24h': (rate or {}).get('fields_24h'), 'errors_24h': (rate or {}).get('errors_24h'),
+                              'eta_hours_queue': round(queue / r1, 1) if r1 else None, 'progress': prog,
                               'pipeline': 'translategemma-official-en-fa-v1+translation-pipeline-v2.1.0'}
         wage = _age_min((w or {}).get('beat_at'), now)
         out['translation']['heartbeat_age_min'] = wage

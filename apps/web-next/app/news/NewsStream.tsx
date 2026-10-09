@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { SlidersHorizontal, X } from 'lucide-react';
 import { Shell } from '../design/Shell';
@@ -42,6 +42,13 @@ export function NewsStream() {
 
   const apiQs = qs({ ...p, sort, page, page_size: 24 });
   const q = useApi<FeedResponse>('feed' + apiQs, [apiQs]);
+  // Persian appears without a manual refresh: re-fetch every 60 s while an item on this page awaits translation.
+  const awaiting = (q.data?.items ?? []).some((it) => ['translation_pending', 'processing', 'pending'].includes(it.title_fa_status));
+  useEffect(() => {
+    if (!awaiting) return;
+    const t = setInterval(q.reload, 60000);
+    return () => clearInterval(t);
+  }, [awaiting, q.reload]);
   const topics = useApi<Topics>('topics?window=all');
   const sources = useApi<Sources>('source-profiles');
 
