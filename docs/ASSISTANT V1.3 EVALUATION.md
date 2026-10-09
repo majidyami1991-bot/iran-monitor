@@ -1,5 +1,7 @@
 # Assistant v1.3 — evaluation (2026-10-09)
 
+> **Superseded (phase 5).** Contract v1.3 was superseded by v1.3.1 before any human review. v1.3.1 adds the core-quote rule, represents every member of a verified event, and uses lexicon v1.1.0. The current gate results and the review pack are in `ASSISTANT V1.3 HUMAN REVIEW PACK.md` and `LOCAL AI PHASE 5 REPORT.md`. The human checklist below is replaced by the one in the review pack.
+
 **Status: `PENDING_HUMAN_REVIEW`.** The machine gate passed on the final
 code. No human review has taken place yet. The pre-review in this document
 was done by the AI assistant (Claude) that built the system; it is **not**
