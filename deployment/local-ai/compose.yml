@@ -116,7 +116,7 @@ services:
       # whole archive, gradually; fresh (24 h) and requested items always first
       LOCAL_TRANSLATION_BACKFILL_DAYS: ${LOCAL_TRANSLATION_BACKFILL_DAYS:-36500}
       LOCAL_TRANSLATION_BACKFILL_SLEEP_SECONDS: ${LOCAL_TRANSLATION_BACKFILL_SLEEP_SECONDS:-20}
-      LOCAL_TRANSLATION_QC: ${LOCAL_TRANSLATION_QC:-v2.1}
+      LOCAL_TRANSLATION_QC: ${LOCAL_TRANSLATION_QC:-v2.2}   # v2.2 activated 2026-10-09 by the pre-registered held-out rule (runtime/qc-v22/heldout/result.json)
       LOCAL_TRANSLATION_SLEEP_SECONDS: ${LOCAL_TRANSLATION_SLEEP_SECONDS:-5}
       LOCAL_TRANSLATION_KEEP_ALIVE: ${LOCAL_TRANSLATION_KEEP_ALIVE:-30m}
     extra_hosts: ["host.docker.internal:host-gateway"]

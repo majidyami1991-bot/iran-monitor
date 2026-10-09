@@ -87,7 +87,8 @@ def status():
         tr = _q(c, '''SELECT field, status, count(*) AS n FROM news_item_translations WHERE target_language='fa' AND field IN ('title','summary')
             AND prompt_version LIKE %s GROUP BY 1,2''', ('%translation-pipeline-v2.1.0',))
         lat = _q(c, '''SELECT avg(latency_ms)::int AS avg_ms, count(*) AS calls FROM news_item_translation_history
-            WHERE prompt_version LIKE %s AND latency_ms IS NOT NULL AND generated_at > now()-interval '24 hours' ''', ('%translation-pipeline-v2.1.0',), one=True)
+            WHERE prompt_version LIKE %s AND latency_ms IS NOT NULL AND generated_at > now()-interval '24 hours'
+              AND NOT (quality_flags ? 'requalified_from') ''', ('%translation-pipeline-v2.1.0',), one=True)
         qs = _q(c, '''SELECT
               count(DISTINCT t.item_id) FILTER (WHERE COALESCE(n.collected_at, 'epoch'::timestamptz) >= now()-interval '24 hours'
                                                  OR t.item_id IN (SELECT item_id FROM translation_queue_requests)) AS fresh_items,
@@ -98,7 +99,8 @@ def status():
         rate = _q(c, '''SELECT count(*) FILTER (WHERE generated_at > now()-interval '1 hour') AS fields_1h,
               count(*) FILTER (WHERE generated_at > now()-interval '24 hours') AS fields_24h,
               count(*) FILTER (WHERE status='translation_error' AND generated_at > now()-interval '24 hours') AS errors_24h
-            FROM news_item_translation_history WHERE prompt_version LIKE %s AND status <> 'translation_pending' ''',
+            FROM news_item_translation_history WHERE prompt_version LIKE %s AND status <> 'translation_pending'
+              AND NOT (quality_flags ? 'requalified_from') '''   # model outputs only: QC re-decisions are not throughput,
                   ('%translation-pipeline-v2.1.0',), one=True)
         prog = _q(c, '''SELECT
               count(*) FILTER (WHERE field='title' AND status IN ('translated_auto','qc_warning','qc_failed','not_required','no_source_text','translation_failed')) AS titles_processed,
