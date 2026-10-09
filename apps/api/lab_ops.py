@@ -96,11 +96,12 @@ def status():
                                                  AND t.item_id NOT IN (SELECT item_id FROM translation_queue_requests)) AS archive_items
             FROM news_item_translations t JOIN news_items n USING (item_id)
             WHERE t.status IN ('translation_pending','processing') AND t.prompt_version LIKE %s''', ('%translation-pipeline-v2.1.0',), one=True)
+        # model outputs only: QC re-decisions (requalify) are not throughput
         rate = _q(c, '''SELECT count(*) FILTER (WHERE generated_at > now()-interval '1 hour') AS fields_1h,
               count(*) FILTER (WHERE generated_at > now()-interval '24 hours') AS fields_24h,
               count(*) FILTER (WHERE status='translation_error' AND generated_at > now()-interval '24 hours') AS errors_24h
             FROM news_item_translation_history WHERE prompt_version LIKE %s AND status <> 'translation_pending'
-              AND NOT (quality_flags ? 'requalified_from') '''   # model outputs only: QC re-decisions are not throughput,
+              AND NOT (quality_flags ? 'requalified_from') ''',
                   ('%translation-pipeline-v2.1.0',), one=True)
         prog = _q(c, '''SELECT
               count(*) FILTER (WHERE field='title' AND status IN ('translated_auto','qc_warning','qc_failed','not_required','no_source_text','translation_failed')) AS titles_processed,
