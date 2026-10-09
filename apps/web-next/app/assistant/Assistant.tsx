@@ -35,7 +35,7 @@ interface ModelRow { id: string; role: string; tag: string; state: string; avail
   manifest_digest: string; runner: string | null; ollama_version: string | null; validator_version: string | null }
 interface Models { models: ModelRow[]; features: { translation: boolean; assistant: boolean; assistant_mode: string | null }; ollama_reachable: boolean }
 const STATE_FA: Record<string, [string, 'ok' | 'warn' | 'uncertain' | 'error' | 'info']> = {
-  approved: ['تأییدشده', 'ok'], proposed: ['پیشنهادشده (در ارزیابی)', 'info'], rejected_quality_gate: ['ردشده در آزمون کیفیت', 'error'],
+  approved: ['تأییدشده', 'ok'], proposed: ['پیشنهادشده (در ارزیابی)', 'info'], pending_human_review: ['در انتظار بازبینی انسانی', 'warn'], rejected_quality_gate: ['ردشده در آزمون کیفیت', 'error'],
   superseded: ['جایگزین‌شده', 'uncertain'], revoked: ['تأیید لغو شد', 'error'], unknown: ['نامشخص', 'uncertain'],
 };
 const ROLE_FA: Record<string, string> = { translation: 'ترجمه', assistant: 'دستیار (پاسخ آزاد)', assistant_extractive: 'دستیار (نقل‌قول‌محور)', both: 'ترجمه و دستیار (قدیمی)' };
