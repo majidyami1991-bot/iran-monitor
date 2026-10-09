@@ -20,7 +20,7 @@ import assistant_extractive as ax
 import assistant_relevance as ar
 
 PROMPT_VERSION = 'assistant-extractive-fa-v1.3.0'
-VALIDATOR_VERSION = 'extractive-validator-v1.3.0'
+VALIDATOR_VERSION = 'extractive-validator-v1.3.1'
 # The one exact refusal sentence of contract v1.3 (v1.2 kept its own).
 INSUFFICIENT = 'در اخبار موجود، شواهد کافی و قابل اتکایی برای پاسخ به این پرسش یافت نشد.'
 MAX_RECORDS = 6
@@ -281,7 +281,27 @@ def finish(plan, payload, records, group, copies):
             problems.append(f'quote_irrelevant:{f["evidence_id"]}')
     facts = kept
     by_id = {r['evidence_id']: r for r in records}
-    if plan.intent in ('common_coverage', 'compare'):
+    # Core quote: a quote that misses one of the question's entities (e.g. a
+    # side detail "issued as an undefinitized contract by … Lockheed Martin"
+    # for a question about Boeing's PAC-3 contract) is replaced by the
+    # record's verbatim title when the title names every entity. Verbatim
+    # either way; the headline carries the record's main claim.
+    if plan.intent != 'specific_record' and plan.anchors:
+        for i, f in enumerate(facts):
+            title = ax._norm(by_id[f['evidence_id']].get('title_original') or by_id[f['evidence_id']]['title'])
+            if not all(a.found(f['quote']) for a in plan.anchors) and all(a.found(title) for a in plan.anchors) and title != f['quote']:
+                facts[i] = {'evidence_id': f['evidence_id'], 'quote': title}
+                problems.append(f'core_quote_title:{f["evidence_id"]}')
+        uniq = []
+        for f in facts:
+            if not any(u['evidence_id'] == f['evidence_id'] and u['quote'] == f['quote'] for u in uniq):
+                uniq.append(f)
+        facts = uniq
+    # Every member of a verified multi-source event is represented: a member
+    # the model skipped gets its verbatim title, when relevant. Applies to
+    # coverage, compare and to event evidence drawn from a verified group,
+    # so a single quoted outlet does not hide the others.
+    if plan.intent in ('common_coverage', 'compare') or (plan.intent == 'event_evidence' and group and group.get('pairs')):
         have = {f['evidence_id'] for f in facts}
         for r in records:  # a member the model skipped: its verbatim title, when relevant
             title = ax._norm(r.get('title_original') or r['title'])
@@ -289,7 +309,8 @@ def finish(plan, payload, records, group, copies):
                 facts.append({'evidence_id': r['evidence_id'], 'quote': title})
                 problems.append(f'title_fallback:{r["evidence_id"]}')
         facts.sort(key=lambda f: int(f['evidence_id'][1:]))
-        if len({by_id[f['evidence_id']].get('source_name') for f in facts if f['evidence_id'] not in copies}) < 2:
+        if plan.intent in ('common_coverage', 'compare') and \
+                len({by_id[f['evidence_id']].get('source_name') for f in facts if f['evidence_id'] not in copies}) < 2:
             return refusal('single_source', plan), problems
     if not facts:
         return refusal('no_valid_quote', plan), problems

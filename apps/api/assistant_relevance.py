@@ -35,7 +35,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
-LEXICON_VERSION = 'assistant-lexicon-fa-en-v1.0.0'
+LEXICON_VERSION = 'assistant-lexicon-fa-en-v1.1.0'
 RELEVANCE_VERSION = 'relevance-gate-v1.0.0'
 MAX_EVENT_HOURS = 72
 
@@ -62,7 +62,7 @@ ENTITIES = [
     ('Iran', 'country', ['ایران'], [r'Iran(?:ian)?s?', r'Tehran'], ()),
     ('Israel', 'country', ['اسرائیل', 'اسراییل'], [r'Israel(?:i|is)?', r'IDF'], ()),
     ('United States', 'country', ['آمریکا', 'امریکا', 'ایالات متحده'], [r'U\.?S\.?A?', r'United States', r'American?s?', r'USAF', r'USS'], ()),
-    ('Russia', 'country', ['روسیه'], [r'Russian?s?', r'Moscow', r'Kremlin'], ()),
+    ('Russia', 'country', ['روسیه', 'روس'], [r'Russian?s?', r'Moscow', r'Kremlin'], ()),
     ('Ukraine', 'country', ['اوکراین'], [r'Ukrain(?:e|ian|ians)', r'Kyiv'], ()),
     ('China', 'country', ['چین'], [r'Chin(?:a|ese)', r'PLA', r'Beijing'], ()),
     ('Saudi Arabia', 'country', ['عربستان', 'عربستان سعودی'], [r'Saudi(?: Arabia)?'], ()),
@@ -105,6 +105,7 @@ ENTITIES = [
     ('Afghanistan', 'country', ['افغانستان'], [r'Afghan(?:istan)?'], ()),
     ('Morocco', 'country', ['مراکش'], [r'Morocc(?:o|an)'], ()),
     # places (sub-national, cities, seas, bases); parents expand for conflicts
+    ('Tehran', 'place', ['تهران'], [r'Tehran'], ('Iran',)),
     ('Gaza', 'place', ['غزه'], [r'Gaza'], ('Palestine',)),
     ('West Bank', 'place', ['کرانه باختری'], [r'West Bank', r'Judea', r'Samaria'], ('Palestine',)),
     ('Tel Aviv', 'place', ['تل آویو'], [r'Tel Aviv'], ('Israel',)),
@@ -292,7 +293,7 @@ _GENERIC = frozenset('''
 هفته ماه روز روزهای ساعت ساعات تاریخ زمان کی کجا کجای چطور چگونه آنچه چیست کیست کسی کسانی جزئیات شرح توضیح وضعیت
 تعداد چقدر میزان مبلغ ارزش قیمت عدد اعداد رقم ارقام درصد نفر نفری پیرامون حول راجع رخ رخداد داد دادند افتاد افتاده
 مقدار نوع کدامند چیستند هستند بوده بوده اند شود شوند گردید آیا علت دلیل هدف منبعی منابعی خبرگزاری روزنامه سایت نقل قول ادعا ادعای
-تایید تأیید رد نشده توسط هنوز بر نزدیک حوالی اطراف نخستین اولین نخست انتخاب گوید گویند نویسد نوشت می‌گوید چگونه طور شکل همین همان کدامیک دیگری بیان بیانیه طبق براساس اساس پس پیش قبل بعد طی حدود حدودا
+تایید تأیید رد نشده توسط هنوز بر دلار دلاری یورو میلیارد میلیون هزار نزدیک حوالی اطراف نخستین اولین نخست انتخاب گوید گویند نویسد نوشت می‌گوید چگونه طور شکل همین همان کدامیک دیگری بیان بیانیه طبق براساس اساس پس پیش قبل بعد طی حدود حدودا
 the a an of to in on for and or is are was were be been what which who how why when where about any some
 news latest today yesterday last past week month hours hour day days report reports reported source sources tell me please
 did does do happened happen there their with from by this that these those than then into over under say said
