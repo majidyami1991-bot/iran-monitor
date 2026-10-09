@@ -11,7 +11,7 @@ const fs = require('fs'), path = require('path');
 const { launchEdge } = require('./edge-launcher.cjs');
 
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:3003';
-const OUT = path.resolve(process.env.EVIDENCE_DIR || 'runtime/local-ai-evidence/phase3/ui');
+const OUT = path.resolve(process.env.EVIDENCE_DIR || 'runtime/local-ai-evidence/phase5/ui');
 const SESSION = process.env.SESSION_ID || '';
 const GOOD_ITEM = '338aa434bd1cdd47ce8614537ed77fc1e0bc7d740cccac0f974255e5ceb5d5d8';
 const REVIEW_ITEM = 'c1544afcdfa71ea7304820dbcac8f95ebc049ab6bd14bfc60f4993f09197d8b3';
@@ -58,6 +58,9 @@ const settle = async (p) => { await p.waitForLoadState('networkidle', { timeout:
           check(`[${label}] input disabled while no approved model`, await page.locator('#as-q').isDisabled());
           check(`[${label}] model status panel with Persian states`, await page.locator('[data-testid=as-models]').count() === 1 && body.includes('ردشده در آزمون کیفیت') && body.includes('تأیید لغو شد'));
           check(`[${label}] feature line: translation and assistant disabled`, body.includes('ترجمه: غیرفعال') && body.includes('دستیار: غیرفعال'));
+          const chips = await page.evaluate(() => [...document.querySelectorAll('button.btn-ghost')].map((b) => b.innerText.trim()).filter((t) => t.endsWith('؟') || t.startsWith('اخبار مرتبط')));
+          check(`[${label}] suggestion chips are v1.3 in-contract questions`, chips.length >= 4 && chips.some((t) => t.includes('F/A-XX')) &&
+            !chips.some((t) => /مهم‌ترین|آینده|چرا|۲۴ ساعت/.test(t)), chips);
           if (SESSION) {
             const links = page.locator('.as-msg-assistant .as-evidence-title');
             const n = await links.count();

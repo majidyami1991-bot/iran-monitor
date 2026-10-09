@@ -267,7 +267,7 @@ import local_ai
 import model_identity as mi
 import retrieval
 
-V13_APPROVAL = next(a for a in mi.load_contract()['approvals'] if a['id'] == 'assistant_extractive_v1.3-qwen3-8b-500a1f067a9f')
+V13_APPROVAL = next(a for a in mi.load_contract()['approvals'] if a['id'] == 'assistant_extractive_v1.3.1-qwen3-8b-500a1f067a9f')
 
 
 def _wire(monkeypatch, records, approval=V13_APPROVAL):
@@ -311,8 +311,80 @@ def test_api_path_ambiguous_refusal_skips_model(monkeypatch):
 
 def test_v13_contract_is_pending_human_review_not_active():
     c = mi.load_contract()
-    assert mi.approval_state(c)[V13_APPROVAL['id']] == 'pending_human_review'
+    st = mi.approval_state(c)
+    assert st[V13_APPROVAL['id']] in ('proposed', 'pending_human_review')
+    assert st['assistant_extractive_v1.3-qwen3-8b-500a1f067a9f'] == 'superseded'
+    # the contract binds exactly the versions the code runs (no silent drift)
+    assert V13_APPROVAL['validator_version'] == v13.VALIDATOR_VERSION
+    assert V13_APPROVAL['lexicon_version'] == ar.LEXICON_VERSION
+    assert V13_APPROVAL['relevance_version'] == ar.RELEVANCE_VERSION
+    assert v13.PROMPT_VERSION in V13_APPROVAL['prompt_versions']
     # under evaluation: admitted only for an offline gate run, never served
     assert mi.active_approval(c, allow_proposed=V13_APPROVAL['id'], role='assistant_extractive')['id'] == V13_APPROVAL['id']
     assert mi.active_approval(c, role='assistant_extractive') is None
     assert asst._is_v13(V13_APPROVAL) and not asst._is_v13(next(a for a in c['approvals'] if a['id'].startswith('assistant_extractive_v1.2')))
+
+
+# ---- UI suggestions must be in contract (the chips on /assistant)
+import pathlib
+import re as _re
+
+try:  # the gate harness imports this module for its fixtures and has no pytest
+    import pytest
+except ImportError:  # pragma: no cover
+    pytest = None
+
+_HERE = pathlib.Path(__file__).resolve()
+_TSX = (_HERE.parents[2] if len(_HERE.parents) > 2 else _HERE.parent) / 'apps' / 'web-next' / 'app' / 'assistant' / 'Assistant.tsx'
+
+
+def ui_suggestions():
+    src = _TSX.read_text(encoding='utf-8')
+    block = src[src.index('const SUGGESTIONS = ['):]
+    block = block[:block.index('];')]
+    chips = _re.findall(r"'([^']+)'", block)
+    ph = _re.search(r'placeholder="مثلاً: ([^"]+)"', src).group(1)
+    return chips, ph
+
+
+def test_ui_suggestions_are_in_contract_and_cover_intents():
+    if not _TSX.exists():
+        pytest.skip('web sources not in this image')
+    chips, ph = ui_suggestions()
+    intents = set()
+    for q in chips + [ph]:
+        p = ar.analyse(q)
+        assert ar.precheck(p) is None, (q, ar.precheck(p), p.unresolved)
+        intents.add(p.intent)
+    assert {'common_coverage', 'compare', 'event_evidence', 'entity_lookup'} <= intents
+    assert not any(w in ' '.join(chips) for w in ('مهم‌ترین', 'آینده', 'چرا', '۲۴ ساعت'))
+
+
+# ---- phase 5: quote quality and completeness
+PAC3 = [R('a', 'Boeing nabs potential $14.7 billion PAC-3 seeker contract',
+          'The award was issued as an undefinitized contract by PAC-3 prime contractor Lockheed Martin.', 'Breaking Defense',
+          '2026-10-05T20:21:00+00:00', 'ev-p'),
+        R('b', 'Boeing wins $14.7 billion contract to triple Patriot PAC-3 MSE seeker output',
+          'Boeing has won a $14.7 billion contract for PAC-3 MSE seekers.', 'Defence Industry Europe', '2026-10-05T20:30:00+00:00', 'ev-p')]
+
+
+def test_side_detail_quote_replaced_by_title_naming_all_entities():
+    ad = Fake(lambda ids, t: [{'evidence_id': 'E1', 'quote': 'The award was issued as an undefinitized contract by PAC-3 prime contractor Lockheed Martin.'},
+                              {'evidence_id': 'E2', 'quote': 'Boeing has won a $14.7 billion contract for PAC-3 MSE seekers.'}])
+    out, problems, _ = run('تفاوت روایت منابع درباره قرارداد PAC-3 بوئینگ چیست؟', PAC3, ad)
+    assert out['kind'] == 'answer' and 'core_quote_title:E1' in problems
+    assert '«Boeing nabs potential $14.7 billion PAC-3 seeker contract»' in out['answer'] and 'undefinitized' not in out['answer']
+    assert '«Boeing has won a $14.7 billion contract for PAC-3 MSE seekers.»' in out['answer']
+
+
+def test_event_evidence_from_verified_group_shows_every_member():
+    one = Fake(lambda ids, t: [{'evidence_id': 'E3', 'quote': 'A US F-16 crashed in Michigan after a suspected bird strike, officials said.'}])
+    out, problems, _ = run('درباره سقوط F-16 در میشیگان چه گزارش شده است؟', MICH, one)
+    assert out['kind'] == 'answer' and {c['record_id'] for c in out['citations']} == {'rec-a', 'rec-b', 'rec-c'}
+    assert sum(p.startswith('title_fallback') for p in problems) == 2
+
+
+def test_event_evidence_single_record_is_not_padded():
+    one = Fake(lambda ids, t: [{'evidence_id': 'E1', 'quote': 'An Air National Guard F-16 crashed in Michigan on Wednesday; the pilot ejected.'}])
+    out, problems, _ = run('درباره سقوط F-16 در میشیگان چه گزارش شده است؟', MICH[:1], one)
+    assert out['kind'] == 'answer' and len(out['citations']) == 1 and not any(p.startswith('title_fallback') for p in problems)

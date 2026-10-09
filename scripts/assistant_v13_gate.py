@@ -123,6 +123,8 @@ def decide(exp, out, records):
         checks['every_cited_record_mentions_entity'] = all(
             ar._BY_CANON[exp[1]].found((by_rid.get(c['record_id']) or {}).get('title', '') + ' ' + (by_rid.get(c['record_id']) or {}).get('excerpt', ''))
             for c in cited)
+    elif exp[0] == 'answer_any':
+        checks['answered'] = kind == 'answer' and len(cited) >= 1
     elif exp[0] == 'answer_overview':
         checks['answered'] = kind == 'answer' and len(cited) >= 4
     ok = all(checks.values())
@@ -132,7 +134,7 @@ def decide(exp, out, records):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--approval', required=True)
-    ap.add_argument('--suite', choices=['synthetic', 'real'], required=True)
+    ap.add_argument('--suite', choices=['synthetic', 'real', 'suggestions'], required=True)
     ap.add_argument('--out', required=True)
     a = ap.parse_args()
     appr = mi.active_approval(mi.load_contract(), allow_proposed=a.approval, role='assistant_extractive')
@@ -147,10 +149,26 @@ def main():
     ad.predict_override = rt['assistant_max_output_tokens']
     ad.post_check = lambda: mi.check_loaded(appr, base)
 
+    import hashlib
+    code = {m.__name__: {'file': m.__file__, 'sha256': hashlib.sha256(open(m.__file__, 'rb').read()).hexdigest()}
+            for m in (v13, ar, asst, retrieval, mi, sys.modules['assistant_extractive'])}
+    code['contract'] = {'file': str(mi.CONTRACT_PATH), 'sha256': hashlib.sha256(open(mi.CONTRACT_PATH, 'rb').read()).hexdigest()}
+    assert all(c['file'].startswith('/src/') for c in code.values()), code  # the mounted working tree, not the image copy
     rep = {'approval': appr['id'], 'fingerprint': facts['fingerprint'], 'suite': a.suite, 'prompt_version': v13.PROMPT_VERSION,
+           'code': code,
            'validator_version': v13.VALIDATOR_VERSION, 'lexicon_version': ar.LEXICON_VERSION,
            'relevance_version': ar.RELEVANCE_VERSION, 'started': time.strftime('%Y-%m-%dT%H:%M:%S%z'), 'items': []}
-    items = SYNTHETIC if a.suite == 'synthetic' else [(c, q, None, e) for c, q, e in REAL]
+    if a.suite == 'synthetic':
+        items = SYNTHETIC
+    elif a.suite == 'real':
+        items = [(c, q, None, e) for c, q, e in REAL]
+    else:  # the chips and placeholder shown on /assistant (mounted read-only at /ui)
+        import re
+        src = open('/ui/Assistant.tsx', encoding='utf-8').read()
+        block = src[src.index('const SUGGESTIONS = ['):]
+        chips = re.findall(r"'([^']+)'", block[:block.index('];')])
+        chips.append(re.search(r'placeholder="مثلاً: ([^"]+)"', src).group(1))
+        items = [(f'U{i:02d}_ui_suggestion', q, None, ('answer_any',)) for i, q in enumerate(chips, 1)]
     for case, q, recs, exp in items:
         plan = ar.analyse(q)
         if recs is None:
@@ -179,6 +197,10 @@ def main():
             'primary_events': trace.get('primary_events'), 'excluded_unverified': trace.get('excluded_unverified'),
             'duplicates_same_source': trace.get('duplicates_same_source'),
             'records_for_model': trace.get('records_for_model'), 'model_called': calls['n'] > 0,
+            'records_given': [{'evidence_id': r['evidence_id'], 'record_id': r['record_id'], 'event_id': r.get('event_id'),
+                               'source': r['source_name'], 'published_at': r.get('published_at'), 'url': r.get('canonical_url'),
+                               'title': r['title'], 'excerpt': r['excerpt']} for r in out.get('records') or []],
+            'relevance': [{k: v for k, v in x.items()} for x in trace.get('relevance') or []],
             'raw_model_output': getattr(resp, 'raw_text', None), 'problems': problems, 'error': err,
             'selected_evidence': [{'evidence_id': f['evidence_id'], 'record_id': (rec_by_eid.get(f['evidence_id']) or {}).get('record_id'),
                                    'event_id': (rec_by_eid.get(f['evidence_id']) or {}).get('event_id'),
