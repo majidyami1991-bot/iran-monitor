@@ -56,7 +56,9 @@ def active_approval(contract, allow_proposed=None, role=None):
     state = approval_state(contract)
     by_id = {a['id']: a for a in contract['approvals']
              if role is None or role_of(a) in (role, 'both')}
-    if allow_proposed and allow_proposed in by_id and state.get(allow_proposed) == 'proposed':
+    # 'pending_human_review' = machine gate passed, human review outstanding:
+    # still an artifact under evaluation, never served.
+    if allow_proposed and allow_proposed in by_id and state.get(allow_proposed) in ('proposed', 'pending_human_review'):
         return by_id[allow_proposed]
     approved = [e['approval'] for e in contract['events'] if e['event'] == 'approved'
                 and e['approval'] in by_id and state.get(e['approval']) == 'approved']
@@ -68,7 +70,7 @@ def fingerprint(approval):
     core = {k: approval.get(k) for k in ('id', 'tag', 'ollama_version', 'runner', 'manifest_digest',
                                           'model_blob_sha256', 'mmproj_blob_sha256', 'runtime', 'prompt_versions')}
     # Role-specific contracts also bind the glossary and validator versions.
-    for k in ('role', 'glossary_version', 'validator_version'):
+    for k in ('role', 'glossary_version', 'validator_version', 'lexicon_version', 'relevance_version'):
         if approval.get(k) is not None:
             core[k] = approval[k]
     return hashlib.sha256(json.dumps(core, sort_keys=True).encode()).hexdigest()

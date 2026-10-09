@@ -142,6 +142,79 @@ def _excerpt(r, use_translations=True):
     return title.strip(), text, lang
 
 
+V13_SQL = '''
+SELECT 'news' AS type, n.item_id AS record_id, n.title, COALESCE(NULLIF(btrim(n.summary_text), ''), n.summary) AS summary,
+  n.canonical_url, COALESCE(n.published_at, n.fetched_at, n.collected_at) AS published_at,
+  COALESCE(NULLIF(s.display_name, ''), s.hostname) AS source_name, n.source_id, ev.event_id
+FROM news_items n
+JOIN sources s ON s.source_id = n.source_id
+LEFT JOIN LATERAL (SELECT em.event_id FROM news_event_members em JOIN news_events e USING (event_id)
+  WHERE em.item_id = n.item_id AND NOT em.manually_removed ORDER BY e.source_count DESC, e.event_id LIMIT 1) ev ON TRUE
+WHERE COALESCE(n.published_at, n.fetched_at, n.collected_at) >= %(since)s
+'''
+
+
+def _literal_hints(anchor):
+    """Plain substrings for a coarse SQL prefilter (ILIKE). None when any
+    pattern of the anchor has no literal of ≥ 3 characters: the anchor is then
+    checked only by the exact Python regex (never a false negative)."""
+    import assistant_relevance as ar
+    if anchor.kind in ('code',):
+        c = anchor.canonical
+        return sorted({c, c.replace('-', ''), c.replace('-', ' ')})
+    entry = next((e for e in ar.ENTITIES if e[0] == anchor.canonical), None)
+    if entry is None:
+        return [anchor.canonical] if len(anchor.canonical) >= 3 else None
+    hints = []
+    for p in entry[3]:
+        lit = re.match(r'[A-Za-z0-9 /\-]+', p.replace('\\.', '.').replace('\\-', '-').replace('(?:', '').replace('(?i:', ''))
+        if not lit or len(lit.group(0).strip()) < 3:
+            return None
+        hints.append(lit.group(0).strip())
+    return hints
+
+
+def search_v13(dsn, plan, *, now=None, limit=200):
+    """Candidate records for the v1.3 extractive assistant: original text
+    only (stored machine translations are never evidence), no dedup by event
+    (the relevance gate and same-event verifier decide), dedup by URL only.
+    Read-only; every value is a bound parameter."""
+    now = now or datetime.now(timezone.utc)
+    since = plan.since or datetime(2000, 1, 1, tzinfo=timezone.utc)
+    args, where = {'since': since, 'lim': limit}, []
+    if plan.intent == 'specific_record':
+        where.append('(' + ' OR '.join(f'n.item_id LIKE %(rid{i})s' for i in range(len(plan.record_ids))) + ')')
+        args.update({f'rid{i}': rid + '%' for i, rid in enumerate(plan.record_ids)})
+    elif not plan.anchors and not plan.event_types:
+        where.append('''n.item_id IN (SELECT em.item_id FROM news_event_members em JOIN news_events e USING (event_id)
+            WHERE e.source_count >= 2 AND NOT em.manually_removed)''')
+    else:
+        for i, a in enumerate(plan.anchors):
+            hints = _literal_hints(a)
+            if hints:
+                where.append(f"(n.title || ' ' || COALESCE(n.summary_text, n.summary, '')) ILIKE ANY(%(h{i})s)")
+                args[f'h{i}'] = [_like(h) for h in hints]
+    sql = V13_SQL + ''.join(' AND ' + w for w in where) + ' ORDER BY published_at DESC NULLS LAST, record_id LIMIT %(lim)s'
+    with psycopg.connect(dsn, row_factory=dict_row) as c:
+        c.execute('SET TRANSACTION READ ONLY')
+        rows = c.execute(sql, args).fetchall()
+    records, seen = [], set()
+    for r in rows:
+        url = (r['canonical_url'] or '').rstrip('/').lower()
+        if url and url in seen:
+            continue
+        seen.add(url)
+        title, text, _ = _excerpt({**r, 'title_fa': None, 'summary_fa': None}, use_translations=False)
+        records.append({
+            'evidence_id': f'R{len(records) + 1}', 'type': 'news', 'record_id': r['record_id'], 'title': title,
+            'title_original': r['title'], 'excerpt': text, 'excerpt_language': 'original',
+            'source_name': r['source_name'], 'source_id': r['source_id'],
+            'published_at': r['published_at'].isoformat() if r['published_at'] else None,
+            'canonical_url': r['canonical_url'], 'event_id': r['event_id'], 'internal_url': f"/news/{r['record_id']}"})
+    return {'records': records, 'mode': 'anchored_v13', 'window': plan.window or 'all', 'since': since.isoformat(),
+            'context_chars': sum(len(r['title']) + len(r['excerpt']) for r in records)}
+
+
 def search(dsn, question, *, window=None, source_id=None, topic=None, content_type='all', taxonomy_version='3.0.0',
            now=None, use_cache=True, use_translations=True):
     """Returns {'records': [...], 'mode': 'keyword'|'recent', 'tokens': [...], 'window': label, 'context_chars': n}."""

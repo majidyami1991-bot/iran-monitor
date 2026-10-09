@@ -313,6 +313,50 @@
       "validator_version": "extractive-validator-v1.2.0",
       "mode": "extractive: model selects verbatim quotes; code composes the Persian answer",
       "evidence_policy": "original-language text only; stored machine translations are never evidence"
+    },
+    {
+      "tag": "qwen3:8b",
+      "ollama_version": "0.40.1",
+      "runner": "llamacpp",
+      "runner_process": "llama-server.exe",
+      "manifest_digest": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
+      "tag_entry_digests": [
+        "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41"
+      ],
+      "model_blob_sha256": "a3de86cd1c132c822487ededd47a324c50491393e6565cd14bafa40d0b8e686f",
+      "mmproj_blob_sha256": null,
+      "source": "ollama registry pull 2026-10-08 (owner-authorised, once)",
+      "license": "Apache-2.0",
+      "id": "assistant_extractive_v1.3-qwen3-8b-500a1f067a9f",
+      "role": "assistant_extractive",
+      "contract": "ASSISTANT_EXTRACTIVE_V13_CONTRACT",
+      "runtime": {
+        "temperature": 0.0,
+        "seed": 42,
+        "num_ctx": 4096,
+        "num_thread": 8,
+        "think": false,
+        "assistant_max_output_tokens": 384,
+        "concurrency": 1,
+        "output": "json_schema_fact_table"
+      },
+      "prompt_versions": [
+        "assistant-extractive-fa-v1.3.0"
+      ],
+      "glossary_version": null,
+      "validator_version": "extractive-validator-v1.3.0",
+      "mode": "extractive v1.3: deterministic intent, anchored retrieval, relevance gate and same-event verification before the model; model selects verbatim quotes; code composes",
+      "evidence_policy": "original-language text only; stored machine translations are never evidence",
+      "lexicon_version": "assistant-lexicon-fa-en-v1.0.0",
+      "relevance_version": "relevance-gate-v1.0.0",
+      "allowed_intents": [
+        "specific_record",
+        "entity_lookup",
+        "event_evidence",
+        "common_coverage",
+        "compare"
+      ],
+      "refusal_sentence": "در اخبار موجود، شواهد کافی و قابل اتکایی برای پاسخ به این پرسش یافت نشد."
     }
   ],
   "events": [
@@ -469,6 +513,20 @@
       "event": "revoked",
       "by": "real_question_review",
       "note": "5 controlled real questions: 7/7 citations valid against the DB, no fabricated fact; but 2/5 answers fail human review on relevance (Q3 'common event' quoted three unrelated records; Q4 'narrative difference' quoted one source plus an unrelated record). Q1/Q2/Q5 correctly declined. Assistant stays disabled."
+    },
+    {
+      "at": "2026-10-09",
+      "approval": "assistant_extractive_v1.3-qwen3-8b-500a1f067a9f",
+      "event": "proposed",
+      "by": "owner",
+      "note": "Phase 4: v1.3 contract (relevance gate, same-event verification, intent contract, new refusal sentence). Same qwen3:8b artifact, no download. Not served until a gate and human review approve it."
+    },
+    {
+      "at": "2026-10-09",
+      "approval": "assistant_extractive_v1.3-qwen3-8b-500a1f067a9f",
+      "event": "pending_human_review",
+      "by": "quality_gate",
+      "note": "Machine gate v1.3 on the final code: synthetic 14/14, real-DB 19/19 (read-only), 36/36 quotes verified verbatim against original DB text, 0 fabricated quotes, 0 irrelevant records accepted. AI pre-review (Claude) found no critical error. Human review of every answer outstanding: not approved, not served."
     }
   ]
 }

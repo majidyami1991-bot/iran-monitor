@@ -275,10 +275,104 @@ def _answer_extractive(job, s, adapter, records, base, started, cache_key):
     return job.set('done', result=payload)
 
 
+def _is_v13(approval):
+    import assistant_v13 as v13
+    import model_identity as mi
+    return bool(approval) and mi.role_of(approval) == 'assistant_extractive' and \
+        v13.PROMPT_VERSION in (approval.get('prompt_versions') or [])
+
+
+class _NoModel:
+    """Adapter for v1.3 paths that must never reach the model (refusals,
+    coverage overview); any call is a bug and fails loudly."""
+    def stream_complete(self, *a, **k):
+        raise RuntimeError('model_not_expected')
+
+
+def _answer_v13(job, s, adapter, started):
+    """Contract v1.3: deterministic question analysis, read-only anchored
+    retrieval of original text, relevance gate and same-event verification
+    before the model; the model only selects verbatim sentences from records
+    that passed; code validates and composes. Refusals never call the model."""
+    import assistant_relevance as ar
+    import assistant_v13 as v13
+    import model_identity as mi
+    job.set('retrieving')
+    plan = ar.analyse(job.question)
+    pre = ar.precheck(plan)
+    found = {'records': [], 'mode': 'anchored_v13', 'window': plan.window or 'all', 'context_chars': 0}
+    if not pre:
+        found = retrieval.search_v13(DSN, plan)
+    candidates = found['records']
+    base = {'model': s.model, 'provider': 'ollama/local', 'prompt_version': v13.PROMPT_VERSION,
+            'validator_version': v13.VALIDATOR_VERSION, 'lexicon_version': ar.LEXICON_VERSION,
+            'relevance_version': ar.RELEVANCE_VERSION, 'approval_id': s.approval['id'], 'mode': 'extractive_v13',
+            'retrieval_mode': found['mode'], 'window': found['window'], 'context_record_count': len(candidates),
+            'context_chars': found['context_chars'], 'cost_usd': 0, 'cache_hit': False, 'follow_up_suggestions': []}
+    overview = plan.intent == 'common_coverage' and not plan.anchors and not plan.event_types
+    needs_model = not pre and not overview and v13.select(plan, candidates)[3] is None
+    if needs_model:
+        if s.errors:
+            return job.set('error', error='configuration_error')
+        if adapter is None:
+            adapter = gw.build_adapter(local_ai.gateway_config(s, TASK))
+            if not isinstance(adapter, gw.OllamaAdapter):
+                return job.set('error', error='provider_not_configured')
+        try:
+            local_ai.preflight(s, 'assistant')
+        except mi.IdentityError as exc:
+            return job.set('error', error=str(exc).split(':', 1)[0])
+        if isinstance(adapter, gw.OllamaAdapter) and adapter.post_check is None:
+            adapter.post_check = lambda: mi.check_loaded(s.approval, s.base_url)
+        adapter.predict_override = s.max_output_tokens
+    infer_ms, resp = 0, None
+    try:
+        if needs_model:
+            job.set('waiting_for_model')
+            with local_ai.inference_lock(DSN, wait_seconds=s.timeout_seconds, should_cancel=job.cancel.is_set):
+                job.set('generating')
+                t0 = time.monotonic()
+                out, problems, resp, trace = v13.run(adapter, job.question, candidates, neutralise, job.cancel.is_set, plan=plan)
+                infer_ms = int((time.monotonic() - t0) * 1000)
+        else:
+            out, problems, resp, trace = v13.run(_NoModel(), job.question, candidates, neutralise, plan=plan)
+    except local_ai.Busy as exc:
+        return job.set('cancelled' if str(exc) == 'cancelled' else 'error', error=str(exc))
+    except gw.GatewayError as exc:
+        reason = str(exc).split(':', 1)[0]
+        _log(gw.GatewayResult('error', None, 'ollama/local', s.model, v13.PROMPT_VERSION, TASK, '', error=reason,
+                              latency_ms=int((time.monotonic() - started) * 1000)))
+        return job.set('cancelled' if reason == 'cancelled' else 'error', error=reason)
+    if resp is not None:
+        _log(gw.GatewayResult('available' if out['kind'] == 'answer' else 'invalid_response', None, 'ollama/local', s.model,
+                              v13.PROMPT_VERSION, TASK, gw.content_hash(TASK, job.question, v13.PROMPT_VERSION),
+                              latency_ms=infer_ms, tokens_in=resp.tokens_in, tokens_out=resp.tokens_out, estimated_cost_usd=0,
+                              error=';'.join(problems)[:200] or None, response_model=resp.response_model, reported_cost_usd=0))
+    limitations = ['پاسخ فقط از نقل‌قول عین متن اصلی اسناد بازیابی‌شده ساخته شده است؛ تحلیل یا جمع‌بندی مدل در آن نیست.']
+    if out.get('refusal_reason_fa'):
+        limitations.insert(0, out['refusal_reason_fa'])
+    payload = {**base, 'answer': out['answer'], 'kind': out['kind'], 'refusal_reason': out.get('refusal_reason'),
+               'confidence': 'medium' if out['kind'] == 'answer' else 'low', 'citations': out['citations'],
+               'facts': out['facts'], 'extraction_problems': problems, 'limitations': limitations,
+               'excluded_unverified': out.get('excluded_unverified') or [],
+               'relevance_trace': {k: trace.get(k) for k in ('plan', 'candidates', 'relevant', 'distinct_events', 'primary_events',
+                                                            'verified_groups', 'records_for_model', 'excluded_unverified')},
+               'latency_ms': int((time.monotonic() - started) * 1000), 'inference_ms': infer_ms,
+               'tokens_in': getattr(resp, 'tokens_in', 0), 'tokens_out': getattr(resp, 'tokens_out', 0),
+               'evidence': list(out['citations'])}
+    _save_answer(job, payload)
+    LOG.info('assistant request=%s mode=extractive_v13 intent=%s kind=%s reason=%s candidates=%d cited=%d latency_ms=%d',
+             job.request_id, plan.intent, out['kind'], out.get('refusal_reason'), len(candidates), len(out['citations']),
+             payload['latency_ms'])
+    return job.set('done', result=payload)
+
+
 def answer(job, adapter=None):
     """Runs one job to completion. Separated from the thread for tests."""
     s = local_ai.load_settings(role=ASSISTANT_ROLE)
     started = time.monotonic()
+    if _is_v13(s.approval):
+        return _answer_v13(job, s, adapter, started)
     job.set('retrieving')
     f = job.filters
     import experience
