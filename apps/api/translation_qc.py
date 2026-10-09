@@ -36,7 +36,7 @@ import re
 
 import assistant_relevance as ar
 
-QC_VERSION = 'translation-qc-v1.0.1'  # v1.0.0 frozen at commit 9eec064, sha256 bfaa3c55…
+QC_VERSION = 'translation-qc-v1.0.2'  # v1.0.0 frozen at commit 9eec064, sha256 bfaa3c55…
 
 _FA_DIGITS = str.maketrans('۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩', '01234567890123456789')
 _FA_LETTERS = str.maketrans({'ي': 'ی', 'ك': 'ک', 'ة': 'ه', 'ۀ': 'ه'})
@@ -44,7 +44,7 @@ EN_WORDS = {'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'sev
             'eleven': 11, 'twelve': 12, 'twenty': 20, 'thirty': 30, 'hundred': 100, 'dozen': 12,
             'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5, 'sixth': 6, 'seventh': 7, 'eighth': 8, 'ninth': 9,
             'tenth': 10}
-FA_WORDS = {'یک': 1, 'دو': 2, 'سه': 3, 'چهار': 4, 'پنج': 5, 'شش': 6, 'هفت': 7, 'هشت': 8, 'نه': 9, 'ده': 10,
+FA_WORDS = {'یک': 1, 'دو': 2, 'سه': 3, 'چهار': 4, 'پنج': 5, 'شش': 6, 'هفت': 7, 'هشت': 8, 'ده': 10,  # v1.0.2: «نه» (no/neither) is not counted as 9
             'یازده': 11, 'دوازده': 12, 'بیست': 20, 'سی': 30, 'صد': 100, 'اول': 1, 'نخست': 1, 'دوم': 2, 'سوم': 3,
             'چهارم': 4, 'پنجم': 5, 'ششم': 6, 'هفتم': 7, 'هشتم': 8, 'نهم': 9, 'دهم': 10, 'سومین': 3, 'دومین': 2,
             'نخستین': 1, 'اولین': 1}
@@ -63,7 +63,7 @@ ROLES = [
     (r'\b(?:ceos?|chief executives?)\b', ['مدیرعامل', 'مدیر عامل', 'مدیر اجرایی']),
     (r'\b(?:spokes(?:man|men|woman|women|person|persons|people))\b', ['سخنگو']),
     (r'\bambassadors?\b', ['سفیر']),
-    (r'\bgenerals?\b', ['ژنرال']),
+    (r'(?<!secretary )(?<!secretary-)\bgenerals?\b', ['ژنرال']),  # v1.0.2: not "secretary general"
     (r'\bcommanders?\b', ['فرمانده']),
 ]
 # military echelons and ship types: English ↔ accepted Persian
@@ -72,7 +72,7 @@ ECHELON_FA = {'تیپ', 'گردان', 'لشکر', 'هنگ'}
 SHIPS = {'frigate': ['ناوچه', 'فریگیت', 'فرگات'], 'corvette': ['ناوچه', 'کوروت'], 'destroyer': ['ناوشکن'],
          'submarine': ['زیردریایی', 'زیر دریایی'], 'aircraft carrier': ['ناو هواپیمابر', 'هواپیمابر']}
 # nouns that signal invented context when the source has no equivalent
-SUSPICIOUS = [('ایستگاه', r'\bstation'), ('سازمان', r'\b(?:organi[sz]ations?|agenc(?:y|ies)|organs?)'), ('مدل', r'\b(?:model|type|variant)'),
+SUSPICIOUS = [('ایستگاه', r'\bstation'), ('سازمان', r'\b(?:organi[sz]ations?|agenc(?:y|ies)|organs?|nato|un|opec|osce|oecd|who|iaea)\b'), ('مدل', r'\b(?:model|type|variant)'),
               ('نسخه', r'\b(?:version|variant)'), ('وبگاه', r'\b(?:website|site)'), ('وب سایت', r'\b(?:website|site)'),
               ('ویکی پدیا', r'\bwikipedia'), ('سپاه', r'\b(?:corps|irgc|revolutionary guard)'),
               ('شبیه سازی', r'\bsimulat'), ('اعتصاب', r'\b(?:labou?r|union|workers|walkout|industrial action)')]
@@ -83,8 +83,13 @@ def _fa(text):
     return re.sub(r'\s+', ' ', t)
 
 
+# v1.0.2: Persian LETTERS only (U+0621-U+064A, U+0671-U+06D3); the Persian comma,
+# semicolon and question mark are not letters («دوم،» is the word «دوم»).
+_L = 'ء-يٱ-ۓ'
+
+
 def _has(fa_text, forms):
-    return any(re.search(r'(?<![؀-ۿ])' + re.escape(f) + r'(?:\S{0,4})?(?![؀-ۿ]{3})', fa_text) for f in forms)
+    return any(re.search(r'(?<![' + _L + r'])' + re.escape(f) + r'(?:\S{0,4})?(?![' + _L + r']{3})', fa_text) for f in forms)
 
 
 def _num_tokens(text, persian):
@@ -103,7 +108,7 @@ def _num_tokens(text, persian):
                 out.add(str(v))
     else:
         for w, v in FA_WORDS.items():
-            if re.search(r'(?<![؀-ۿ])' + w + r'(?![؀-ۿ])', t):
+            if re.search(r'(?<![' + _L + r'])' + w + r'(?![' + _L + r'])', t):
                 out.add(str(v))
     return out
 
@@ -169,7 +174,8 @@ QC_ALIASES = {'Kharkiv': ['خارکف', 'خرکف', 'خارکیو', 'خارکو�
               'Rheinmetall': ['راین متال', 'رینمتال'], 'Volodymyr Zelensky': ['زلینسکی'],
               # v1.0.1: "Kyiv" implies Ukraine and "naval" implies Navy in the English
               # patterns; their Persian renderings satisfy the 'missing' check.
-              'Ukraine': ['کی یف', 'کییف', 'کیف'], 'Navy': ['دریایی']}
+              'Ukraine': ['کی یف', 'کییف', 'کیف'], 'Navy': ['دریایی'],
+              'Russia': ['کرملین', 'مسکو']}  # v1.0.2
 
 
 def check_entities(src, out):

@@ -37,9 +37,14 @@ def main():
     ap.add_argument('--approval', required=True)
     ap.add_argument('--set', choices=['p8', 'p7'], required=True)
     ap.add_argument('--out', required=True)
+    ap.add_argument('--identity-only-baseline', action='store_true',
+                    help='read a non-proposed (e.g. rejected) entry for identity checks only; its state is not used or changed')
     a = ap.parse_args()
     contract = mi.load_contract()
-    appr = mi.active_approval(contract, allow_proposed=a.approval, role='translation')
+    if a.identity_only_baseline:
+        appr = next(x for x in contract['approvals'] if x['id'] == a.approval)
+    else:
+        appr = mi.active_approval(contract, allow_proposed=a.approval, role='translation')
     assert appr and appr['id'] == a.approval, 'approval must exist and be in state proposed (evaluation only)'
     base = local_ai.load_settings().base_url
     rt = appr['runtime']

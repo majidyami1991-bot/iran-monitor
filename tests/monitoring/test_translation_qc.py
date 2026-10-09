@@ -76,3 +76,22 @@ def test_v101_plural_ministers_not_role_added():
 def test_v101_kyiv_and_naval_not_missing():
     assert not any(f.startswith('entity_missing') for f in flags('The Kyiv Independent reported it.', 'کی‌یف ایندپندنت آن را گزارش داد.'))
     assert not any(f.startswith('entity_missing') for f in flags('They attacked a naval base.', 'آن‌ها به یک پایگاه دریایی حمله کردند.'))
+
+
+# v1.0.2 fixes (found while calibrating the automated gate on 12B phase-8 output, before 27B existed)
+def test_v102_persian_comma_is_not_a_letter():
+    assert not any(f.startswith('number_missing') for f in flags('No casualties were reported in the second attack.', 'در حمله دوم، هیچ تلفاتی گزارش نشد.'))
+
+
+def test_v102_neither_nor_is_not_nine():
+    assert not any(f.startswith('number_added') for f in flags('The ministry neither confirmed nor denied the report.',
+                                                               'وزارتخانه نه این گزارش را تأیید کرد و نه آن را رد کرد.'))
+
+
+def test_v102_secretary_general_is_not_general_and_nato_is_an_organisation():
+    f = flags('Mark Rutte, NATO secretary general, arrived.', 'مارک روته، دبیرکل سازمان ناتو، وارد شد.')
+    assert not any(x.startswith(('role_missing', 'unsupported_word')) for x in f), f
+
+
+def test_v102_kremlin_satisfies_russia():
+    assert not any(f.startswith('entity_missing') for f in flags('Moscow alleged it.', 'کرملین چنین ادعا کرد.'))
