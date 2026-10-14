@@ -8,6 +8,7 @@ import type { FeedResponse } from '../design/types';
 import { fmt, qs } from '../design/format';
 import { CardBones, Empty, Failure, PageHead, Pager, Segmented } from '../design/ui';
 import { NewsCard } from '../components/NewsCard';
+import { useAiState } from '../design/aiState';
 
 interface Topics { categories: { id: string; label: string; count: number; subtopics: { id: string; label: string; count: number }[] }[] }
 interface Sources { sources: { source_id: string; name: string; item_count: number }[] }
@@ -44,11 +45,12 @@ export function NewsStream() {
   const q = useApi<FeedResponse>('feed' + apiQs, [apiQs]);
   // Persian appears without a manual refresh: re-fetch every 60 s while an item on this page awaits translation.
   const awaiting = (q.data?.items ?? []).some((it) => ['translation_pending', 'processing', 'pending'].includes(it.title_fa_status));
+  const ai = useAiState();
   useEffect(() => {
-    if (!awaiting) return;
+    if (!awaiting || ai.off !== false) return;   // nothing will arrive while local AI is disabled
     const t = setInterval(q.reload, 60000);
     return () => clearInterval(t);
-  }, [awaiting, q.reload]);
+  }, [awaiting, q.reload, ai.off]);
   const topics = useApi<Topics>('topics?window=all');
   const sources = useApi<Sources>('source-profiles');
 

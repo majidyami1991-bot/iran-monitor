@@ -57,6 +57,8 @@ services:
       # Lab mode: artifacts the owner 'lab_activated' (not quality-approved) are
       # servable here, always labelled "not human-verified". Never set on 3001.
       LOCAL_AI_LAB_MODE: "true"
+      # operator switch (see docs/LOCAL AI DISABLE AND SERVER MIGRATION RUNBOOK.md): when set, Ollama is never contacted
+      LOCAL_AI_DISABLED_REASON: ${LOCAL_AI_DISABLED_REASON:-}
       # item_classifications is owned by the one-way sync (mirrors Production);
       # no hidden whole-corpus reclassification on API start.
       CLASSIFICATION_STARTUP_BACKFILL: "false"
@@ -103,6 +105,8 @@ services:
       AI_PROVIDER: disabled
       LOCAL_AI_PROVIDER: ollama
       LOCAL_AI_LAB_MODE: "true"
+      # operator switch (see docs/LOCAL AI DISABLE AND SERVER MIGRATION RUNBOOK.md): when set, Ollama is never contacted
+      LOCAL_AI_DISABLED_REASON: ${LOCAL_AI_DISABLED_REASON:-}
       LOCAL_AI_ATTESTATION: /attest/attestation.json
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       LOCAL_AI_NUM_CTX: "4096"

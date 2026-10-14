@@ -16,6 +16,28 @@ from assistant import register_assistant
 register_assistant(app)
 from lab_ops import register_lab_ops
 register_lab_ops(app)
+import local_ai as _local_ai
+from fastapi import Request as _Request
+from fastapi.responses import JSONResponse as _JSONResponse
+_AI_POST = re.compile(r'^/api/v1/(assistant/query|news/[^/]+/translation/request|social/posts/[^/]+/(ai|translation/enqueue)|social/translations/run-batch)$')
+
+
+@app.middleware('http')
+async def _local_ai_switch(request: _Request, call_next):
+    """While LOCAL_AI_DISABLED_REASON is set every AI-triggering request is refused
+    with 503 here, before any handler runs (no queue row, no model call)."""
+    if request.method == 'POST' and _AI_POST.match(request.url.path):
+        off = _local_ai.disabled_state()
+        if off:
+            return _JSONResponse({'detail': off}, status_code=503)
+    return await call_next(request)
+
+
+@app.get('/api/v1/local-ai/state')
+def local_ai_state():
+    off = _local_ai.disabled_state()
+    return {'state': off['state'] if off else 'enabled', 'message_fa': off and off['message_fa'],
+            'translation_enabled': not off, 'assistant_enabled': not off, 'ollama_contacted': False}
 def q(sql,args=()):
  with psycopg.connect(DSN) as c:
   with c.cursor() as cur:

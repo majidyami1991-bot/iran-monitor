@@ -445,6 +445,19 @@ def strip_json_fence(text):
     return m.group(1).strip() if m else (text or '').strip()
 
 
+LOCAL_AI_DISABLED_STATES = ('disabled_by_operator', 'temporarily_disabled_for_server_migration')
+LOCAL_AI_DISABLED_FA = 'قابلیت هوش مصنوعی محلی برای کاهش مصرف منابع و آماده‌سازی انتقال به سرور، موقتاً غیرفعال است.'
+
+
+def local_ai_disabled_reason():
+    """Operator switch LOCAL_AI_DISABLED_REASON. When set, nothing in this process may
+    contact Ollama. Any unknown non-empty value counts as disabled_by_operator."""
+    v = (os.getenv('LOCAL_AI_DISABLED_REASON') or '').strip().lower()
+    if not v or v in ('0', 'false', 'no', 'none'):
+        return None
+    return v if v in LOCAL_AI_DISABLED_STATES else 'disabled_by_operator'
+
+
 class OllamaAdapter(Adapter):
     """Ollama's native /api/chat on this machine only (CPU inference).
 
@@ -458,6 +471,8 @@ class OllamaAdapter(Adapter):
     def __init__(self, base_url, model, timeout, *, expected_digest=None, num_ctx=4096, num_thread=None,
                  temperature=0.1, keep_alive='5m', max_predict=1536, seed=None):
         from urllib.parse import urlsplit
+        if local_ai_disabled_reason():
+            raise GatewayError('local_ai_disabled')
         parts = urlsplit(base_url or '')
         if parts.scheme != 'http' or (parts.hostname or '') not in OLLAMA_LOCAL_HOSTS:
             raise GatewayError('ollama_host_not_local')

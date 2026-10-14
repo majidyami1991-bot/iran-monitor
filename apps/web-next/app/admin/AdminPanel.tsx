@@ -15,6 +15,7 @@ interface Ops {
   sync: { runs: { run_id: string; mode: string; status: string; finished_at: string | null; counts: Record<string, unknown> | null; note: string | null }[];
     last_success: string | null; last_success_age_min: number | null; failures_24h: number | null;
     scheduler: 'unknown' | 'seen' | 'empty'; scheduler_log: { ts: string; event: string; status?: string; reason?: string; inserted_items?: number }[] | null };
+  ai?: { state: string; message_fa: string | null };
   translation: { worker: { state: string; version: string; beat_at: string; detail: Record<string, unknown> } | null; heartbeat_age_min: number | null;
     by_field: Record<string, Record<string, number>>; queue_fields: number; latency_24h: { avg_ms: number | null; calls: number } | null; pipeline: string;
     queue_fresh_items: number | null; queue_archive_items: number | null; items_not_yet_queued: number | null; fields_last_hour: number;
@@ -94,6 +95,7 @@ export function AdminPanel() {
 
           <section className="panel" aria-labelledby="tr-h">
             <div className="panel-title"><h3 id="tr-h">صف و کیفیت ترجمه</h3><Tag tone="ai">TranslateGemma 27B · بدون Placeholder</Tag></div>
+            {d.ai && d.ai.state !== 'enabled' && <p className="note" role="status" data-testid="admin-ai-off">{d.ai.message_fa} (<bdi dir="ltr">{d.ai.state}</bdi>) — ترجمه و دستیار متوقف‌اند؛ داده‌های ذخیره‌شده فقط‌خواندنی نمایش داده می‌شوند.</p>}
             <dl className="kv">
               <Row k="وضعیت سرویس ترجمه" v={d.translation.worker && `${d.translation.worker.state} · آخرین گزارش ${fmtRelative(d.translation.worker.beat_at, now)}`} />
               <Row k="نسخه" v={d.translation.worker?.version} />

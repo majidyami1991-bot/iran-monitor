@@ -161,6 +161,8 @@ _PROBE = {'at': 0.0, 'value': (False, False, None)}
 
 def probe(s, timeout=2, ttl=30.0):
     """(reachable, model_found, digest12) via /api/tags only; cached ttl s."""
+    if gw.local_ai_disabled_reason():
+        return (False, False, None)                     # operator switch: no request to Ollama
     now = time.monotonic()
     if now - _PROBE['at'] <= ttl:
         return _PROBE['value']
@@ -190,11 +192,19 @@ def lock_held(conn, key):
     return r['n'] > 0
 
 
+def disabled_state():
+    """None, or {'state', 'message_fa'} while the operator switch is set."""
+    r = gw.local_ai_disabled_reason()
+    return {'state': r, 'message_fa': gw.LOCAL_AI_DISABLED_FA} if r else None
+
+
 def make_room_for(tag, base_url, timeout=60):
     """Unload every OTHER model resident in Ollama before `tag` is used. Called while
     holding INFERENCE_LOCK, so no other call is running. Keeps the 27B translator and
     the qwen3 assistant from being resident together (host commit memory is limited:
     co-residency evicted/reloaded models and once ended in provider_unreachable)."""
+    if gw.local_ai_disabled_reason():
+        return []
     import json as _json
     from urllib.request import ProxyHandler as _P, Request as _R, build_opener as _b
     op = _b(_P({}))

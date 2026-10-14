@@ -14,6 +14,7 @@ from pathlib import Path
 import psycopg
 from psycopg.rows import dict_row
 
+import local_ai
 import model_identity as mi
 
 DSN = os.environ.get('DATABASE_URL', '')
@@ -147,6 +148,9 @@ def status():
     serv = [{'id': a['id'], 'role': mi.role_of(a), 'tag': a['tag'], 'state': state.get(a['id'])} for a in contract['approvals']
             if state.get(a['id']) in mi.servable_states()]
     out['models'] = {'servable': serv, 'lab_mode': mi.lab_mode()}
+    off = local_ai.disabled_state()
+    out['ai'] = {'state': off['state'] if off else 'enabled', 'message_fa': off and off['message_fa'],
+                 'contracts_kept': True, 'note': 'Ollama is not contacted while disabled; stored translations and conversations stay readable'}
     out['assistant'] = {**(asst or {}), 'approval': next((m for m in serv if m['role'] == 'assistant_extractive'), None)}
     bk = _tail(OPS_DIR / 'backups' / 'manifest.jsonl', 3)
     out['backup'] = {'status': 'unknown', 'reason': 'no backup manifest mounted'} if bk is None else {'status': 'seen' if bk else 'empty', 'last': bk}
@@ -189,6 +193,8 @@ def register_lab_ops(app):
         origin = request.headers.get('x-im-origin') or ''   # set by the web proxy from the browser's own Origin
         if origin not in ALLOWED_ORIGINS:
             raise HTTPException(403, 'origin_not_allowed')
+        if local_ai.disabled_state():
+            raise HTTPException(503, local_ai.disabled_state())
         with psycopg.connect(DSN) as c:
             if not c.execute('SELECT 1 FROM news_items WHERE item_id=%s', (item_id,)).fetchone():
                 raise HTTPException(404, 'not_found')

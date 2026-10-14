@@ -96,6 +96,9 @@ def fingerprint(approval):
 
 
 def _get(base, path, timeout):
+    import ai_gateway
+    if ai_gateway.local_ai_disabled_reason():
+        raise IdentityError('identity_local_ai_disabled')   # operator switch: no request to Ollama
     # One retry for a transient connection error (technical, not identity);
     # a second failure propagates and the caller fails closed.
     for attempt in (1, 2):

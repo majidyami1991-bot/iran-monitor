@@ -7,6 +7,7 @@ import { useApi, useNow } from '../../design/useApi';
 import type { FeedItem } from '../../design/types';
 import { fmt, fmtDateTime, fmtPercent, fmtRelative, hostOf, safeUrl, sourceColor } from '../../design/format';
 import { usePrefs } from '../../design/prefs';
+import { useAiState } from '../../design/aiState';
 import { BreakingTag, CategoryTag, Empty, Failure, ImportanceTag, SourceMark, Tag, TranslationTag, Bone, CardBones, MACHINE_LABEL } from '../../design/ui';
 import { useEffect, useState } from 'react';
 import type { TranslationQc } from '../../design/types';
@@ -53,15 +54,16 @@ export function NewsDetailPage() {
   const c = useApi<Context>(`feed/${encodeURIComponent(id)}/context`, [id]);
   const now = useNow();
   const { contentLang } = usePrefs();
+  const ai = useAiState();
   // The translation appears without a manual refresh: poll while it is queued or running.
   const waiting = ['translation_pending', 'processing', 'pending'].includes(c.data?.item.title_fa_status ?? '')
     || ['translation_pending', 'processing', 'pending'].includes(c.data?.item.summary_fa_status ?? '');
   useEffect(() => {
-    if (!waiting) return;
+    if (!waiting || ai.off !== false) return;   // nothing will arrive while local AI is disabled
     const t = setInterval(() => { c.reload(); }, 20000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [waiting, id]);
+  }, [waiting, id, ai.off]);
 
   if (d.error || c.error) return <Shell><Failure onRetry={() => { d.reload(); c.reload(); }}>این خبر پیدا نشد یا دریافت آن ناموفق بود.</Failure></Shell>;
   // Loading skeleton mirrors the final layout (breadcrumb, flags, title,
@@ -113,7 +115,8 @@ export function NewsDetailPage() {
                 <h4>فارسی <TranslationTag status={it.title_fa_status} review={it.title_fa_review} /></h4>
                 <FaField label="عنوان" cls="t" text={faTitle} unverified={it.title_fa_unverified ?? null} status={it.title_fa_status} qc={it.title_fa_qc ?? null} />
                 <FaField label="خلاصه" cls="s" text={faSummary} unverified={it.summary_fa_unverified ?? null} status={it.summary_fa_status} qc={it.summary_fa_qc ?? null} />
-                {(it.title_fa_status === 'translation_pending' || it.title_fa_status === 'pending') && <RequestTranslation id={it.item_id} />}
+                {ai.off && waiting && <p className="bi-note" role="status" data-testid="ai-off-note">{ai.message} متن اصلی انگلیسی معتبر است.</p>}
+                {ai.off === false && (it.title_fa_status === 'translation_pending' || it.title_fa_status === 'pending') && <RequestTranslation id={it.item_id} />}
                 {(it.machine_translated || it.title_fa_unverified || it.summary_fa_unverified) && (
                   <small className="muted">{MACHINE_LABEL} · ترجمه محلی <bdi>{it.translation_provider}</bdi> · مدل <bdi>{it.translation_model}</bdi>
                     {it.title_fa_qc?.pipeline && <> · کنترل کیفیت <bdi>{it.title_fa_qc.pipeline}</bdi></>} · عبور از کنترل کیفیت به معنی صحت قطعی نیست؛ متن اصلی ملاک است.</small>

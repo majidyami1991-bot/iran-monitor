@@ -432,6 +432,14 @@ def loop(dsn, once=False, item_ids=None):
     s, enabled = settings()
     with local_ai.connect(dsn) as conn:
         ensure_schema(conn)
+        off = local_ai.disabled_state()
+        if off:
+            # operator switch: no request to Ollama. Wait instead of exiting so a restart policy cannot spin.
+            beat(conn, off['state'])
+            LOG.warning('local AI disabled (%s); not contacting Ollama', off['state'])
+            while not Stop.requested and not once:
+                time.sleep(5)
+            return 0
         if not enabled:
             beat(conn, 'disabled')
             LOG.warning('LOCAL_TRANSLATION_ENABLED is not true; nothing to do')

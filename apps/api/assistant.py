@@ -63,6 +63,8 @@ REJECTED_FA = ('پاسخ مدل محلی معیار استناد را رعایت
 
 
 def enabled():
+    if local_ai.disabled_state():
+        return False
     return (os.getenv('ASSISTANT_ENABLED') or 'false').strip().lower() == 'true'
 
 
@@ -589,7 +591,9 @@ def register_assistant(app):
             busy = local_ai.lock_held(c, local_ai.INFERENCE_LOCK)
         with _COND:
             queued = len(_QUEUE)
-        return {'enabled': enabled(), 'provider': 'ollama/local', 'model': s.model, 'model_digest': digest,
+        off = local_ai.disabled_state()
+        return {'enabled': enabled(), 'ai_state': off['state'] if off else 'enabled', 'message_fa': off and off['message_fa'],
+                'provider': 'ollama/local', 'model': s.model, 'model_digest': digest,
                 'ollama_reachable': reachable, 'model_found': found, 'model_busy': busy, 'translation_batch_running': batch,
                 'queue_length': queued, 'generating': _WORKER['running'] is not None, 'prompt_version': PROMPT_VERSION,
                 'limits': {'max_records': retrieval.RESULT_LIMIT, 'excerpt_chars': retrieval.EXCERPT_CHARS,
@@ -601,6 +605,8 @@ def register_assistant(app):
     @app.post('/api/v1/assistant/query', status_code=202)
     def assistant_query(body: QueryIn, x_im_origin: str | None = Header(None)):
         _require_origin(x_im_origin)
+        if local_ai.disabled_state():
+            raise HTTPException(503, local_ai.disabled_state())
         if not enabled():
             raise HTTPException(409, 'assistant_disabled')
         sid = body.session_id
@@ -690,6 +696,8 @@ def register_assistant(app):
         c = mi.load_contract()
         state = mi.approval_state(c)
         try:
+            if local_ai.disabled_state():
+                raise RuntimeError('local_ai_disabled')   # no request to Ollama
             s = local_ai.load_settings(role='translation')
             with build_opener(ProxyHandler({})).open(Request(s.base_url.rstrip('/') + '/api/tags'), timeout=3) as r:
                 present = {m.get('digest') for m in json.loads(r.read().decode('utf-8')).get('models', [])}
@@ -704,11 +712,13 @@ def register_assistant(app):
                          'ollama_version': a.get('ollama_version'), 'prompt_versions': a.get('prompt_versions'),
                          'glossary_version': a.get('glossary_version'), 'validator_version': a.get('validator_version'),
                          'license': a.get('license')})
-        on = {role: mi.active_approval(c, role=role) is not None for role in ('translation', 'assistant_extractive', 'assistant')}
+        off = local_ai.disabled_state()
+        on = {role: not off and mi.active_approval(c, role=role) is not None for role in ('translation', 'assistant_extractive', 'assistant')}
         return {'models': rows,
                 'features': {'translation': on['translation'], 'assistant': on['assistant'] or on['assistant_extractive'],
                              'assistant_mode': 'extractive' if on['assistant_extractive'] else ('free' if on['assistant'] else None)},
-                'ollama_reachable': present is not None, 'scheduler': False, 'external_providers': False}
+                'ollama_reachable': present is not None, 'scheduler': False, 'external_providers': False,
+                'ai_state': (local_ai.disabled_state() or {}).get('state', 'enabled')}
 
     @app.get('/api/v1/assistant/usage')
     def assistant_usage():

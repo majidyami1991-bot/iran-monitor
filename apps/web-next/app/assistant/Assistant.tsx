@@ -27,7 +27,7 @@ interface Result {
 interface Msg { id: string; role: 'user' | 'assistant'; content: string; result?: Result }
 interface ReqView { request_id: string; session_id: string; status: string; queue_position: number; error: string | null; result?: Result }
 interface Status {
-  enabled: boolean; ollama_reachable: boolean; model_found: boolean; model: string; model_busy: boolean;
+  enabled: boolean; ai_state?: string; message_fa?: string | null; ollama_reachable: boolean; model_found: boolean; model: string; model_busy: boolean;
   translation_batch_running: boolean; queue_length: number; generating: boolean;
   limits: { max_records: number; history_turns: number; max_output_tokens: number; retention_days: number };
 }
@@ -224,10 +224,12 @@ export function Assistant() {
   };
 
   const st = status.data;
-  const noApproved = !!st && (((st as unknown as { config_errors?: string[] }).config_errors || []).includes('no_approved_model_artifact')
+  // operator switch: AI disabled on the server, Ollama is not contacted; stored conversations stay readable
+  const aiOff = !!st?.ai_state && st.ai_state !== 'enabled';
+  const noApproved = !!st && !aiOff && (((st as unknown as { config_errors?: string[] }).config_errors || []).includes('no_approved_model_artifact')
     || (models.data ? !models.data.features.assistant : false));
-  const offline = st ? !noApproved && !(st.ollama_reachable && st.model_found) : false;
-  const disabled = !st?.enabled || offline || noApproved;
+  const offline = st ? !aiOff && !noApproved && !(st.ollama_reachable && st.model_found) : false;
+  const disabled = aiOff || !st?.enabled || offline || noApproved;
   const last = [...msgs].reverse().find((m) => m.result && m.result.citations.length > 0)?.result;
 
   return (
@@ -236,8 +238,8 @@ export function Assistant() {
         lede="پرسش خود را بنویسید؛ پاسخ فقط از خبرها و پست‌های ذخیره‌شده در همین سامانه ساخته می‌شود و هر ادعا به سند داخلی ارجاع دارد. مدل به‌صورت محلی روی همین رایانه اجرا می‌شود و به اینترنت دسترسی ندارد.">
         <Tag tone="uncertain" title="از دروازه‌های ماشینی عبور کرده اما بازبینی انسانی نشده است؛ پاسخ‌ها نقل‌قول عین متن اصلی منابع‌اند">آزمایشی ـ پاسخ مبتنی بر منابع خبری موجود</Tag>
         {st && (
-          <Tag tone={noApproved || offline ? 'warn' : 'ok'} icon={<Cpu size={12} />}>
-            {noApproved ? 'دستیار غیرفعال (مدل تأییدشده ندارد)' : offline ? 'مدل محلی در دسترس نیست' : st.generating || st.model_busy ? 'مدل محلی مشغول' : 'مدل محلی آماده'}
+          <Tag tone={aiOff || noApproved || offline ? 'warn' : 'ok'} icon={<Cpu size={12} />}>
+            {aiOff ? 'هوش مصنوعی محلی موقتاً غیرفعال' : noApproved ? 'دستیار غیرفعال (مدل تأییدشده ندارد)' : offline ? 'مدل محلی در دسترس نیست' : st.generating || st.model_busy ? 'مدل محلی مشغول' : 'مدل محلی آماده'}
           </Tag>
         )}
       </PageHead>
@@ -248,9 +250,10 @@ export function Assistant() {
             {st ? <>
               <span>مدل: <bdi dir="ltr">{st.model}</bdi></span>
               <span>صف CPU: {fmt(st.queue_length)}</span>
-              <span>{st.translation_batch_running ? 'ترجمه دسته‌ای در حال اجرا است (پاسخ‌ها کندتر می‌شوند)' : 'ترجمه دسته‌ای فعال نیست'}</span>
+              <span>{aiOff ? 'ترجمه خودکار متوقف است' : st.translation_batch_running ? 'ترجمه دسته‌ای در حال اجرا است (پاسخ‌ها کندتر می‌شوند)' : 'ترجمه دسته‌ای فعال نیست'}</span>
             </> : <span>در حال بررسی وضعیت مدل…</span>}
           </div>
+          {aiOff && <p className="note as-disabled" role="status" data-testid="as-ai-off">{st?.message_fa || 'قابلیت هوش مصنوعی محلی برای کاهش مصرف منابع و آماده‌سازی انتقال به سرور، موقتاً غیرفعال است.'} گفت‌وگوهای ذخیره‌شده فقط برای مشاهده در دسترس‌اند.</p>}
           {noApproved && <p className="note as-disabled" role="status" data-testid="as-disabled">دستیار در این نسخه غیرفعال است: هیچ مدل محلی برای این نقش آزمون کیفیت را با موفقیت پشت سر نگذاشته است. خبرها و ترجمه‌های تأییدشده همچنان در بخش‌های دیگر قابل مشاهده‌اند.</p>}
           {offline && <p className="note as-offline" role="alert">مدل محلی (Ollama) در دسترس نیست. خبرها و ترجمه‌های ذخیره‌شده همچنان در بخش‌های دیگر سامانه قابل مشاهده‌اند.</p>}
 
@@ -284,7 +287,7 @@ export function Assistant() {
               {pending
                 ? <button type="button" className="btn-ghost" onClick={stop} data-testid="as-stop"><Square size={14} />توقف تولید پاسخ</button>
                 : <button type="submit" className="btn-primary" disabled={disabled || text.trim().length < 2}><Send size={14} />ارسال</button>}
-              <button type="button" className="btn-ghost" onClick={clear} disabled={!!pending || (msgs.length === 0 && !session)} data-testid="as-clear"><Trash2 size={14} />پاک‌کردن مکالمه</button>
+              <button type="button" className="btn-ghost" onClick={clear} disabled={aiOff || !!pending || (msgs.length === 0 && !session)} data-testid="as-clear"><Trash2 size={14} />پاک‌کردن مکالمه</button>
             </div>
           </form>
         </section>
