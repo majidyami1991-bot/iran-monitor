@@ -33,6 +33,35 @@ async def _local_ai_switch(request: _Request, call_next):
     return await call_next(request)
 
 
+import time as _time
+from fastapi.responses import Response as _Response
+# Short-lived response cache for the heavy read-only list/statistics endpoints. Each one runs the feed query
+# (importance, media and event joins over every item) about twice per call (~130-160 ms); the data only changes
+# when NewsSync runs (every 15 min) or a translation is written, so 15 s of staleness is not visible.
+_CACHE_TTL = float(os.getenv('API_RESPONSE_CACHE_SECONDS', '15') or 0)
+_CACHED = re.compile(r'^/api/v1/(feed|breaking|notifications|activity|topics|source-profiles|news|social/stats)$')
+_RCACHE: dict = {}
+
+
+@app.middleware('http')
+async def _short_cache(request: _Request, call_next):
+    if request.method != 'GET' or _CACHE_TTL <= 0 or not _CACHED.match(request.url.path):
+        return await call_next(request)
+    key = request.url.path + '?' + request.url.query
+    hit = _RCACHE.get(key)
+    if hit and _time.monotonic() - hit[0] < _CACHE_TTL:
+        return _Response(hit[1], status_code=200, media_type='application/json', headers={'x-cache': 'hit'})
+    resp = await call_next(request)
+    if resp.status_code != 200 or 'json' not in resp.headers.get('content-type', ''):
+        return resp
+    body = b''.join([chunk async for chunk in resp.body_iterator])
+    if len(body) <= 2_000_000:
+        if len(_RCACHE) > 512:
+            _RCACHE.clear()
+        _RCACHE[key] = (_time.monotonic(), body)
+    return _Response(body, status_code=200, media_type='application/json', headers={'x-cache': 'miss'})
+
+
 @app.get('/api/v1/local-ai/state')
 def local_ai_state():
     off = _local_ai.disabled_state()

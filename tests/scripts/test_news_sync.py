@@ -98,3 +98,19 @@ def test_failed_apply_is_recorded_and_reported(monkeypatch, tmp_path):
     assert len(recorded) == 1 and recorded[0][0] == ns.LOCAL and recorded[0][1] is False   # written to 3003 only, never Production
     run = json.loads(next(tmp_path.glob('*/run.json')).read_text(encoding='utf-8'))
     assert run['status'] == 'failed' and 'rolled back' in run['error']
+
+
+def test_media_primary_moved_in_production_demotes_local_primary_first(monkeypatch):
+    """Production moved an item's primary image to a new row: the new primary must not collide with the
+    previous local primary (news_item_media_one_primary) — the old flag is cleared in the same transaction."""
+    media_csv = 'media_id,item_id,is_primary\nnew1,item1,t\nside2,item1,f\n'
+    monkeypatch.setattr(ns, 'payload', lambda table, keys, wanted: media_csv if table == 'news_item_media' and wanted else '')
+    p = {t: {'new': [], 'changed': [], 'changed_not_applied': [], 'local_only': []} for t, *_ in ns.TABLES}
+    p['news_item_media']['new'] = ['new1', 'side2']
+    sql, counts = ns.build_apply_sql(p, 'run1', 'test')
+    demote = sql.index('UPDATE news_item_media m SET is_primary = false')
+    insert = sql.index('INSERT INTO news_item_media')
+    assert sql.index('COPY s_news_item_media') < demote < insert
+    assert 'DELETE' not in sql.upper().split('NEWS_ITEM_MEDIA')[1][:200]
+    assert 'media_id NOT IN (SELECT media_id FROM s_news_item_media)' in sql
+    assert counts['news_item_media']['primary_reassigned'] == 1

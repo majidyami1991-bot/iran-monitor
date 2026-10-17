@@ -55,7 +55,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / 'runtime' / 'news-sync'
 PROD = 'defence-monitor-news-news-db-1'
 LOCAL = 'iran-monitor-local-ai-ai-db-1'
-SYNC_VERSION = 'news-sync-v1.1.0'
+SYNC_VERSION = 'news-sync-v1.2.0'
 csv.field_size_limit(1 << 30)
 # No console window per docker call when run from a scheduled task (Windows).
 _NOWIN = {'creationflags': subprocess.CREATE_NO_WINDOW} if sys.platform == 'win32' else {}
@@ -221,6 +221,15 @@ def build_apply_sql(p, run_id, mode):
             action = f'DO UPDATE SET {upd}' + (' WHERE item_classifications.human_locked IS NOT TRUE' if table == 'item_classifications' else '')
         parts.append(f'CREATE TEMP TABLE s_{table} (LIKE {table} INCLUDING DEFAULTS) ON COMMIT DROP;')
         parts.append(f'COPY s_{table} ({cols}) FROM STDIN WITH (FORMAT csv, HEADER true);\n{data.rstrip()}\n\\.')
+        if table == 'news_item_media':
+            # Production may move an item's primary image to a NEW media row (old row demoted there). That demotion is a
+            # change to an existing row (insert-only: not applied), so the new primary would hit news_item_media_one_primary
+            # and roll back the whole run. Follow Production's choice: only the previous local primary's is_primary flag
+            # is cleared; no row is deleted or otherwise changed.
+            counts[table]['primary_reassigned'] = sum(1 for row in csv.DictReader(io.StringIO(data)) if row.get('is_primary') == 't')
+            parts.append(f'''UPDATE news_item_media m SET is_primary = false
+                WHERE m.is_primary AND m.item_id IN (SELECT item_id FROM s_{table} WHERE is_primary)
+                  AND m.media_id NOT IN (SELECT media_id FROM s_{table});''')
         parts.append(f'INSERT INTO {table} ({cols}) SELECT {cols} FROM s_{table} ON CONFLICT ({", ".join(keys)}) {action};')
         for s in serials:
             parts.append(f"SELECT setval(pg_get_serial_sequence('{table}', '{s}'), (SELECT max({s}) FROM {table}));")
