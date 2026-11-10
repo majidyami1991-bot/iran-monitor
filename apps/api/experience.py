@@ -464,6 +464,7 @@ def build_briefing():
         devs.append({'item_id': c['item_id'], 'href': f"/news/{c['item_id']}", 'headline': c['title_fa'] or c['title'],
                      'headline_lang': 'fa' if c['title_fa'] else 'en', 'summary': c['summary_fa'] or (c['summary'] or '')[:260] or None,
                      'summary_lang': 'fa' if c['summary_fa'] else 'en', 'source_name': c['source_name'],
+                     'headline_en': c['title'], 'summary_en': (c['summary'] or '')[:260] or None,
                      'published_at': c['published_at'], 'category_id': c['category_id'], 'category_label': c['category_label'],
                      'event_id': c['event_id'], 'event_sources': c['event_sources'], 'importance': c['importance'],
                      'importance_level': c['importance_level'], 'image_url': c['image_url']})
@@ -497,8 +498,14 @@ def build_briefing():
                  + (f" ({'+' if change_pct >= 0 else '−'}{abs(change_pct)}٪ نسبت به ۲۴ ساعت قبل)" if change_pct is not None else '')
                  + (f"؛ بیشترین پوشش به «{lead_cat['label']}» با {lead_cat['now_n']} خبر اختصاص داشت" if lead_cat and lead_cat['now_n'] else '')
                  + (f" و {len(seen_events)} رویداد چندخبری در این بازه به‌روز شد." if seen_events else '.'))
+    narrative_en = (f"In the past 24 hours, {counts['now_n']} stories were recorded from {counts['sources']} sources"
+                    + (f" ({change_pct:+d}% compared with the previous 24 hours)" if change_pct is not None else '')
+                    + (f"; the leading category recorded {lead_cat['now_n']} stories" if lead_cat and lead_cat['now_n'] else '')
+                    + (f", and {len(seen_events)} multi-story events were updated." if seen_events else '.'))
     payload = _jsonable({
-        'narrative_fa': narrative, 'narrative_method': 'قالب ثابت متنی که فقط شمارش‌های پایگاه داده را درج می‌کند.',
+        'narrative_fa': narrative, 'narrative_en': narrative_en,
+        'narrative_method': 'قالب ثابت متنی که فقط شمارش‌های پایگاه داده را درج می‌کند.',
+        'narrative_method_en': 'Fixed text template populated only with database counts.',
         'totals': {'items_24h': counts['now_n'], 'items_prev_24h': counts['prev_n'], 'change_pct': change_pct,
                    'active_sources': counts['sources'], 'events_in_window': len(seen_events)},
         'key_developments': devs, 'rising_topics': rising, 'falling_topics': falling, 'top_sources': top_sources,

@@ -6,18 +6,21 @@
 secrets/
 data/
 runtime/
+backups/
 node_modules/
 **/node_modules/
 **/.next/
 **/dist/
 **/build/
+**/.pytest_cache/
 **/__pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 coverage/
-
-!runtime/wheelhouse/
-!runtime/wheelhouse/collector/
-!runtime/wheelhouse/collector/*
+*.log
+*.tmp
+.idea/
+.vscode/
 
 # Local Ollama model files (multi-GB); never in the image build context
 TranslatorOllama/

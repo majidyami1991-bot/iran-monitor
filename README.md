@@ -1,122 +1,131 @@
-# Defence Monitor
+# Iran Monitor (سامانه رصد و پایش هوشمند منابع)
 
-A Persian-language monitoring product that answers one question about a defined
-set of open sources: **what was published, when, by which source, and under what
-subject?**
+سامانه **Iran Monitor** یک پلتفرم جامع برای پایش، جمع‌آوری، رصد و تحلیل پیوسته اخبار و رویدادها از منابع معتبر است. این پروژه بر پایه معماری میکروسرویس و کانتینری (Docker) پیاده‌سازی شده و تمامی اجزای آن به صورت هماهنگ و تنها با یک دستور راه‌اندازی می‌شوند.
 
-This repository delivers **stage 1: monitoring**. Correlation, trend analysis,
-scenarios and early warning are later stages and are not present. Nothing in the
-interface should be read as analysis; the statistics are descriptive counts of
-stored records.
+---
 
-The immutable `sites.docx` in this directory is the authoritative original source
-list (SHA-256 `3F7522C94952DD85254F45CADF600A64EE6F264D27E30E3D2BF3297D59C47980`).
+## 🏛️ ساختار پروژه و کانتینرها
 
-## What runs
-
-| Service | Address | Role |
-| --- | --- | --- |
-| `news-web` | `127.0.0.1:3001` | Persian, RTL interface (Next.js) |
-| `news-api` | internal only | Read APIs under `/api/v1/`, additive schema migration at startup |
-| `news-db` | internal only | PostgreSQL 16, the system of record |
-| `news-collector` | internal only | Opt-in 15-minute RSS scheduler |
-
-OpenCTI is deployed separately on `127.0.0.1:8080` from
-`deployment/opencti/`. **No news data is sent to it**, and it is not a
-substitute for this product. Do not change it while working here.
-
-## Coverage, stated honestly
-
-| Count | Value | Meaning |
-| --- | --- | --- |
-| Registered | 62 | Canonical sources from `sites.docx` |
-| Executable | 12 | Validated, permitted collection path |
-| Monitored | see `/api/v1/sources/coverage` | Has actually completed a fetch |
-
-The remainder are 5 sitemap candidates, 2 HTML candidates, 7 publishers that
-refuse automated access, and 36 X accounts with no authorised collection path.
-Per-source detail is in [source coverage](docs/STAGE%201%20SOURCE%20COVERAGE.md).
-
-## Install
-
-Requires Windows PowerShell 5.1+, Git and Docker Desktop on WSL2 with Compose
-2.24.4 or newer.
-
-```powershell
-Copy-Item .env.example .env         # then fill in NEWS_DB_PASSWORD with a local random value
-cd 'E:\Iran monitor'
-
-# Build the collector image and pin it to the current revision.
-$rev = (git rev-parse HEAD).Trim()
-$ts  = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-docker build -f apps/api/Dockerfile --build-arg GIT_REVISION=$rev --build-arg BUILD_TIMESTAMP_UTC=$ts -t "defence-monitor-news-collector:$rev" .
-(Get-Content .env) -replace '^COLLECTOR_REVISION=.*$', "COLLECTOR_REVISION=$rev" | Set-Content .env -Encoding utf8
-
-# Start the stack.
-docker compose -p defence-monitor-news --env-file .env -f deployment/news-monitor/compose.yml up -d
+```text
+iran-monitor/
+├── docker-compose.yml          # ارکستراسیون یکپارچه تمام کانتینرها
+├── .env.example                # الگوی متغیرهای محیطی
+├── .gitignore                  # نادیده‌گرفتن فایل‌های موقت، لاگ‌ها و داده‌های محلی
+├── .dockerignore               # بهینه‌سازی لایه‌های بیلد داکر
+├── manage.ps1                  # اسکریپت مدیریت و اجرای سریع در PowerShell
+│
+├── apps/
+│   ├── api/                    # سرویس بک‌اند (Python 3.12 / FastAPI)
+│   │   ├── Dockerfile          # بیلد چندمرحله‌ای بک‌اند با کاربر غیرریشه
+│   │   ├── main.py             # نقطه ورود وب‌سرویس و APIها
+│   │   ├── ops.py              # مدیریت اسکیما، داده‌ها و اندپوینت‌های پایش
+│   │   └── collector.py        # کرولر و زمان‌بند دوره‌ای دریافت فیدها (RSS)
+│   │
+│   └── web-next/               # سرویس فرانت‌اند (Next.js / React / RTL UI)
+│       ├── Dockerfile          # بیلد چندمرحله‌ای بهینه‌سازی‌شده (Standalone)
+│       └── app/                # صفحات داشبورد، اخبار، منابع و تحلیل‌ها
+│
+├── config/
+│   └── sources/                # رجیستری و تعاریف منابع، تاکسونومی و سطوح دسترسی
+│
+└── runtime/                    # فایل‌های داده‌ای، شواهد و فایل‌های دامپ دیتابیس
 ```
 
-The image build runs the test suite; a failing test fails the build. The
-collector refuses to start unless `COLLECTOR_REVISION` matches the revision
-baked into the image, so a stale image cannot run against newer code.
+---
 
-Open `http://127.0.0.1:3001`. Collection is **off** until you enable it:
+## ⚙️ نیازمندی‌های سیستمی
 
-```powershell
-# Set NEWS_COLLECTION_ENABLED=true in .env, then:
-docker compose -p defence-monitor-news --env-file .env -f deployment/news-monitor/compose.yml --profile scheduler up -d news-collector
-Invoke-RestMethod http://127.0.0.1:3001/api/v1/collection/status
+قبل از شروع، اطمینان حاصل کنید نرم‌افزارهای زیر روی سیستم نصب و در حال اجرا هستند:
+- **Git** (نسخه 2.30 یا بالاتر)
+- **Docker Desktop** (فعال روی WSL2 در ویندوز یا Docker Engine در لینوکس)
+- **Docker Compose** (نسخه v2.24 یا جدیدتر)
+
+---
+
+## 🚀 راهنمای گام‌به‌گام راه‌اندازی
+
+### گام ۱: آماده‌سازی متغیرهای محیطی
+فایل نمونه تنظیمات را کپی کنید:
+
+```bash
+# در لینوکس یا مک:
+cp .env.example .env
+
+# در ویندوز (PowerShell):
+Copy-Item .env.example .env
+```
+*(مقادیر پیش‌فرض برای راه‌اندازی محلی به صورت آماده تنظیم شده‌اند).*
+
+### گام ۲: بیلد و اجرای خودکار تمامی سرویس‌ها
+تنها با اجرای دستور زیر، پایگاه داده، بک‌اند، فرانت‌اند و کانتینر جمع‌آوری‌کننده اخبار به صورت خودکار ساخته شده و با بررسی سلامت بالا می‌آیند:
+
+```bash
+docker compose up -d --build
 ```
 
-The first cycle runs one interval later. One cycle makes exactly one request per
-executable source, sequentially, with no retries and no redirects.
+---
 
-## Collection policy
+## 🌐 آدرس‌ها و درگاه‌های دسترسی
 
-These limits are structural, not conventions:
+پس از اجرای موفق کانتینرها، بخش‌های مختلف سامانه روی درگاه‌های زیر در دسترس هستند:
 
-- One HTTP request per source per cycle. No article pages, no sitemaps, no images.
-- Redirects are refused, so a feed that moves fails loudly instead of silently
-  following somewhere else.
-- 403 responses, robots disallow, logins, CAPTCHAs and paywalls are never worked
-  around. A publisher that refuses automated access is recorded as blocked.
-- Body text is extracted only from bytes the collector already fetched, so the
-  content pipeline cannot bypass any source's access policy.
-- Being able to retrieve content is not permission to republish it. Where a
-  publisher does not syndicate the article body, the product shows the summary,
-  the metadata and a link to the original.
+| سرویس | آدرس دسترسی | نقش و توضیحات |
+| :--- | :--- | :--- |
+| **داشبورد فرانت‌اند** | [http://localhost:3000](http://localhost:3000) | رابط کاربری فارسی و راست‌چین سامانه |
+| **وب‌سرویس بک‌اند (API)** | [http://localhost:8000](http://localhost:8000) | هسته پردازشی FastAPI |
+| **مستندات تعاملی API** | [http://localhost:8000/docs](http://localhost:8000/docs) | مستندات OpenAPI / Swagger |
+| **بررسی وضعیت سلامت** | [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health) | مانیتورینگ اتصال دیتابیس و وضعیت سرویس |
+| **پایگاه‌داده PostgreSQL** | `localhost:5433` | دیتابیس PostgreSQL 16 (اتصال با کلاینت خارجی) |
 
-## Content
+---
 
-Each item carries an English body, a Persian title, a Persian summary, a Persian
-body, and media — each with its own state. A field that nothing has produced
-reports `pending`; it is never filled with a guess.
+## 💾 بازیابی اطلاعات اولیه و آرشیو اخبار (Database Restore)
 
-**No translation provider is configured, so every Persian field is currently
-`pending`.** The pipeline is built and tested; it needs a provider decision and
-a credential. See [content quality](docs/STAGE%201%20CONTENT%20QUALITY.md) for the
-options, cost estimates and the decisions required.
+اگر برای اولین بار پروژه را راه‌اندازی کرده‌اید و مایلید آرشیو کامل اخبار و منابع پیشین بارگذاری شوند، دستور زیر را در ترمینال اجرا کنید:
 
-## Operating
+```bash
+# در ویندوز (PowerShell / CMD):
+cmd.exe /c "docker exec -i iran_monitor_db pg_restore -U iran_monitor_user -d iran_monitor --no-owner --clean --if-exists < runtime\backups-local-ai\ai-db-20261109T103001Z.dump"
 
-```powershell
-./scripts/backup.ps1 -Action backup
-node tests/ui/stage1-qa.cjs                  # browser acceptance
-Invoke-RestMethod http://127.0.0.1:3001/api/v1/stats/content
+# در لینوکس یا مک:
+docker exec -i iran_monitor_db pg_restore -U iran_monitor_user -d iran_monitor --no-owner --clean --if-exists < runtime/backups-local-ai/ai-db-20261109T103001Z.dump
 ```
 
-Health checks, troubleshooting, rollback and the translation worker are in
-[operations](docs/NEWS%20MONITOR%20OPERATIONS.md). Never run `down -v` and never
-prune: the named volumes hold every collected item and the collector checkpoints.
+پس از چند ثانیه، بیش از **۶,۳۰۰ خبر** و ساختار کامل منابع در داشبورد وب بارگذاری خواهند شد.
 
-Keep `.env` private. It is git-ignored and holds both the news database password
-and the OpenCTI secrets.
+---
 
-## Documentation
+## 🔄 نحوه کارکرد موتور جمع‌آوری اخبار (RSS Collector)
 
-- [Source coverage](docs/STAGE%201%20SOURCE%20COVERAGE.md) — all 62 sources and why each is or is not collected
-- [Content quality](docs/STAGE%201%20CONTENT%20QUALITY.md) — field states, media limits, translation decision
-- [Operations](docs/NEWS%20MONITOR%20OPERATIONS.md) — health, backup, troubleshooting, rollback
-- [Architecture](docs/NEWS%20MONITOR%20ARCHITECTURE.md)
-- [Security](docs/SECURITY.md)
-- [OpenCTI deployment](deployment/opencti/README.md) — separate system, not part of stage 1
+سرویس **`collector`** به عنوان یک کانتینر دائمی در پس‌زمینه اجرا می‌شود:
+- هر **۱۵ دقیقه** تمامی منابع فعال را به صورت خودکار بررسی و اخبار جدید را ذخیره می‌کند.
+- برای مشاهده وضعیت لحظه‌ای کرولر می‌توانید اندپوینت زیر را بررسی کنید:
+  `http://localhost:8000/api/v1/collection/status`
+
+---
+
+## 🛠️ دستورات پرکاربرد مدیریت سامانه
+
+برای راحتی کار در ویندوز، اسکریپت `manage.ps1` قرار داده شده است:
+
+```powershell
+.\manage.ps1 start       # اجرای تمامی سرویس‌ها
+.\manage.ps1 stop        # متوقف‌سازی کانتینرها
+.\manage.ps1 restart     # راه‌اندازی مجدد
+.\manage.ps1 status      # بررسی وضعیت سلامت (Health) کانتینرها
+.\manage.ps1 logs        # مشاهده زنده لاگ‌های کل سامانه
+.\manage.ps1 backup-db   # تهیه نسخه پشتیبان آنی از دیتابیس
+```
+
+یا با استفاده از دستورات استاندارد Docker Compose:
+
+```bash
+# بررسی وضعیت سلامت کانتینرها
+docker compose ps
+
+# مشاهده لاگ‌های زنده
+docker compose logs -f
+
+# خاموش کردن امن سامانه بدون حذف اطلاعات
+docker compose down
+```
