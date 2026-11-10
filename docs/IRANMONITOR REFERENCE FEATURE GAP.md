@@ -43,7 +43,7 @@ description.
 - **Defer** — real value, but blocked on a licensing, legal, or
   third-party-access decision that must be made explicitly, later, by the
   client — not silently skipped, not silently built around.
-- **Reject** — not aligned with Iran Monitor's organizational-intelligence
+- **Reject** — not aligned with Defence Monitor's organizational-intelligence
   mission, or the data cannot be obtained honestly at all.
 
 ## Matrix

@@ -2,12 +2,12 @@ services:
   news-db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: iran_monitor
-      POSTGRES_USER: iran_monitor
+      POSTGRES_DB: defence_monitor
+      POSTGRES_USER: defence_monitor
       POSTGRES_PASSWORD: ${NEWS_DB_PASSWORD:?set NEWS_DB_PASSWORD in .env}
     volumes: [news-db-data:/var/lib/postgresql/data]
     healthcheck:
-      test: [CMD-SHELL, pg_isready -U iran_monitor -d iran_monitor]
+      test: [CMD-SHELL, pg_isready -U defence_monitor -d defence_monitor]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -17,18 +17,18 @@ services:
     build: {context: ../.., dockerfile: apps/api/Dockerfile}
     command: uvicorn main:app --host 0.0.0.0 --port 3000
     environment:
-      DATABASE_URL: postgresql://iran_monitor:${NEWS_DB_PASSWORD}@news-db:5432/iran_monitor
+      DATABASE_URL: postgresql://defence_monitor:${NEWS_DB_PASSWORD}@news-db:5432/defence_monitor
     depends_on: {news-db: {condition: service_healthy}}
     restart: unless-stopped
     read_only: true
     security_opt: [no-new-privileges:true]
     networks: [news]
   news-web:
-    image: iran-monitor-news-legacy:rollback-7096ec3
+    image: defence-monitor-news-legacy:rollback-7096ec3
     build: {context: ../.., dockerfile: apps/api/Dockerfile}
     command: uvicorn main:app --host 0.0.0.0 --port 3000
     environment:
-      DATABASE_URL: postgresql://iran_monitor:${NEWS_DB_PASSWORD}@news-db:5432/iran_monitor
+      DATABASE_URL: postgresql://defence_monitor:${NEWS_DB_PASSWORD}@news-db:5432/defence_monitor
     ports: ["127.0.0.1:3001:3000"]
     depends_on: {news-db: {condition: service_healthy}, news-api: {condition: service_started}}
     restart: unless-stopped
@@ -37,7 +37,7 @@ services:
   news-importer:
     build: {context: ../.., dockerfile: apps/api/Dockerfile}
     environment:
-      DATABASE_URL: postgresql://iran_monitor:${NEWS_DB_PASSWORD}@news-db:5432/iran_monitor
+      DATABASE_URL: postgresql://defence_monitor:${NEWS_DB_PASSWORD}@news-db:5432/defence_monitor
     volumes: [../../data/runtime/collector:/project/data/runtime/collector:ro]
     command: python /app/import_db.py
     depends_on: {news-db: {condition: service_healthy}}
@@ -45,6 +45,6 @@ services:
     networks: [news]
 networks:
   news:
-    name: iran-monitor-news_default
+    name: defence-monitor-news_default
 volumes:
   news-db-data:

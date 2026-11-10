@@ -1,11 +1,72 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import HTMLResponse
 import os, psycopg, re
 from datetime import date
 from collections import Counter
-app=FastAPI(title='Iran Monitor News API',version='0.3.0'); DSN=os.environ['DATABASE_URL']
+app=FastAPI(title='Defence Monitor News API',version='0.3.0'); DSN=os.environ['DATABASE_URL']
 from ops import register_ops
 register_ops(app)
+from experience import register_experience
+register_experience(app)
+from social import register_social
+register_social(app)
+from media_api import register_media
+register_media(app)
+from assistant import register_assistant
+register_assistant(app)
+from lab_ops import register_lab_ops
+register_lab_ops(app)
+import local_ai as _local_ai
+from fastapi import Request as _Request
+from fastapi.responses import JSONResponse as _JSONResponse
+_AI_POST = re.compile(r'^/api/v1/(assistant/query|news/[^/]+/translation/request|social/posts/[^/]+/(ai|translation/enqueue)|social/translations/run-batch)$')
+
+
+@app.middleware('http')
+async def _local_ai_switch(request: _Request, call_next):
+    """While LOCAL_AI_DISABLED_REASON is set every AI-triggering request is refused
+    with 503 here, before any handler runs (no queue row, no model call)."""
+    if request.method == 'POST' and _AI_POST.match(request.url.path):
+        off = _local_ai.disabled_state()
+        if off:
+            return _JSONResponse({'detail': off}, status_code=503)
+    return await call_next(request)
+
+
+import time as _time
+from fastapi.responses import Response as _Response
+# Short-lived response cache for the heavy read-only list/statistics endpoints. Each one runs the feed query
+# (importance, media and event joins over every item) about twice per call (~130-160 ms); the data only changes
+# when NewsSync runs (every 15 min) or a translation is written, so 15 s of staleness is not visible.
+_CACHE_TTL = float(os.getenv('API_RESPONSE_CACHE_SECONDS', '15') or 0)
+_CACHED = re.compile(r'^/api/v1/(feed|breaking|notifications|activity|topics|source-profiles|news|social/stats)$')
+_RCACHE: dict = {}
+
+
+@app.middleware('http')
+async def _short_cache(request: _Request, call_next):
+    if request.method != 'GET' or _CACHE_TTL <= 0 or not _CACHED.match(request.url.path):
+        return await call_next(request)
+    key = request.url.path + '?' + request.url.query
+    hit = _RCACHE.get(key)
+    if hit and _time.monotonic() - hit[0] < _CACHE_TTL:
+        return _Response(hit[1], status_code=200, media_type='application/json', headers={'x-cache': 'hit'})
+    resp = await call_next(request)
+    if resp.status_code != 200 or 'json' not in resp.headers.get('content-type', ''):
+        return resp
+    body = b''.join([chunk async for chunk in resp.body_iterator])
+    if len(body) <= 2_000_000:
+        if len(_RCACHE) > 512:
+            _RCACHE.clear()
+        _RCACHE[key] = (_time.monotonic(), body)
+    return _Response(body, status_code=200, media_type='application/json', headers={'x-cache': 'miss'})
+
+
+@app.get('/api/v1/local-ai/state')
+def local_ai_state():
+    off = _local_ai.disabled_state()
+    return {'state': off['state'] if off else 'enabled', 'message_fa': off and off['message_fa'],
+            'translation_enabled': not off, 'assistant_enabled': not off, 'ollama_contacted': False}
 def q(sql,args=()):
  with psycopg.connect(DSN) as c:
   with c.cursor() as cur:
@@ -14,7 +75,7 @@ def count(t): return q(f'select count(*)::int n from {t}')[0]['n']
 @app.get('/api/v1/health')
 def health(): return {'status':'ok','items':count('news_items'),'database':'ready'}
 @app.get('/api/v1/meta')
-def meta(): return {'name':'Iran Monitor','version':'0.2.0','item_count':count('news_items')}
+def meta(): return {'name':'Defence Monitor','version':'0.2.0','item_count':count('news_items')}
 @app.get('/api/v1/items')
 def items(search:str|None=None,source_id:str|None=None,source_type:str|None=None,date_from:str|None=None,date_to:str|None=None,provenance:str|None=None,sort:str='newest',page:int=1,page_size:int=20):
  for value in (date_from,date_to):

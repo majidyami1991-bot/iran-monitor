@@ -1,0 +1,142 @@
+# Reference-redesign preview. Runs next to production without replacing it:
+#   - news-api-preview: the candidate API image, internal network only (no ports)
+#   - news-web-preview: the candidate web image on 127.0.0.1:3002 only
+# PREVIEW_DB selects the database (default: the production database, which the
+# candidate only extends additively; set iran_monitor_drill for a restore drill).
+#
+#   docker compose -p defence-monitor-news --env-file .env -f deployment/news-monitor/compose.yml \
+#     -f deployment/news-monitor/compose.redesign-preview.yml --profile redesign-preview up -d \
+#     news-api-preview news-web-preview
+services:
+  news-api-preview:
+    image: ${PREVIEW_API_IMAGE:-defence-monitor-news-news-api:redesign-candidate}
+    command: uvicorn main:app --host 0.0.0.0 --port 3000
+    environment:
+      DATABASE_URL: postgresql://defence_monitor:${NEWS_DB_PASSWORD}@news-db:5432/${PREVIEW_DB:-defence_monitor}
+      AI_PROVIDER: ${AI_PROVIDER:-disabled}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      # Preview-scoped model pins (fall back to the shared values).
+      AI_MODEL_TRANSLATION: ${PREVIEW_AI_MODEL_TRANSLATION:-${AI_MODEL_TRANSLATION:-}}
+      AI_MODEL_SUMMARY: ${PREVIEW_AI_MODEL_SUMMARY:-${AI_MODEL_SUMMARY:-}}
+      AI_REQUEST_TIMEOUT: ${AI_REQUEST_TIMEOUT:-60}
+      AI_MAX_CONCURRENCY: ${AI_MAX_CONCURRENCY:-3}
+      AI_DAILY_BUDGET_LIMIT: ${AI_DAILY_BUDGET_LIMIT:-}
+      AI_FREE_ONLY: ${PREVIEW_AI_FREE_ONLY:-${AI_FREE_ONLY:-false}}
+      # X-FREE manual post registration: off unless explicitly enabled for preview.
+      SOCIAL_MANUAL_INGEST_ENABLED: ${PREVIEW_SOCIAL_MANUAL_INGEST_ENABLED:-false}
+      SOCIAL_ALLOWED_ORIGINS: http://127.0.0.1:3002,http://localhost:3002
+      EXPERIENCE_JOBS_ENABLED: ${EXPERIENCE_JOBS_ENABLED:-true}
+      # Local (Ollama, CPU) X post translation. Status endpoints probe Ollama's
+      # /api/tags only; run-batch needs X_TRANSLATION_ENABLED=true and the
+      # admin token (unset = every admin write refused).
+      X_TRANSLATION_ENABLED: ${PREVIEW_X_TRANSLATION_ENABLED:-false}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL_TRANSLATION: ${OLLAMA_MODEL_TRANSLATION:-gemma4:e2b}
+      OLLAMA_MODEL_DIGEST: ${OLLAMA_MODEL_DIGEST:-7fbdbf8f5e45}
+      OLLAMA_NUM_THREAD: ${OLLAMA_NUM_THREAD:-8}
+      SOCIAL_ADMIN_TOKEN: ${PREVIEW_SOCIAL_ADMIN_TOKEN:-}
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes:
+      - ../../runtime/live-rss/phase-8a:/ops-evidence:ro
+      - news-collector-state:/state:ro
+    depends_on: {news-db: {condition: service_healthy}}
+    # Runs as the collector-state owner so the read-only /state heartbeat
+    # stays readable with every capability dropped.
+    user: "65532:65532"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:3000/api/v1/health',timeout=8).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    profiles: [redesign-preview]
+    networks: [news]
+  # One-shot local X translation batch (no scheduler, no restart). Example:
+  #   docker compose ... --profile x-translate run --rm news-x-translate-preview x-translate --limit 3
+  news-x-translate-preview:
+    image: ${PREVIEW_API_IMAGE:-defence-monitor-news-news-api:redesign-candidate}
+    entrypoint: [python, -m, x_translate_worker]
+    command: [x-status]
+    environment:
+      DATABASE_URL: postgresql://defence_monitor:${NEWS_DB_PASSWORD}@news-db:5432/${PREVIEW_DB:-defence_monitor}
+      X_TRANSLATION_ENABLED: ${PREVIEW_X_TRANSLATION_ENABLED:-false}
+      X_TRANSLATION_CONCURRENCY: "1"
+      X_TRANSLATION_BATCH_SIZE: "1"
+      X_TRANSLATION_TIMEOUT_SECONDS: ${X_TRANSLATION_TIMEOUT_SECONDS:-600}
+      X_TRANSLATION_MAX_ATTEMPTS: ${X_TRANSLATION_MAX_ATTEMPTS:-2}
+      X_TRANSLATION_TEMPERATURE: ${X_TRANSLATION_TEMPERATURE:-0.1}
+      X_TRANSLATION_SLEEP_SECONDS: ${X_TRANSLATION_SLEEP_SECONDS:-2}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL_TRANSLATION: ${OLLAMA_MODEL_TRANSLATION:-gemma4:e2b}
+      OLLAMA_MODEL_DIGEST: ${OLLAMA_MODEL_DIGEST:-7fbdbf8f5e45}
+      OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-4096}
+      OLLAMA_NUM_THREAD: ${OLLAMA_NUM_THREAD:-8}
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-5m}
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on: {news-db: {condition: service_healthy}}
+    user: "65532:65532"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+    stop_grace_period: 11m
+    profiles: [x-translate]
+    networks: [news]
+  # Disposable integration-test pair for X-FREE: its own restored database
+  # (XTEST_DB), writes enabled, provider disabled. Never points at production.
+  news-api-xtest:
+    image: ${XTEST_API_IMAGE:-defence-monitor-news-news-api:redesign-candidate}
+    command: uvicorn main:app --host 0.0.0.0 --port 3000
+    environment:
+      DATABASE_URL: postgresql://defence_monitor:${NEWS_DB_PASSWORD}@news-db:5432/${XTEST_DB:-defence_monitor_xtest}
+      AI_PROVIDER: disabled
+      EXPERIENCE_JOBS_ENABLED: "false"
+      SOCIAL_MANUAL_INGEST_ENABLED: ${XTEST_INGEST:-true}
+      SOCIAL_ALLOWED_ORIGINS: http://127.0.0.1:3003,http://localhost:3003
+    user: "65532:65532"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:3000/api/v1/health',timeout=8).status==200 else 1)"]
+      interval: 10s
+      timeout: 8s
+      retries: 10
+      start_period: 30s
+    profiles: [xtest]
+    networks: [news]
+  news-web-xtest:
+    image: defence-monitor-news-news-web:redesign-candidate
+    environment:
+      API_ORIGIN: http://news-api-xtest:3000
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports: ["127.0.0.1:3003:3000"]
+    restart: "no"
+    profiles: [xtest]
+    networks: [news]
+  news-web-preview:
+    image: ${PREVIEW_WEB_IMAGE:-defence-monitor-news-news-web:redesign-candidate}
+    build: {context: ../../apps/web-next, dockerfile: Dockerfile}
+    environment:
+      API_ORIGIN: http://news-api-preview:3000
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports: ["127.0.0.1:3002:3000"]
+    depends_on: {news-api-preview: {condition: service_healthy}}
+    restart: "no"
+    profiles: [redesign-preview]
+    networks: [news]

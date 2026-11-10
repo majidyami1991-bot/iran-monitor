@@ -34,7 +34,8 @@ const REVIEWER_NAME = 'reviewer'; // single-operator context; no auth layer exis
 
 async function postAction(path: string, params: Record<string, string>): Promise<{ ok: boolean; body: any }> {
   const qs = new URLSearchParams(params).toString();
-  const res = await fetch(`/api/v1${path}?${qs}`, { method: 'POST' });
+  // The API proxy accepts writes only as JSON (cross-site form posts are refused).
+  const res = await fetch(`/api/v1${path}?${qs}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
   const body = await res.json().catch(() => ({}));
   return { ok: res.ok, body };
 }

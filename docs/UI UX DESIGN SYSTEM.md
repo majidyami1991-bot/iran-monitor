@@ -1,4 +1,4 @@
-# Iran Monitor design system
+# Defence Monitor design system
 
 Single source of design decisions for the redesigned interface. Tokens live in
 code at `apps/web-next/app/design/tokens.css`; this document explains the

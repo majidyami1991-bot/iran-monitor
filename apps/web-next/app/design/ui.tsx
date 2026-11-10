@@ -1,117 +1,237 @@
 'use client';
 import type { ReactNode } from 'react';
-import { AlertTriangle, Inbox } from 'lucide-react';
+import Link from 'next/link';
+import { AlertTriangle, Inbox, PlugZap, Sparkles, Languages, Zap, CircleDashed, ChevronLeft } from 'lucide-react';
+import { catVar, fmt } from './format';
+import type { Importance, Integration } from './types';
 
-/** The six monitoring states named in the design system. Every health value
- * the API returns maps to exactly one of these — never invent a color. */
-export type Health = 'healthy' | 'fresh' | 'attention' | 'stopped' | 'error' | 'inactive';
+/* ------------------------------------------------------------------ v2 primitives */
 
-const HEALTH_LABEL: Record<Health, string> = {
-  healthy: 'سالم', fresh: 'تازه', attention: 'نیازمند توجه',
-  stopped: 'متوقف', error: 'خطادار', inactive: 'غیرفعال',
+export function Tag({ children, tone = 'neutral', title, icon }: {
+  children: ReactNode; tone?: 'neutral' | 'brand' | 'urgent' | 'warn' | 'ok' | 'error' | 'ai' | 'info' | 'uncertain';
+  title?: string; icon?: ReactNode;
+}) {
+  return <span className={`tag tag-${tone}`} title={title}>{icon}{children}</span>;
+}
+
+export function CategoryTag({ id, label, href = true }: { id: string | null | undefined; label: string | null | undefined; href?: boolean }) {
+  const text = label || 'دسته‌بندی‌نشده';
+  const inner = <><i style={{ background: catVar(id) }} />{text}</>;
+  if (href && id) return <Link href={`/topics/${id}`} className="cat-tag">{inner}</Link>;
+  return <span className="cat-tag">{inner}</span>;
+}
+
+const IMP_LABEL: Record<Importance, string> = { high: 'اهمیت زیاد', medium: 'اهمیت متوسط', low: 'اهمیت کم' };
+export function ImportanceTag({ level, showLow = false }: { level: Importance; showLow?: boolean }) {
+  if (level === 'low' && !showLow) return null;
+  return <span className={`imp imp-${level}`} title="بر اساس قاعده importance_v1 — صفحه «درباره» را ببینید"><i />{IMP_LABEL[level]}</span>;
+}
+
+export function BreakingTag() {
+  return <Tag tone="urgent" icon={<Zap size={12} />}>فوری</Tag>;
+}
+
+/** The client's rule: a machine translation is always visibly labelled, with
+ *  its review state. Absent translations say why, never show a guess. */
+export const MACHINE_LABEL = 'ترجمه خودکار ـ تأیید انسانی نشده';
+
+export function TranslationTag({ status, review }: { status: string | null | undefined; review?: string | null }) {
+  // 3003 lab pipeline (TranslateGemma 27B + QC v2.1): passing QC is not proof of correctness.
+  if (status === 'translated_auto')
+    return <Tag tone="ai" icon={<Languages size={12} />} title="کنترل کیفیت خودکار اشکالی نیافت؛ این به معنی صحت قطعی نیست">{MACHINE_LABEL}</Tag>;
+  if (status === 'qc_warning')
+    return <Tag tone="uncertain" icon={<Languages size={12} />} title="برخی اعداد، نام‌ها یا اصطلاحات قابل تأیید خودکار نبود؛ متن اصلی ملاک است">ترجمه با هشدار کیفیت</Tag>;
+  if (status === 'qc_failed')
+    return <Tag tone="uncertain" icon={<Languages size={12} />} title="کنترل کیفیت خطای بحرانی یافت؛ ترجمه نمایش داده نمی‌شود">ترجمه رد شد (خطای کیفیت)</Tag>;
+  if (status === 'translation_pending' || status === 'processing')
+    return <Tag tone="uncertain" icon={<Languages size={12} />} title="در صف ترجمه خودکار؛ تا آماده شدن، متن اصلی نمایش داده می‌شود">{status === 'processing' ? 'در حال ترجمه' : 'در انتظار ترجمه'}</Tag>;
+  if (status === 'translation_failed')
+    return <Tag tone="uncertain" icon={<Languages size={12} />} title="پس از چند تلاش ناموفق ماند؛ متن اصلی معتبر است">ترجمه ناموفق (دائمی)</Tag>;
+  if (status === 'no_source_text')
+    return <Tag tone="neutral" icon={<Languages size={12} />} title="منبع متنی برای ترجمه منتشر نکرده است">بدون متن برای ترجمه</Tag>;
+  if (status === 'translation_error')
+    return <Tag tone="uncertain" icon={<Languages size={12} />} title="ترجمه خودکار ناموفق بود و با تأخیر دوباره تلاش می‌شود">خطای ترجمه</Tag>;
+  if (status === 'available') {
+    const reviewed = review === 'approved' ? ' · بازبینی‌شده' : review === 'pending_review' ? ' · در صف بازبینی' : ' · بازبینی‌نشده';
+    return <Tag tone="ai" icon={<Languages size={12} />} title="ترجمه ماشینی؛ متن اصلی منبع حفظ شده است">ترجمه ماشینی{reviewed}</Tag>;
+  }
+  const label = status === 'error' || status === 'failed' ? 'ترجمه ناموفق' : status === 'unavailable' ? 'ترجمه ناموجود'
+    : status === 'needs_review' ? 'ترجمه ردشده در کنترل کیفیت' : status === 'processing' ? 'در حال ترجمه'
+    : status === 'stale' ? 'متن اصلی تغییر کرده؛ ترجمه کهنه' : status === 'not_required' ? 'متن اصلی فارسی است' : 'ترجمه در انتظار';
+  return <Tag tone="uncertain" icon={<Languages size={12} />} title="هنوز ترجمه فارسی ذخیره نشده؛ متن اصلی نمایش داده می‌شود">{label}</Tag>;
+}
+
+export function AiTag({ children = 'تولیدشده با هوش مصنوعی' }: { children?: ReactNode }) {
+  return <Tag tone="ai" icon={<Sparkles size={12} />}>{children}</Tag>;
+}
+
+export function RuleTag({ children }: { children: ReactNode }) {
+  return <Tag tone="info" icon={<CircleDashed size={12} />}>{children}</Tag>;
+}
+
+export function SectionHead({ title, kicker, action, id }: { title: string; kicker?: ReactNode; action?: { href: string; label: string }; id?: string }) {
+  return (
+    <div className="sec-head">
+      <div>
+        <h2 id={id}>{title}</h2>
+        {kicker && <p>{kicker}</p>}
+      </div>
+      {action && <Link href={action.href} className="sec-link">{action.label}<ChevronLeft size={15} /></Link>}
+    </div>
+  );
+}
+
+export function PageHead({ title, lede, children, eyebrow }: { title: string; lede?: ReactNode; children?: ReactNode; eyebrow?: string }) {
+  return (
+    <header className="page-hero">
+      <div>
+        {eyebrow && <span className="eyebrow">{eyebrow}</span>}
+        <h1>{title}</h1>
+        {lede && <p>{lede}</p>}
+      </div>
+      {children && <div className="page-hero-side">{children}</div>}
+    </header>
+  );
+}
+
+export function Empty({ title, children, icon }: { title: string; children?: ReactNode; icon?: ReactNode }) {
+  return (
+    <div className="empty" role="status">
+      {icon ?? <Inbox size={24} />}
+      <strong>{title}</strong>
+      {children && <div className="empty-body">{children}</div>}
+    </div>
+  );
+}
+
+export function Failure({ children, onRetry }: { children?: ReactNode; onRetry?: () => void }) {
+  return (
+    <div className="failure" role="alert">
+      <AlertTriangle size={18} />
+      <span>{children ?? 'دریافت داده از سرور ناموفق بود. داده‌ای حدس زده یا جایگزین نشده است.'}</span>
+      {onRetry && <button type="button" className="btn-ghost" onClick={onRetry}>تلاش دوباره</button>}
+    </div>
+  );
+}
+
+export function Bone({ h = 14, w = '100%', r }: { h?: number; w?: number | string; r?: number }) {
+  return <span className="bone" style={{ height: h, width: w, borderRadius: r }} aria-hidden="true" />;
+}
+
+export function CardBones({ n = 4, image = true }: { n?: number; image?: boolean }) {
+  return (
+    <div className="bones" role="status" aria-label="در حال بارگذاری">
+      {Array.from({ length: n }).map((_, i) => (
+        <div key={i} className="bone-card">
+          {image && <Bone h={84} w={120} r={8} />}
+          <div style={{ flex: 1, display: 'grid', gap: 8 }}><Bone h={12} w="30%" /><Bone h={16} /><Bone h={16} w="75%" /></div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const INTEGRATION_STATUS: Record<string, [string, 'ok' | 'warn' | 'error' | 'uncertain']> = {
+  active: ['فعال', 'ok'], configured: ['پیکربندی‌شده', 'ok'], stale: ['متوقف یا با تأخیر', 'warn'],
+  blocked: ['مسدود', 'error'], not_configured: ['اتصال پیکربندی نشده', 'uncertain'],
+  manual_only: ['پایش دستی', 'ok'],
 };
 
-/** Maps API health_status / collector_health strings to one of the six design
- * states. This is the single place that translation happens — never inline
- * a color decision at a call site. */
+/** Honest state for a capability whose data source is not connected: which
+ *  integration, its live status, why — and never a placeholder number. */
+export function IntegrationNotice({ integration, title, children }: { integration: Integration | null | undefined; title?: string; children?: ReactNode }) {
+  const [label, tone] = INTEGRATION_STATUS[integration?.live_status ?? 'not_configured'] ?? [integration?.live_status ?? '—', 'uncertain'];
+  return (
+    <div className={`integration integration-${tone}`}>
+      <div className="integration-head">
+        <PlugZap size={18} />
+        <strong>{title ?? integration?.name_fa ?? 'اتصال داده'}</strong>
+        <Tag tone={tone}>{label}</Tag>
+      </div>
+      {integration?.reason_fa && <p>{integration.reason_fa}</p>}
+      {children}
+      {tone !== 'ok' && <small>هیچ داده نمایشی یا ساختگی در این بخش نشان داده نمی‌شود.</small>}
+    </div>
+  );
+}
+
+export function Stat({ label, value, note, tone }: { label: string; value: ReactNode; note?: ReactNode; tone?: 'up' | 'down' | 'flat' }) {
+  return (
+    <div className="stat">
+      <span className="stat-label">{label}</span>
+      <strong className="stat-value">{typeof value === 'number' ? fmt(value) : value}</strong>
+      {note && <span className={`stat-note ${tone ? 'stat-' + tone : ''}`}>{note}</span>}
+    </div>
+  );
+}
+
+export function Segmented<T extends string>({ value, onChange, items, label }: { value: T; onChange: (v: T) => void; items: [T, string][]; label: string }) {
+  return (
+    <div className="segmented" role="radiogroup" aria-label={label}>
+      {items.map(([k, l]) => (
+        <button key={k} type="button" role="radio" aria-checked={value === k} onClick={() => onChange(k)}>{l}</button>
+      ))}
+    </div>
+  );
+}
+
+export function Pager({ page, hasNext, onPage, total }: { page: number; hasNext: boolean; onPage: (p: number) => void; total?: number }) {
+  return (
+    <nav className="pager" aria-label="صفحه‌بندی">
+      <button type="button" className="btn-ghost" disabled={page <= 1} onClick={() => onPage(page - 1)}>صفحه قبل</button>
+      <span>صفحه {fmt(page)}{total != null ? ` · ${fmt(total)} مورد` : ''}</span>
+      <button type="button" className="btn-ghost" disabled={!hasNext} onClick={() => onPage(page + 1)}>صفحه بعد</button>
+    </nav>
+  );
+}
+
+export function SourceMark({ name, color, size = 28 }: { name: string; color: string; size?: number }) {
+  const letter = (name || '؟').trim().replace(/^the\s+/i, '').slice(0, 1).toUpperCase();
+  return <span className="mark" style={{ ['--mark' as string]: color, width: size, height: size, fontSize: size * 0.45 }} aria-hidden="true">{letter}</span>;
+}
+
+/* ------------------------------------------------------------------ v1 primitives
+   (kept so the retained review and monitoring pages compile unchanged) */
+
+export type Health = 'healthy' | 'fresh' | 'attention' | 'stopped' | 'error' | 'inactive';
+const HEALTH_LABEL: Record<Health, string> = {
+  healthy: 'سالم', fresh: 'تازه', attention: 'نیازمند توجه', stopped: 'متوقف', error: 'خطادار', inactive: 'غیرفعال',
+};
 export function toHealth(apiValue: string | null | undefined): Health {
   switch (apiValue) {
     case 'healthy': return 'healthy';
     case 'delayed': case 'degraded': return 'attention';
     case 'failing': case 'stopped_stale_heartbeat': return 'error';
     case 'stopped': case 'not_running': return 'stopped';
-    case 'not_run': return 'inactive';
     default: return 'inactive';
   }
 }
-
 export function StatusPill({ health, label, title }: { health: Health; label?: string; title?: string }) {
   return <span className={'status-pill status-' + health} title={title}><i />{label ?? HEALTH_LABEL[health]}</span>;
 }
-
 export function Badge({ children, tone = 'default', title }: { children: ReactNode; tone?: 'default' | 'accent' | 'error' | 'muted'; title?: string }) {
-  const cls = tone === 'default' ? 'badge' : `badge badge-${tone}`;
-  return <span className={cls} title={title}>{children}</span>;
+  return <span className={tone === 'default' ? 'badge' : `badge badge-${tone}`} title={title}>{children}</span>;
 }
-
-export function Chip({ children, active = false, onClick, href }: { children: ReactNode; active?: boolean; onClick?: () => void; href?: string }) {
-  if (href) return <a href={href} className="chip" aria-pressed={active}>{children}</a>;
-  return <button type="button" className="chip" aria-pressed={active} onClick={onClick}>{children}</button>;
-}
-
-export function Tabs({ value, onChange, items }: { value: string; onChange: (v: string) => void; items: [string, string][] }) {
-  return (
-    <div className="tabs" role="tablist">
-      {items.map(([key, label]) => (
-        <button key={key} type="button" role="tab" aria-selected={value === key} onClick={() => onChange(key)}>{label}</button>
-      ))}
-    </div>
-  );
-}
-
 export function EmptyState({ title, children }: { title: string; children?: ReactNode }) {
-  return (
-    <div className="state-block" role="status">
-      <Inbox size={26} color="var(--text-disabled)" />
-      <strong>{title}</strong>
-      {children && <p>{children}</p>}
-    </div>
-  );
+  return <Empty title={title}>{children}</Empty>;
 }
-
 export function ErrorState({ children, onRetry }: { children: ReactNode; onRetry?: () => void }) {
-  return (
-    <div className="state-error" role="alert">
-      <AlertTriangle size={18} />
-      <span>{children}</span>
-      {onRetry && <button type="button" className="btn btn-secondary" onClick={onRetry} style={{ marginRight: 'auto' }}>تلاش دوباره</button>}
-    </div>
-  );
+  return <Failure onRetry={onRetry}>{children}</Failure>;
 }
-
-export function StaleNotice({ children }: { children: ReactNode }) {
-  return <span className="state-stale"><AlertTriangle size={13} />{children}</span>;
-}
-
 export function Skeleton({ height = 16, width = '100%', radius }: { height?: number; width?: number | string; radius?: number }) {
-  return <div className="skeleton" style={{ height, width, borderRadius: radius }} />;
+  return <Bone h={height} w={width} r={radius} />;
 }
-
-export function SourceMark({ name, color }: { name: string; color: string }) {
-  const letter = (name || '؟').trim().slice(0, 1).toUpperCase();
-  return <span className="source-mark" style={{ ['--mark-color' as string]: color }}>{letter}</span>;
-}
-
-/** Small, consistent per-field status indicator: replaces the
- * "field_name: field_value" pill dumps that read as a debug panel. Shows an
- * icon + label only; hover reveals the full explanation via `title`. */
 const FIELD_LABEL: Record<string, string> = {
-  available: 'موجود', pending: 'در صف', unavailable: 'ناموجود',
-  error: 'خطا', not_processed: 'پردازش‌نشده', summary_only: 'فقط خلاصه',
-  full_syndicated: 'متن کامل', link_only: 'فقط پیوند',
-  not_generated: 'تولید نشده', provider_not_configured: 'ارائه‌دهنده تنظیم نشده',
-  needs_review: 'نیازمند بازبینی', pending_review: 'در صف بازبینی',
-  approved: 'تأییدشده', rejected: 'ردشده', not_applicable: '—',
-  source_summary_missing: 'خلاصه منبع موجود نیست',
+  available: 'موجود', pending: 'در صف', unavailable: 'ناموجود', error: 'خطا', not_processed: 'پردازش‌نشده',
+  summary_only: 'فقط خلاصه', full_syndicated: 'متن کامل', link_only: 'فقط پیوند', not_generated: 'تولید نشده',
+  provider_not_configured: 'ارائه‌دهنده تنظیم نشده', needs_review: 'نیازمند بازبینی', pending_review: 'در صف بازبینی',
+  approved: 'تأییدشده', rejected: 'ردشده', not_applicable: '—', source_summary_missing: 'خلاصه منبع موجود نیست',
 };
 const FIELD_TONE: Record<string, 'accent' | 'default' | 'muted' | 'error'> = {
-  available: 'accent', full_syndicated: 'accent', approved: 'accent',
-  pending: 'default', summary_only: 'default', pending_review: 'default',
-  unavailable: 'muted', not_processed: 'muted', link_only: 'muted',
-  not_generated: 'muted', provider_not_configured: 'muted', not_applicable: 'muted',
-  source_summary_missing: 'muted',
-  error: 'error', rejected: 'error', needs_review: 'error',
+  available: 'accent', full_syndicated: 'accent', approved: 'accent', pending: 'default', summary_only: 'default',
+  pending_review: 'default', error: 'error', rejected: 'error', needs_review: 'error',
 };
 export function FieldStatus({ label, status, title }: { label: string; status?: string | null; title?: string }) {
   const key = status || 'unavailable';
   return <Badge tone={FIELD_TONE[key] ?? 'muted'} title={title}>{label} · {FIELD_LABEL[key] ?? key}</Badge>;
-}
-
-export function Pagination({ page, hasNext, onPage }: { page: number; hasNext: boolean; onPage: (p: number) => void }) {
-  return (
-    <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'center', margin: 'var(--space-6) 0' }}>
-      <button type="button" className="btn btn-secondary" disabled={page <= 1} onClick={() => onPage(page - 1)}>صفحه قبل</button>
-      <button type="button" className="btn btn-secondary" disabled={!hasNext} onClick={() => onPage(page + 1)}>صفحه بعد</button>
-    </div>
-  );
 }

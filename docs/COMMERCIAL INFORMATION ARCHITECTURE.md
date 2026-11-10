@@ -1,4 +1,4 @@
-# Commercial Information Architecture — Iran Monitor
+# Commercial Information Architecture — Defence Monitor
 
 Stage A deliverable. Defines the target navigation, page-by-page data
 bindings, and the component gap against the existing (already commercial-
@@ -143,7 +143,7 @@ real reason**, never a generic "no data":
 | `news_item_translations` | 80 rows, all pre-existing from an earlier phase |
 | `content_key_points` | 0 (no real AI provider configured yet) |
 | `news_item_media` | 723 rows |
-| Docker (`iran-monitor-news-*`) | 4/4 containers healthy |
+| Docker (`defence-monitor-news-*`) | 4/4 containers healthy |
 | OpenCTI (14 containers) | Untouched, running |
 | Unrelated projects (`mlw-*`) | Untouched, running |
 | Git | Clean at phase start except this phase's own new docs |

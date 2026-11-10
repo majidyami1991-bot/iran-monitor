@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Back up the Iran Monitor news database and collector state, or restore a backup.
+  Back up the Defence Monitor news database and collector state, or restore a backup.
 
 .DESCRIPTION
   Writes a pg_dump custom-format archive plus a copy of the collector state
@@ -20,7 +20,7 @@ param(
   [ValidateSet('backup', 'verify', 'restore', 'list')]
   [string]$Action = 'backup',
   [string]$Path,
-  [string]$Project = 'iran-monitor-news',
+  [string]$Project = 'defence-monitor-news',
   [int]$KeepDays = 30
 )
 
@@ -29,8 +29,8 @@ $Root = Split-Path -Parent $PSScriptRoot
 $BackupDir = Join-Path $Root 'runtime/backups'
 $Db = "$Project-news-db-1"
 $Collector = "$Project-news-collector-1"
-$User = 'iran_monitor'
-$Database = 'iran_monitor'
+$User = 'defence_monitor'
+$Database = 'defence_monitor'
 
 function Assert-Database {
   $state = docker inspect $Db --format '{{.State.Running}}' 2>$null
@@ -64,7 +64,7 @@ switch ($Action) {
     Assert-Database
     New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
     $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss')
-    $dump = Join-Path $BackupDir "iran_monitor-$stamp.dump"
+    $dump = Join-Path $BackupDir "defence_monitor-$stamp.dump"
 
     docker exec $Db pg_dump -U $User -d $Database -Fc -f /tmp/backup.dump
     if ($LASTEXITCODE -ne 0) { throw 'pg_dump failed.' }

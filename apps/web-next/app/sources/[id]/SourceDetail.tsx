@@ -1,84 +1,99 @@
 'use client';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { ExternalLink } from 'lucide-react';
 import { Shell } from '../../design/Shell';
 import { useApi, useNow } from '../../design/useApi';
-import { EmptyState, ErrorState, Skeleton, SourceMark, StatusPill, toHealth } from '../../design/ui';
+import type { FeedItem } from '../../design/types';
+import { fmt, fmtDateTime, fmtDay, fmtPercent, fmtRelative, safeUrl, sourceColor } from '../../design/format';
+import { Failure, PageHead, SourceMark, Tag, Bone, CardBones, Empty } from '../../design/ui';
+import { Bars, Columns, Figure } from '../../design/charts';
 import { NewsCard } from '../../components/NewsCard';
-import type { NewsListItem } from '../../components/news-types';
-import { fmt, fmtDateTime, fmtDateShort, safeUrl, sourceColor } from '../../design/format';
+import { freshness, health, type Profile, TYPE_FA } from '../SourcesList';
 
-interface SourceDetailData {
-  source_id: string; display_name: string | null; canonical_url: string | null; hostname: string | null;
-  source_type: string | null; category: string | null; feed_url: string | null; collection_tier: string | null;
-  enabled_for_scheduler: boolean; last_attempt_at: string | null; last_success_at: string | null;
-  last_http_status: number | null; consecutive_failures: number; health_status: string;
-  item_count: number; items_24h: number; items_7d: number; latest_published: string | null;
-  provenance: [string, number][]; timeline: [string, number][]; latest_items: NewsListItem[];
+interface Detail extends Profile {
+  topics: { category_id: string; category_label: string; n: number }[];
+  timeline_30d: { day: string; n: number }[];
+  runs: { run_id: string; started_at: string; status: string; http_status: number | null; observed: number; inserted: number; duplicates: number; error_class: string | null }[];
+  hours: { h: number; n: number }[];
+  recent: FeedItem[];
 }
+const CH: Record<string, [string, 'ok' | 'uncertain']> = { active: ['فعال', 'ok'], inactive: ['غیرفعال', 'uncertain'], not_configured: ['پیکربندی نشده', 'uncertain'] };
 
 export function SourceDetail() {
-  const params = useParams<{ id?: string }>();
-  const id = params?.id || '';
-  const { data: s, error, loading, reload } = useApi<SourceDetailData>('sources/' + encodeURIComponent(id), [id]);
+  const { id } = useParams<{ id: string }>();
+  const q = useApi<Detail>('source-profiles/' + encodeURIComponent(id), [id]);
   const now = useNow();
-
-  if (loading) return <Shell title="منبع" breadcrumb="منبع"><Skeleton height={200} radius={14} /></Shell>;
-  if (error || !s) return <Shell title="منبع" breadcrumb="منبع"><ErrorState onRetry={reload}>دریافت اطلاعات منبع ممکن نشد.</ErrorState></Shell>;
-
-  const name = s.display_name || s.hostname || 'نام ثبت نشده';
-  const color = sourceColor(s.source_id);
-  const trend = (s.timeline || []).slice().reverse().map(([bucket, count]) => ({ day: fmtDateShort(bucket), count }));
-
+  if (q.error) return <Shell><Failure onRetry={q.reload}>این منبع پیدا نشد.</Failure></Shell>;
+  if (!q.data) return <Shell><Bone h={28} w="40%" /><CardBones n={3} /></Shell>;
+  const s = q.data;
+  const [hl, ht] = health(s);
+  const [fl, ft] = freshness(s.freshness_minutes);
+  const byDay = new Map(s.timeline_30d.map((x) => [x.day.slice(0, 10), x.n]));
+  const days = Array.from({ length: 30 }, (_, i) => { const d = new Date(Date.now() - (29 - i) * 86400000).toISOString().slice(0, 10); return { key: d, label: fmtDay(d), value: byDay.get(d) ?? 0 }; });
+  const hours = Array.from({ length: 24 }, (_, h) => ({ key: String(h), label: `${fmt(h)}:۰۰`, value: s.hours.find((x) => x.h === h)?.n ?? 0 }));
+  const site = safeUrl(s.canonical_url);
   return (
-    <Shell title={name} breadcrumb={name}>
-      <div className="source-detail-head">
-        <SourceMark name={name} color={color} />
-        <div>
-          <h1>{name}</h1>
-          <p dir="ltr">{s.hostname}{s.feed_url ? ' · ' + s.feed_url : ''}</p>
-        </div>
-        <StatusPill health={toHealth(s.health_status)} />
-        {safeUrl(s.canonical_url || undefined) && <a href={safeUrl(s.canonical_url || undefined)} target="_blank" rel="noopener noreferrer" className="btn btn-secondary">وب‌سایت اصلی <ExternalLink size={14} /></a>}
+    <Shell>
+      <nav className="muted" aria-label="مسیر"><Link href="/sources">منابع</Link></nav>
+      <PageHead eyebrow={TYPE_FA[s.source_type ?? ''] ?? 'منبع'} title={s.name}>
+        <SourceMark name={s.name} color={sourceColor(s.source_id)} size={48} />
+      </PageHead>
+      <div className="card-flags"><Tag tone={ht}>{hl}</Tag><Tag tone={ft}>{fl}</Tag>
+        {Object.entries(s.channels).map(([k, v]) => <Tag key={k} tone={CH[v]?.[1] ?? 'uncertain'}>{k.toUpperCase()}: {CH[v]?.[0] ?? v}</Tag>)}
       </div>
-
-      <div className="stat-grid" style={{ margin: '20px 0' }}>
-        <div className="stat-card"><span className="stat-label">کل اخبار</span><strong>{fmt(s.item_count)}</strong></div>
-        <div className="stat-card"><span className="stat-label">۲۴ ساعت</span><strong>{fmt(s.items_24h)}</strong></div>
-        <div className="stat-card"><span className="stat-label">۷ روز</span><strong>{fmt(s.items_7d)}</strong></div>
-        <div className="stat-card"><span className="stat-label">شکست متوالی</span><strong>{fmt(s.consecutive_failures)}</strong></div>
-        <div className="stat-card"><span className="stat-label">آخرین دریافت موفق</span><strong className="stat-card-time">{fmtDateTime(s.last_success_at)}</strong></div>
-      </div>
-
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-title"><h2>حجم انتشار روزانه</h2></div>
-        {trend.length ? (
-          <div className="chart-box" dir="ltr">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs><linearGradient id="src-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--accent-strong)" stopOpacity={0.3} /><stop offset="100%" stopColor="var(--accent-strong)" stopOpacity={0} /></linearGradient></defs>
-                <CartesianGrid stroke="var(--border-subtle)" vertical={false} />
-                <XAxis dataKey="day" tick={{ fill: 'var(--text-tertiary)', fontSize: 11 }} minTickGap={24} />
-                <YAxis allowDecimals={false} tick={{ fill: 'var(--text-tertiary)', fontSize: 11 }} width={28} />
-                <Tooltip contentStyle={{ background: 'var(--surface-3)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
-                <Area type="monotone" dataKey="count" name="تعداد خبر" stroke="var(--accent-strong)" fill="url(#src-area)" strokeWidth={2} isAnimationActive={false} />
-              </AreaChart>
-            </ResponsiveContainer>
+      <div className="detail">
+        <div className="detail-main">
+          <div className="stat-row">
+            <div className="stat"><span className="stat-label">کل خبرها</span><strong className="stat-value">{fmt(s.item_count)}</strong><span className="stat-note">{fmtPercent(s.coverage_share, 1)} از کل پوشش</span></div>
+            <div className="stat"><span className="stat-label">۲۴ ساعت / ۷ روز</span><strong className="stat-value">{fmt(s.items_24h)} / {fmt(s.items_7d)}</strong></div>
+            <div className="stat"><span className="stat-label">موفقیت دریافت ۷ روز</span><strong className="stat-value">{s.success_rate_7d == null ? '—' : fmtPercent(s.success_rate_7d)}</strong><span className="stat-note">{fmt(s.runs_ok_7d)} از {fmt(s.runs_7d)} اجرا</span></div>
+            <div className="stat"><span className="stat-label">آخرین دریافت</span><strong className="stat-value" style={{ fontSize: 16 }}>{fmtRelative(s.last_received, now)}</strong></div>
           </div>
-        ) : <EmptyState title="برای این منبع سری زمانی ثبت نشده">داده کافی برای رسم نمودار موجود نیست.</EmptyState>}
-        <p className="chart-caption">بر اساس تاریخ انتشار یا زمان دریافت ذخیره‌شده؛ این نمودار uptime را نشان نمی‌دهد.</p>
+          <div className="grid-2">
+            <Figure title="خط زمانی انتشار" question="این منبع در ۳۰ روز اخیر هر روز چند خبر منتشر کرده است؟" unit="خبر" range="۳۰ روز" source="زمان انتشار در خوراک">
+              <Columns data={days} height={130} />
+            </Figure>
+            <Figure title="ساعت‌های انتشار" question="این منبع معمولاً در چه ساعتی منتشر می‌کند؟" unit="خبر" range="همه زمان‌ها" source="به وقت تهران">
+              <Columns data={hours} height={130} />
+            </Figure>
+          </div>
+          <Figure title="توزیع موضوعی" question="این منبع بیشتر درباره چه موضوعاتی می‌نویسد؟" unit="خبر" source="طبقه‌بندی نسخه ۳"
+            empty={s.topics.length ? undefined : <Empty title="خبری طبقه‌بندی نشده" />}>
+            <Bars data={s.topics.map((t) => ({ key: t.category_id, label: t.category_label, value: t.n }))} href={(k) => `/news?source_id=${s.source_id}&category=${k}`} />
+          </Figure>
+          <section>
+            <h2 className="brief-sub">خبرهای اخیر</h2>
+            {s.recent.length ? s.recent.map((i) => <NewsCard key={i.item_id} item={i} now={now} variant="row" />) : <Empty title="خبری ثبت نشده" />}
+            <Link href={`/news?source_id=${s.source_id}`} className="sec-link">همه خبرهای این منبع</Link>
+          </section>
+        </div>
+        <aside className="side">
+          <section className="panel">
+            <div className="panel-title"><h3>شناسنامه منبع</h3></div>
+            <dl className="kv">
+              <dt>نام رسمی</dt><dd>{s.has_official_name ? <bdi>{s.name}</bdi> : <span className="muted">ثبت نشده</span>}</dd>
+              <dt>میزبان</dt><dd dir="ltr">{s.hostname}</dd>
+              <dt>وب‌سایت</dt><dd>{site ? <a href={site} target="_blank" rel="noopener noreferrer nofollow" dir="ltr" className="sec-link">{site}</a> : '—'}</dd>
+              <dt>نوع</dt><dd>{TYPE_FA[s.source_type ?? ''] ?? 'ثبت نشده'}</dd>
+              <dt>زبان</dt><dd>{s.language ? <><bdi>{s.language}</bdi> <small className="muted">(اعلام‌شده در خوراک)</small></> : 'اعلام نشده'}</dd>
+              <dt>کشور</dt><dd className="muted">ثبت نشده — بدون منبع مستند ثبت نمی‌شود</dd>
+              <dt>ردیف گردآوری</dt><dd dir="ltr">{s.collection_tier ?? '—'}</dd>
+              <dt>آخرین تلاش</dt><dd>{fmtDateTime(s.last_attempt_at)}{s.last_http_status ? ` · HTTP ${s.last_http_status}` : ''}</dd>
+              <dt>آخرین موفقیت</dt><dd>{fmtDateTime(s.last_success_at)}</dd>
+              <dt>خطای پیاپی</dt><dd>{fmt(s.consecutive_failures)}</dd>
+              <dt>منشأ کامل</dt><dd>{fmtPercent(s.provenance_pct)} ({fmt(s.provenance_complete)} خبر)</dd>
+              <dt>دارای خلاصه</dt><dd>{fmt(s.with_summary)} خبر</dd>
+            </dl>
+          </section>
+          <section className="panel">
+            <div className="panel-title"><h3>آخرین اجراها</h3></div>
+            <div className="table-scroll"><table className="data">
+              <thead><tr><th>زمان</th><th>وضعیت</th><th>مشاهده</th><th>جدید</th></tr></thead>
+              <tbody>{s.runs.slice(0, 12).map((r) => <tr key={r.run_id}><td>{fmtRelative(r.started_at, now)}</td><td>{r.status === 'succeeded' ? <Tag tone="ok">موفق</Tag> : <Tag tone="error">{r.error_class ?? r.status}</Tag>}</td><td>{fmt(r.observed)}</td><td>{fmt(r.inserted)}</td></tr>)}</tbody>
+            </table></div>
+          </section>
+        </aside>
       </div>
-
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-title"><h2>وضعیت منشأ</h2></div>
-        {(s.provenance || []).length ? (s.provenance || []).map(([status, count]) => <p key={status} className="source-provenance-row">{status} <b>{fmt(count)}</b></p>)
-          : <EmptyState title="داده منشأ ثبت نشده" />}
-      </div>
-
-      <div className="card-title" style={{ marginTop: 24 }}><h2>آخرین خبرهای این منبع</h2></div>
-      {(s.latest_items || []).length ? s.latest_items.map((item) => <NewsCard key={item.item_id} item={item} now={now} />)
-        : <EmptyState title="خبری برای این منبع ثبت نشده" />}
     </Shell>
   );
 }

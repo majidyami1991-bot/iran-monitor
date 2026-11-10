@@ -4,15 +4,15 @@ Status: **BLOCKED — IMAGE BUILD DID NOT COMPLETE**.
 
 ## Diagnosis
 
-The Phase 8C-R2 live cycle used `iran-monitor-news-news-collector:latest`, whose image ID was the old collector image (`sha256:f3837600…`). The R1 serializer had been validated in an API candidate image only. The Compose service had a `build` section but no revision-pinned `image`, so a one-off `compose run` could resolve the stale local collector tag.
+The Phase 8C-R2 live cycle used `defence-monitor-news-news-collector:latest`, whose image ID was the old collector image (`sha256:f3837600…`). The R1 serializer had been validated in an API candidate image only. The Compose service had a `build` section but no revision-pinned `image`, so a one-off `compose run` could resolve the stale local collector tag.
 
-The controlled correction prepared in this phase pins `news-collector` to `iran-monitor-news-collector:205d769`, passes `EXPECTED_COLLECTOR_GIT_REVISION=205d769`, adds the pre-lock `COLLECTOR_IMAGE_REVISION_MISMATCH` guard, and adds non-secret OCI/build metadata plus `python -m iran_monitor_collector build-info`.
+The controlled correction prepared in this phase pins `news-collector` to `defence-monitor-news-collector:205d769`, passes `EXPECTED_COLLECTOR_GIT_REVISION=205d769`, adds the pre-lock `COLLECTOR_IMAGE_REVISION_MISMATCH` guard, and adds non-secret OCI/build metadata plus `python -m iran_monitor_collector build-info`.
 
 ## Build result
 
 The one permitted build invocation was:
 
-`docker build --network=none --build-arg GIT_REVISION=205d769 --build-arg BUILD_TIMESTAMP_UTC=<UTC> -t iran-monitor-news-collector:205d769 -f apps/api/Dockerfile .`
+`docker build --network=none --build-arg GIT_REVISION=205d769 --build-arg BUILD_TIMESTAMP_UTC=<UTC> -t defence-monitor-news-collector:205d769 -f apps/api/Dockerfile .`
 
 It failed at the existing `pip install --no-cache-dir -r requirements.txt` layer because the base image had no cached Python packages and network access was disabled. No retry or alternate build was attempted. No image was replaced, deleted, pruned, or used for collection. The collector service remains stopped.
 

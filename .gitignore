@@ -1,25 +1,53 @@
+# Environment & Secrets
 .env
 .env.*
 !.env.example
 secrets/
+
+# Runtime, Backups & Data
 data/
 logs/
 backups/
-*.log
-*.tmp
-.DS_Store
-Thumbs.db
+runtime/
+runtime/backups/
+runtime/backups-local-ai/
+*.dump
+*.sql.gz
+
+# Node / Frontend
 node_modules/
+**/node_modules/
 .next/
+**/.next/
 dist/
+**/dist/
 build/
-coverage/
-__pycache__/
-*.pyc
-.venv/
-venv/
-*.pid
+**/build/
 *.tsbuildinfo
 
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+**/.pytest_cache/
+.venv/
+venv/
+env/
+coverage/
+htmlcov/
+*.pid
+
+# System & IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+*.tmp
+
+# Wheelhouses & Local Models
 apps/collector/wheelhouse/
 apps/collector/test-wheelhouse/
+TranslatorOllama/

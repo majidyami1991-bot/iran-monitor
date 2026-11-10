@@ -1,7 +1,7 @@
 ﻿# Phase 8C-R2D — Offline Collector Build Context Repair
 
 - Final build invocation: exactly one, offline (`--network=none --pull=false --platform linux/amd64`).
-- Image: `iran-monitor-news-collector:abc2cce`.
+- Image: `defence-monitor-news-collector:abc2cce`.
 - Image ID: `sha256:99931c07268a957474c35af5d0cb2b16b237146d66bfe3783158d265992b9dde`.
 - Architecture: `linux/amd64`.
 - Base image remained pinned to the previously approved Python digest; no pull was performed.
