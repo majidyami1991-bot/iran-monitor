@@ -1,0 +1,152 @@
+{
+  "_note": "SYNTHETIC test fixtures. Not real X posts, not real events; never inserted into any non-test database.",
+  "synthetic": true,
+  "good": [
+    {
+      "case": "simple_english",
+      "source": "The navy confirmed that the exercise ended safely.",
+      "translation": "نیروی دریایی تأیید کرد که رزمایش به‌سلامت پایان یافت."
+    },
+    {
+      "case": "url",
+      "source": "Full report here: https://example.org/report/2026?id=7",
+      "translation": "گزارش کامل در اینجا: https://example.org/report/2026?id=7"
+    },
+    {
+      "case": "mention",
+      "source": "Thanks to @OSINTdefender for the imagery.",
+      "translation": "از @OSINTdefender برای این تصاویر سپاسگزاریم."
+    },
+    {
+      "case": "hashtag",
+      "source": "Satellite images show new hangars at the base. #OSINT #GEOINT",
+      "translation": "تصاویر ماهواره‌ای آشیانه‌های جدیدی را در این پایگاه نشان می‌دهند. #OSINT #GEOINT"
+    },
+    {
+      "case": "number_percent",
+      "source": "Production rose 40% to 1,200 units in 2025.",
+      "translation": "تولید با ۴۰ درصد افزایش در سال ۲۰۲۵ به ۱٬۲۰۰ دستگاه رسید."
+    },
+    {
+      "case": "date_time",
+      "source": "The launch is scheduled for 12/10/2026 at 14:30 UTC.",
+      "translation": "پرتاب برای تاریخ 12/10/2026 ساعت 14:30 به وقت UTC برنامه‌ریزی شده است."
+    },
+    {
+      "case": "organization",
+      "source": "Lockheed Martin and the Pentagon signed the contract.",
+      "translation": "شرکت Lockheed Martin و پنتاگون این قرارداد را امضا کردند."
+    },
+    {
+      "case": "military_acronym",
+      "source": "CENTCOM says an MQ-9 was lost near the coast; NATO is monitoring.",
+      "translation": "CENTCOM می‌گوید یک فروند MQ-9 در نزدیکی ساحل از دست رفت؛ NATO اوضاع را زیر نظر دارد."
+    },
+    {
+      "case": "emoji",
+      "source": "Air defense is active over the city 🚨",
+      "translation": "پدافند هوایی بر فراز شهر فعال است 🚨"
+    },
+    {
+      "case": "zwnj_is_fine_and_mixed_entities",
+      "source": "CENTCOM says 3 MQ-9 drones flew 1,250 km at 14:30 UTC on 12/10/2026, 40% more than in September. Imagery via @OSINTdefender: https://example.org/brief/2026-10 #OSINT",
+      "translation": "سنتکام می‌گوید ۳ پهپاد MQ-9 در ساعت ۱۴:۳۰ به وقت جهانی در تاریخ ۱۲/۱۰/۲۰۲۶، ۴۰٪ بیشتر از سپتامبر، ۱۲۵۰ کیلومتر پرواز کردند. تصاویر از طریق @OSINTdefender: https://example.org/brief/2026-10 #OSINT"
+    }
+  ],
+  "persian_source": {
+    "case": "persian",
+    "source": "پهپادها بر فراز تنگه هرمز دیده شدند. #OSINT"
+  },
+  "bad": [
+    {
+      "case": "commentary_label",
+      "source": "The navy confirmed that the exercise ended safely.",
+      "translation": "ترجمه: نیروی دریایی تأیید کرد که رزمایش به‌سلامت پایان یافت.",
+      "expect_flag": "wrapped_or_labelled"
+    },
+    {
+      "case": "markdown",
+      "source": "The navy confirmed that the exercise ended safely.",
+      "translation": "**نیروی دریایی** تأیید کرد که رزمایش به‌سلامت پایان یافت.",
+      "expect_flag": "model_commentary_or_markdown"
+    },
+    {
+      "case": "number_added",
+      "source": "Production rose 40% to 1,200 units in 2025.",
+      "translation": "تولید با ۴۰ درصد افزایش در سال ۲۰۲۵ به ۱٬۲۰۰ دستگاه و ۳۰۰ قطعه یدکی رسید.",
+      "expect_flag": "number_added"
+    },
+    {
+      "case": "number_removed",
+      "source": "Production rose 40% to 1,200 units in 2025.",
+      "translation": "تولید در سال ۲۰۲۵ افزایش یافت و به ۱٬۲۰۰ دستگاه رسید.",
+      "expect_flag": "number_mismatch"
+    },
+    {
+      "case": "untranslated_english",
+      "source": "The navy confirmed that the exercise ended safely near the coast.",
+      "translation": "نیروی دریایی confirmed that the exercise ended safely در نزدیکی ساحل.",
+      "expect_flag": "untranslated_english"
+    },
+    {
+      "case": "url_changed",
+      "source": "Full report here: https://example.org/report/2026?id=7",
+      "translation": "گزارش کامل در اینجا: https://example.org/report/2026",
+      "expect_flag": "url_missing"
+    },
+    {
+      "case": "url_added",
+      "source": "The navy confirmed that the exercise ended safely.",
+      "translation": "نیروی دریایی تأیید کرد که رزمایش به‌سلامت پایان یافت. https://example.net/more",
+      "expect_flag": "url_added"
+    },
+    {
+      "case": "mention_dropped",
+      "source": "Thanks to @OSINTdefender for the imagery.",
+      "translation": "از این حساب برای این تصاویر سپاسگزاریم.",
+      "expect_flag": "mention_missing"
+    },
+    {
+      "case": "hashtag_dropped",
+      "source": "Satellite images show new hangars at the base. #OSINT #GEOINT",
+      "translation": "تصاویر ماهواره‌ای آشیانه‌های جدیدی را در این پایگاه نشان می‌دهند. #OSINT",
+      "expect_flag": "hashtag_missing"
+    },
+    {
+      "case": "code_dropped",
+      "source": "CENTCOM says an MQ-9 was lost near the coast; NATO is monitoring.",
+      "translation": "CENTCOM می‌گوید یک پهپاد در نزدیکی ساحل از دست رفت؛ NATO اوضاع را زیر نظر دارد.",
+      "expect_flag": "tech_code_missing"
+    },
+    {
+      "case": "time_dropped",
+      "source": "The launch is scheduled for 12/10/2026 at 14:30 UTC.",
+      "translation": "پرتاب برای تاریخ 12/10/2026 در بعدازظهر به وقت UTC برنامه‌ریزی شده است.",
+      "expect_flag": "number_mismatch"
+    },
+    {
+      "case": "identical",
+      "source": "The navy confirmed that the exercise ended safely.",
+      "translation": "The navy confirmed that the exercise ended safely.",
+      "expect_flag": "identical_to_source"
+    },
+    {
+      "case": "too_short",
+      "source": "The navy confirmed that the exercise ended safely near the southern coast after three days of drills.",
+      "translation": "رزمایش تمام شد.",
+      "expect_flag": "output_too_short"
+    },
+    {
+      "case": "template_debris_real_smoke",
+      "source": "CENTCOM says 3 MQ-9 drones flew 1,250 km at 14:30 UTC on 12/10/2026, 40% more than in September. Imagery via @OSINTdefender: https://example.org/brief/2026-10 #OSINT",
+      "translation": "سنتکام می‌گوید ۳ پهپاد MQ-9 در ساعت ۱۴:۳۰ به وقت جهانی در تاریخ ۱۲/۱۰/۲۰۲۶، ۴۰٪ بیشتر از سپتامبر، ۱۲۵۰ کیلومتر پرواز کردند. تصاویر از طریق @OSINTdefender: https://example.org/brief/2026-10 #OSINT\"} %}​",
+      "expect_flag": "stray_markup"
+    },
+    {
+      "case": "zero_width_char",
+      "source": "The navy confirmed that the exercise ended safely.",
+      "translation": "نیروی دریایی تأیید کرد که رزمایش به‌سلامت پایان یافت.​",
+      "expect_flag": "invisible_characters"
+    }
+  ]
+}

@@ -2,12 +2,12 @@ services:
   news-db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: iran_monitor
-      POSTGRES_USER: iran_monitor
+      POSTGRES_DB: defence_monitor
+      POSTGRES_USER: defence_monitor
       POSTGRES_PASSWORD: ${NEWS_DB_PASSWORD:?set NEWS_DB_PASSWORD in .env}
     volumes: [news-db-data:/var/lib/postgresql/data]
     healthcheck:
-      test: [CMD-SHELL, pg_isready -U iran_monitor -d iran_monitor]
+      test: [CMD-SHELL, pg_isready -U defence_monitor -d defence_monitor]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -17,7 +17,7 @@ services:
     build: {context: ../.., dockerfile: apps/api/Dockerfile}
     command: uvicorn main:app --host 0.0.0.0 --port 3000
     environment:
-      DATABASE_URL: postgresql://iran_monitor:${NEWS_DB_PASSWORD}@news-db:5432/iran_monitor
+      DATABASE_URL: postgresql://defence_monitor:${NEWS_DB_PASSWORD}@news-db:5432/defence_monitor
       AI_PROVIDER: ${AI_PROVIDER:-disabled}
       AI_BASE_URL: ${AI_BASE_URL:-}
       AI_API_KEY: ${AI_API_KEY:-}
@@ -67,7 +67,7 @@ services:
   news-translate:
     build: {context: ../.., dockerfile: apps/api/Dockerfile}
     environment:
-      DATABASE_URL: postgresql://iran_monitor:${NEWS_DB_PASSWORD}@news-db:5432/iran_monitor
+      DATABASE_URL: postgresql://defence_monitor:${NEWS_DB_PASSWORD}@news-db:5432/defence_monitor
       AI_PROVIDER: ${AI_PROVIDER:-disabled}
       AI_BASE_URL: ${AI_BASE_URL:-}
       AI_API_KEY: ${AI_API_KEY:-}
@@ -88,20 +88,20 @@ services:
   news-importer:
     build: {context: ../.., dockerfile: apps/api/Dockerfile}
     environment:
-      DATABASE_URL: postgresql://iran_monitor:${NEWS_DB_PASSWORD}@news-db:5432/iran_monitor
+      DATABASE_URL: postgresql://defence_monitor:${NEWS_DB_PASSWORD}@news-db:5432/defence_monitor
     volumes: [../../data/runtime/collector:/project/data/runtime/collector:ro]
     command: python /app/import_db.py
     depends_on: {news-db: {condition: service_healthy}}
     profiles: [tools]
     networks: [news]
   news-collector:
-    image: iran-monitor-news-collector:${COLLECTOR_REVISION:?set COLLECTOR_REVISION in .env}
+    image: defence-monitor-news-collector:${COLLECTOR_REVISION:?set COLLECTOR_REVISION in .env}
     build: {context: ../.., dockerfile: apps/api/Dockerfile}
     labels:
       org.opencontainers.image.revision: "${COLLECTOR_REVISION:?set COLLECTOR_REVISION in .env}"
     command: [python, /app/collector.py]
     environment:
-      DATABASE_URL: postgresql://iran_monitor:${NEWS_DB_PASSWORD}@news-db:5432/iran_monitor
+      DATABASE_URL: postgresql://defence_monitor:${NEWS_DB_PASSWORD}@news-db:5432/defence_monitor
       NEWS_COLLECTION_ENABLED: ${NEWS_COLLECTION_ENABLED:-false}
       NEWS_COLLECTION_INTERVAL_SECONDS: ${NEWS_COLLECTION_INTERVAL_SECONDS:-900}
       COLLECTOR_STATE_DIR: /state
@@ -125,7 +125,7 @@ services:
     networks: [news]
 networks:
   news:
-    name: iran-monitor-news_default
+    name: defence-monitor-news_default
 volumes:
   news-db-data:
   news-collector-state:

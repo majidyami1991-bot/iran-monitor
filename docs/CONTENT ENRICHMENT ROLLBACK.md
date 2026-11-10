@@ -25,14 +25,14 @@ by continuous `news-collector` uptime throughout (42h+, unbroken).
 
 ```
 git checkout 59f309b -- apps/api apps/web-next
-docker build -f apps/api/Dockerfile -t iran-monitor-news-news-api:rollback-pre-content-pilot .
-docker build -f apps/web-next/Dockerfile -t iran-monitor-news-news-web:rollback-pre-content-pilot apps/web-next
-docker compose -p iran-monitor-news -f deployment/news-monitor/compose.yml up -d --no-deps news-api news-web
+docker build -f apps/api/Dockerfile -t defence-monitor-news-news-api:rollback-pre-content-pilot .
+docker build -f apps/web-next/Dockerfile -t defence-monitor-news-news-web:rollback-pre-content-pilot apps/web-next
+docker compose -p defence-monitor-news -f deployment/news-monitor/compose.yml up -d --no-deps news-api news-web
 ```
 
 (Substitute the built `:rollback-pre-content-pilot` tags into `compose.yml`'s
 `image:` reference, or `docker tag` them onto `:latest`, matching the pattern
-used for `iran-monitor-news-web:rollback-8b` in an earlier phase.) The
+used for `defence-monitor-news-web:rollback-8b` in an earlier phase.) The
 pre-phase-3 API never queries `news_item_content`, `news_item_translations`,
 `news_item_media`, `item_classifications`, `news_events`,
 `news_event_members`, or `enrichment_jobs` — those tables simply become

@@ -16,7 +16,7 @@ MAX_REDIRECTS = 3
 CONNECT_TIMEOUT = 8
 READ_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 8 * 1024 * 1024
-UA = 'IranMonitor/1.0 (bounded enrichment fetch; project news-feed collector)'
+UA = 'DefenceMonitor/1.0 (bounded enrichment fetch; project news-feed collector)'
 
 # IANA special-purpose address blocks that must never be reachable from here:
 # loopback, link-local (includes the 169.254.169.254 cloud metadata address),

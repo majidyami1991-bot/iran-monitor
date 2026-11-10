@@ -9,7 +9,7 @@ recorded as passing on the strength of the code existing.
 ```powershell
 cd 'E:\Iran monitor'
 docker run --rm -e DATABASE_URL="postgresql://offline_test:offline_test@127.0.0.1:1/collector_test" `
-  iran-monitor-news-collector:$(git rev-parse HEAD) sh -c "PYTHONPATH=/app python -m pytest -q /app/tests/monitoring"
+  defence-monitor-news-collector:$(git rev-parse HEAD) sh -c "PYTHONPATH=/app python -m pytest -q /app/tests/monitoring"
 node tests/ui/stage1-qa.cjs
 ./scripts/backup.ps1 -Action backup
 ./scripts/backup.ps1 -Action verify -Path runtime/backups/<newest>.dump

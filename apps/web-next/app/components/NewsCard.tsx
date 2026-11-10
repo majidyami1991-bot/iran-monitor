@@ -1,61 +1,130 @@
 'use client';
 import Link from 'next/link';
-import { ShieldCheck, Image as ImageIcon, FileText, Link2, Languages } from 'lucide-react';
-import type { NewsListItem } from './news-types';
-import { fmtRelative, isPersian, safeUrl, sourceColor } from '../design/format';
-import { Badge, SourceMark } from '../design/ui';
+import { Layers } from 'lucide-react';
+import type { FeedItem } from '../design/types';
+import { fmt, fmtRelative, fmtDateTime, sourceColor } from '../design/format';
+import { usePrefs } from '../design/prefs';
+import { BreakingTag, CategoryTag, ImportanceTag, SourceMark, TranslationTag } from '../design/ui';
+import { ItemImage } from './Visual';
 
-/** The one news-item card used in every list context: the dashboard's
- * "جریان اخبار" panel, the news stream, and a source's "latest items". Shows
- * a short excerpt only — never the full extracted body, which belongs on the
- * detail page. This is deliberate: a stream the reader must scan in seconds
- * cannot be built from stacked full articles. */
-export function NewsCard({ item, now }: { item: NewsListItem; now: number }) {
-  const href = '/news/' + encodeURIComponent(item.item_id);
-  const sourceHref = '/sources/' + encodeURIComponent(item.source_id);
-  const color = sourceColor(item.source_id);
-  const sourceLabel = item.source_name || item.hostname || 'نام منبع ثبت نشده';
-  const isNew = item.published_at != null && now - Date.parse(item.published_at) < 86400000 && now >= Date.parse(item.published_at);
+/** Which text leads. 'fa': the stored Persian translation when it passed QC
+ *  (translated_auto / reviewed), else the publisher's original. 'en': the
+ *  original. 'bi': the original leads and the Persian follows — a QC-warning
+ *  translation only here, visibly marked. A QC-failed translation never
+ *  reaches the client. The original is always kept and shown. */
+export function useHeadline(item: FeedItem) {
+  const { contentLang } = usePrefs();
+  const fa = contentLang === 'fa' && item.title_fa;
+  const bi = contentLang === 'bi';
+  return {
+    title: fa ? item.title_fa! : item.title,
+    titleDir: fa ? 'rtl' : 'ltr',
+    original: fa ? item.title : null,
+    summary: contentLang === 'fa' && item.summary_fa ? item.summary_fa : item.summary,
+    summaryDir: contentLang === 'fa' && item.summary_fa ? 'rtl' : 'ltr',
+    bi,
+    biTitle: bi ? (item.title_fa ?? item.title_fa_unverified ?? null) : null,
+    biTitleWarn: bi && !item.title_fa && !!item.title_fa_unverified,
+  } as const;
+}
 
-  const faSummary = item.summary_fa;
-  const faStatus = item.summary_fa_status || 'pending';
-  const enSummary = item.summary;
+/** Persian line under the original in bilingual mode (or the reason it is absent). */
+export function BiLine({ text, warn, status }: { text: string | null; warn: boolean; status: string }) {
+  if (text) return <p className={warn ? 'card-fa card-fa-warn' : 'card-fa'} dir="rtl">{warn && <span className="fa-warn-mark" title="ترجمه با هشدار کیفیت؛ متن اصلی ملاک است">⚠</span>}{text}</p>;
+  const why = status === 'qc_failed' ? 'ترجمه این عنوان در کنترل کیفیت رد شد؛ فقط متن اصلی معتبر است.'
+    : status === 'translation_error' ? 'ترجمه ناموفق بود؛ دوباره تلاش می‌شود.'
+    : status === 'not_required' ? null : 'در انتظار ترجمه خودکار…';
+  return why ? <p className="card-fa card-fa-missing" dir="rtl">{why}</p> : null;
+}
+
+function Meta({ item, now, withSource = true }: { item: FeedItem; now: number; withSource?: boolean }) {
+  return (
+    <div className="card-meta">
+      {withSource && (
+        <Link href={`/sources/${item.source_id}`} className="card-source">
+          <SourceMark name={item.source_name} color={sourceColor(item.source_id)} size={20} />
+          <bdi>{item.source_name}</bdi>
+        </Link>
+      )}
+      <time dateTime={item.published_at ?? undefined} title={item.published_at ? `انتشار: ${fmtDateTime(item.published_at)}` : 'زمان انتشار در خوراک منبع ثبت نشده'}>
+        {item.published_at ? fmtRelative(item.published_at, now) : 'زمان انتشار ثبت نشده'}
+      </time>
+    </div>
+  );
+}
+
+function Summary({ item, text, dir, lines = 3 }: { item: FeedItem; text: string | null; dir: 'ltr' | 'rtl'; lines?: number }) {
+  if (!text) {
+    return <p className="card-summary card-summary-missing">{item.summary_available === false ? 'منبع برای این خبر خلاصه‌ای منتشر نکرده است.' : 'خلاصه‌ای برای این خبر ثبت نشده است.'}</p>;
+  }
+  return <p className="card-summary" dir={dir} style={{ WebkitLineClamp: lines }}>{text}</p>;
+}
+
+export function NewsCard({ item, now, variant = 'standard' }: { item: FeedItem; now: number; variant?: 'lead' | 'standard' | 'compact' | 'row' }) {
+  const h = useHeadline(item);
+  const href = `/news/${item.item_id}`;
+
+  if (variant === 'compact') {
+    return (
+      <article className="card-compact">
+        <div className="card-flags">{item.breaking && <BreakingTag />}<CategoryTag id={item.category_id} label={item.category_label} /></div>
+        <h3 dir={h.titleDir}><Link href={href}>{h.title}</Link></h3>
+        {h.bi && <BiLine text={h.biTitle} warn={h.biTitleWarn} status={item.title_fa_status} />}
+        <Meta item={item} now={now} />
+      </article>
+    );
+  }
+
+  if (variant === 'row') {
+    return (
+      <article className="card-row">
+        <Link href={href} className="card-row-media" tabIndex={-1} aria-hidden="true">
+          <ItemImage src={item.primary_media?.url} alt={item.primary_media?.alt_text} categoryId={item.category_id} categoryLabel={item.category_label}
+            compact credit={false} width={item.primary_media?.width} height={item.primary_media?.height} />
+        </Link>
+        <div className="card-row-body">
+          <div className="card-flags">
+            {item.breaking && <BreakingTag />}
+            <CategoryTag id={item.category_id} label={item.category_label} />
+            <ImportanceTag level={item.importance_level} />
+            {item.event_members > 1 && <Link href={`/events/${item.event_id}`} className="tag tag-info"><Layers size={12} />{fmt(item.event_members)} خبر در رویداد</Link>}
+          </div>
+          <h3 dir={h.titleDir}><Link href={href}>{h.title}</Link></h3>
+          {h.original && <p className="card-original" dir="ltr">{h.original}</p>}
+          {h.bi && <BiLine text={h.biTitle} warn={h.biTitleWarn} status={item.title_fa_status} />}
+          <Summary item={item} text={h.summary} dir={h.summaryDir} lines={2} />
+          <div className="card-foot">
+            <Meta item={item} now={now} />
+            <TranslationTag status={item.title_fa_status} review={item.title_fa_review} />
+          </div>
+        </div>
+      </article>
+    );
+  }
 
   return (
-    <article className="news-card">
-      {item.lead_image_url ? (
-        <img className="news-card-thumb" src={item.lead_image_url} alt={item.lead_image_alt || ''} loading="lazy" referrerPolicy="no-referrer"
-          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-      ) : (
-        <div className="news-card-thumb news-card-thumb-empty" aria-hidden><ImageIcon size={18} strokeWidth={1.5} /></div>
-      )}
-      <div className="news-card-body">
-        <div className="news-card-meta">
-          <Link href={sourceHref} className="news-card-source">
-            <SourceMark name={sourceLabel} color={color} />
-            <span>{sourceLabel}</span>
-          </Link>
-          <time dateTime={item.published_at || item.fetched_at || undefined}>{fmtRelative(item.published_at || item.fetched_at, now)}</time>
-          {isNew && <Badge tone="accent">جدید</Badge>}
+    <article className={variant === 'lead' ? 'card card-lead' : 'card'}>
+      <Link href={href} className="card-media" tabIndex={-1} aria-hidden="true">
+        <ItemImage src={item.primary_media?.url} alt={item.primary_media?.alt_text} categoryId={item.category_id} categoryLabel={item.category_label}
+          priority={variant === 'lead'} width={item.primary_media?.width} height={item.primary_media?.height} />
+      </Link>
+      <div className="card-body">
+        <div className="card-flags">
+          {item.breaking && <BreakingTag />}
+          <CategoryTag id={item.category_id} label={item.category_label} />
+          <ImportanceTag level={item.importance_level} />
         </div>
-        <h3 dir={isPersian(item.title) ? 'rtl' : 'ltr'}><Link href={href}>{item.title}</Link></h3>
-        {faSummary ? (
-          <p className="news-card-excerpt" dir="rtl">{faSummary}</p>
-        ) : (
-          <p className="news-card-excerpt news-card-excerpt-pending" dir="ltr">
-            {enSummary || (item.summary_available === false ? 'این منبع خلاصه‌ای در خوراک منتشر نکرده است.' : 'خلاصه در دسترس نیست.')}
-          </p>
+        <h3 dir={h.titleDir}><Link href={href}>{h.title}</Link></h3>
+        {h.original && <p className="card-original" dir="ltr">{h.original}</p>}
+        {h.bi && <BiLine text={h.biTitle} warn={h.biTitleWarn} status={item.title_fa_status} />}
+        <Summary item={item} text={h.summary} dir={h.summaryDir} lines={variant === 'lead' ? 4 : 3} />
+        <div className="card-foot">
+          <Meta item={item} now={now} />
+          <TranslationTag status={item.title_fa_status} review={item.title_fa_review} />
+        </div>
+        {item.event_members > 1 && (
+          <Link href={`/events/${item.event_id}`} className="card-event"><Layers size={14} />بخشی از رویدادی با {fmt(item.event_members)} خبر از {fmt(item.event_sources)} منبع</Link>
         )}
-        <footer className="news-card-footer">
-          {item.category && <Badge>{item.category}</Badge>}
-          {item.content_status === 'succeeded' && <Badge tone="muted" title="متن کامل استخراج شده"><FileText size={11} /> متن کامل</Badge>}
-          {faStatus === 'available' && <Badge tone="muted" title="ترجمه فارسی موجود است"><Languages size={11} /> ترجمه</Badge>}
-          {item.has_document && <Badge tone="muted" title="سند مرتبط موجود است"><FileText size={11} /> سند</Badge>}
-          {!!item.event_count && <Badge tone="accent" title="بخشی از یک رویداد شناسایی‌شده"><Link2 size={11} /> رویداد ({item.event_count})</Badge>}
-          <span className="news-card-provenance"><ShieldCheck size={12} />{item.provenance_status === 'COMPLETE' ? 'منشأ کامل' : 'منشأ ناقص'}</span>
-          <Link href={href} className="news-card-detail">جزئیات</Link>
-          {safeUrl(item.canonical_url) && <a href={safeUrl(item.canonical_url)} target="_blank" rel="noopener noreferrer">منبع اصلی</a>}
-        </footer>
       </div>
     </article>
   );

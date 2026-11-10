@@ -155,6 +155,13 @@ def main(argv=None):
 
         if args.dry_run:
             report['status'] = 'dry_run'
+            report['free_only'] = gw.free_only_enabled(gateway.config)
+            report['free_only_guard_passed'] = (not report['free_only']) or all(
+                gw.model_is_free(gateway.config.provider, m) for m in (translation_model, summary_model))
+            if isinstance(gateway.adapter, gw.OpenRouterAdapter):
+                body = gateway.adapter.request_body('<system prompt>', '<source text>')
+                report['request_preview'] = {k: v for k, v in body.items() if k != 'messages'}
+                report['retry_enabled'] = gateway.adapter.retry_enabled
             report['items'] = [{'item_id': i['item_id'], 'missing': i['missing'],
                                 'body_chars': len(i['body'] or ''), 'display_policy': i['display_policy']}
                                for i in items]
@@ -167,8 +174,19 @@ def main(argv=None):
         # rest of the candidate list making the same doomed call repeatedly.
         _FATAL = {'authentication_failed': 'auth_error_count', 'insufficient_credits': 'insufficient_credits_error_count',
                   'provider_forbidden': 'auth_error_count', 'budget_exceeded': None, 'request_invalid': None,
-                  'circuit_open': None}
+                  'circuit_open': None,
+                  # Pilot rule (2026-09-29): the first rate limit, timeout,
+                  # free-only guard trip, or reported/unreported cost stops
+                  # the run; nothing is retried or worked around.
+                  'rate_limited': None, 'transient_timeout': None, 'TimeoutError': None,
+                  'free_only_guard': None, 'nonzero_cost_reported': None, 'cost_not_reported': None,
+                  'model_identity_mismatch': None}
         fatal_stop_reason = None
+        report['free_only'] = gw.free_only_enabled(gateway.config)
+        report['requested_models'] = sorted({m for m in (translation_model, summary_model) if m})
+        report['actual_models'] = {}
+        report['reported_cost_usd_total'] = 0.0
+        report['cost_reports_missing'] = 0
 
         for item in items:
             if fatal_stop_reason:
@@ -199,7 +217,22 @@ def main(argv=None):
                 record(item['item_id'], field, text, result)
                 entry['fields'][field] = result['status']
                 report['processed'] += 1
+                if result.get('response_model'):
+                    served = result['response_model']
+                    report['actual_models'][served] = report['actual_models'].get(served, 0) + 1
+                    entry.setdefault('served_by', {})[field] = served
+                if result.get('reported_cost_usd') is not None:
+                    report['reported_cost_usd_total'] += float(result['reported_cost_usd'])
+                elif result['status'] not in ('source_summary_missing', 'unavailable') and not result.get('cache_hit'):
+                    report['cost_reports_missing'] += 1
                 error_reason = (result.get('error') or '').split(':', 1)[0]
+                validation = result.get('validation') or {}
+                if result['status'] in ('available', 'cached') and validation and not validation.get('passed', True):
+                    # Stored (append-only, review_status=needs_review) so it
+                    # can be inspected, but the run stops at the first one.
+                    report['validation_error_count'] += 1
+                    report['errors'] += 1
+                    fatal_stop_reason = 'invalid_translation:' + ','.join(validation.get('flags') or [])[:80]
                 if result['status'] == 'available':
                     report['available'] += 1
                 elif result['status'] == 'source_summary_missing':
@@ -214,6 +247,7 @@ def main(argv=None):
                     report['errors'] += 1
                     if result['status'] == 'invalid_response':
                         report['validation_error_count'] += 1
+                        fatal_stop_reason = fatal_stop_reason or ('schema_error:' + (result.get('error') or '')[:60])
                 elif result['status'] == 'unavailable':
                     report['skipped_no_source_text'] += 1
                 if result['status'] == 'error' and error_reason in _FATAL:

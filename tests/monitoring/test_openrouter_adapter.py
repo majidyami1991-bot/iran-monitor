@@ -82,7 +82,7 @@ def test_sends_bearer_auth_and_title_header_never_a_fabricated_referer():
         a.complete('system', 'user')
     headers = {k.lower(): v for k, v in fake.last_request.headers.items()}
     assert headers.get('Authorization'.lower()) == f'Bearer {REAL_LOOKING_KEY}'
-    assert headers.get('x-title') == 'Iran Monitor'
+    assert headers.get('x-title') == 'Defence Monitor'
     assert 'http-referer' not in headers  # never a fabricated referer for an unhosted deployment
 
 

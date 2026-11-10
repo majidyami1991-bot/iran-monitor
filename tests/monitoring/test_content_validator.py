@@ -49,8 +49,11 @@ def test_number_dropped_in_translation_is_flagged():
     bad = GOOD_TRANSLATION_FA.replace('۳ کشته', 'تعدادی کشته')
     r = cv.validate_translation(SOURCE, bad)
     assert 'number_mismatch' in r.flags
-    assert r.passed is True  # a soft flag, not a hard fail — still needs review, not auto-rejected
-    assert r.quality_score < 1.0
+    # Changed 2026-09-29 (owner requirement for the free-tier pilot): numbers,
+    # dates and codes must be preserved, so a dropped number is now a hard
+    # fail — the translation is stored as needs_review and not displayed.
+    assert r.passed is False
+    assert r.quality_score == 0.0
 
 
 def test_number_altered_in_translation_is_flagged():

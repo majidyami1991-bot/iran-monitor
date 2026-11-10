@@ -1,0 +1,176 @@
+# Isolated local-AI preview (translation + assistant with Ollama gemma4:e2b).
+#
+# Runs beside production (3001), the previous preview (3002) and OpenCTI (8080)
+# without touching them: its own compose project, network, volumes and
+# database. It has no network path to the production database, so it cannot
+# write to it. Rollback = stop this project.
+#
+#   docker compose --env-file .env -f deployment/local-ai/compose.yml up -d    (from the worktree root)
+#
+# .env (worktree root, gitignored) holds LOCAL_AI_DB_PASSWORD and non-secret
+# settings; template without secrets: deployment/local-ai/.env.example.
+# Only 127.0.0.1:3003 is published. Run/stop commands: docs/LOCAL AI RUNBOOK.md.
+name: iran-monitor-local-ai
+services:
+  ai-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: defence_monitor
+      POSTGRES_USER: defence_monitor
+      POSTGRES_PASSWORD: ${LOCAL_AI_DB_PASSWORD:?set LOCAL_AI_DB_PASSWORD in .env}
+    volumes: [ai-db-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U defence_monitor -d defence_monitor]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    networks: [ai]
+
+  ai-api:
+    image: ${LOCAL_AI_API_IMAGE:-iran-monitor-local-ai-api:dev}
+    command: uvicorn main:app --host 0.0.0.0 --port 3000
+    environment:
+      DATABASE_URL: postgresql://defence_monitor:${LOCAL_AI_DB_PASSWORD}@ai-db:5432/defence_monitor
+      # No cloud AI on this stack: the gateway's global provider is disabled;
+      # local translation and the assistant build their own Ollama config.
+      AI_PROVIDER: disabled
+      AI_API_KEY: ""
+      EXPERIENCE_JOBS_ENABLED: ${LOCAL_AI_EXPERIENCE_JOBS:-true}
+      SOCIAL_MANUAL_INGEST_ENABLED: "false"
+      SOCIAL_ALLOWED_ORIGINS: http://127.0.0.1:3003,http://localhost:3003
+      ASSISTANT_ALLOWED_ORIGINS: http://127.0.0.1:3003,http://localhost:3003
+      ASSISTANT_ENABLED: ${LOCAL_AI_ASSISTANT_ENABLED:-true}
+      ASSISTANT_RETENTION_DAYS: ${LOCAL_AI_ASSISTANT_RETENTION_DAYS:-7}
+      LOCAL_AI_PROVIDER: ollama
+      LOCAL_AI_ATTESTATION: /attest/attestation.json
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma4:e2b-ollama0401-llamacpp-d1e84c607e13}
+      OLLAMA_MODEL_DIGEST: ${OLLAMA_MODEL_DIGEST:-}
+      LOCAL_AI_NUM_CTX: ${LOCAL_AI_NUM_CTX:-4096}
+      LOCAL_AI_TEMPERATURE: ${LOCAL_AI_TEMPERATURE:-0.1}
+      LOCAL_AI_MAX_OUTPUT_TOKENS: ${LOCAL_AI_MAX_OUTPUT_TOKENS:-512}
+      LOCAL_AI_CONCURRENCY: "1"
+      LOCAL_AI_TIMEOUT_SECONDS: ${LOCAL_AI_TIMEOUT_SECONDS:-900}
+      LOCAL_AI_NUM_THREAD: ${LOCAL_AI_NUM_THREAD:-8}
+      LOCAL_TRANSLATION_ENABLED: ${LOCAL_TRANSLATION_ENABLED:-false}
+      # Lab mode: artifacts the owner 'lab_activated' (not quality-approved) are
+      # servable here, always labelled "not human-verified". Never set on 3001.
+      LOCAL_AI_LAB_MODE: "true"
+      # operator switch (see docs/LOCAL AI DISABLE AND SERVER MIGRATION RUNBOOK.md): when set, Ollama is never contacted
+      LOCAL_AI_DISABLED_REASON: ${LOCAL_AI_DISABLED_REASON:-}
+      # item_classifications is owned by the one-way sync (mirrors Production);
+      # no hidden whole-corpus reclassification on API start.
+      CLASSIFICATION_STARTUP_BACKFILL: "false"
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    # Host attestation of the model artifact (scripts/attest_local_model.py), read-only;
+    # host status files for the admin page (health monitor, backup manifest, sync scheduler log), read-only.
+    volumes: ["../../runtime/local-ai-attestation:/attest:ro", "../../runtime/ops-status:/ops-status:ro", "../../runtime/news-sync:/ops-sync:ro"]
+    depends_on: {ai-db: {condition: service_healthy}}
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:3000/api/v1/health',timeout=8).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks: [ai]
+
+  ai-web:
+    image: ${LOCAL_AI_WEB_IMAGE:-iran-monitor-local-ai-web:dev}
+    environment:
+      API_ORIGIN: http://ai-api:3000
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports: ["127.0.0.1:3003:3000"]
+    depends_on: {ai-api: {condition: service_healthy}}
+    restart: unless-stopped
+    networks: [ai]
+
+  # Continuous queue worker: TranslateGemma 27B + pipeline v2.1 (no placeholders).
+  # One inference at a time (INFERENCE_LOCK shared with the assistant), restart-safe
+  # (rows left 'processing' are re-queued on start), bounded retries with backoff.
+  ai-translator:
+    image: ${LOCAL_AI_API_IMAGE:-iran-monitor-local-ai-api:dev}
+    entrypoint: [python, -m, translation_worker_v2]
+    command: [run]
+    environment:
+      DATABASE_URL: postgresql://defence_monitor:${LOCAL_AI_DB_PASSWORD}@ai-db:5432/defence_monitor
+      AI_PROVIDER: disabled
+      LOCAL_AI_PROVIDER: ollama
+      LOCAL_AI_LAB_MODE: "true"
+      # operator switch (see docs/LOCAL AI DISABLE AND SERVER MIGRATION RUNBOOK.md): when set, Ollama is never contacted
+      LOCAL_AI_DISABLED_REASON: ${LOCAL_AI_DISABLED_REASON:-}
+      LOCAL_AI_ATTESTATION: /attest/attestation.json
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      LOCAL_AI_NUM_CTX: "4096"
+      LOCAL_AI_TEMPERATURE: "0.1"
+      LOCAL_AI_CONCURRENCY: "1"
+      LOCAL_AI_TIMEOUT_SECONDS: "900"
+      LOCAL_AI_NUM_THREAD: "8"
+      LOCAL_TRANSLATION_ENABLED: ${LOCAL_AI_AUTO_TRANSLATION:-true}
+      LOCAL_TRANSLATION_SUMMARY_CHARS: ${LOCAL_TRANSLATION_SUMMARY_CHARS:-600}
+      LOCAL_TRANSLATION_NEW_HOURS: ${LOCAL_TRANSLATION_NEW_HOURS:-24}
+      # whole archive, gradually; fresh (24 h) and requested items always first
+      LOCAL_TRANSLATION_BACKFILL_DAYS: ${LOCAL_TRANSLATION_BACKFILL_DAYS:-36500}
+      LOCAL_TRANSLATION_BACKFILL_SLEEP_SECONDS: ${LOCAL_TRANSLATION_BACKFILL_SLEEP_SECONDS:-20}
+      LOCAL_TRANSLATION_QC: ${LOCAL_TRANSLATION_QC:-v2.2}   # v2.2 activated 2026-10-09 by the pre-registered held-out rule (runtime/qc-v22/heldout/result.json)
+      LOCAL_TRANSLATION_SLEEP_SECONDS: ${LOCAL_TRANSLATION_SLEEP_SECONDS:-5}
+      LOCAL_TRANSLATION_KEEP_ALIVE: ${LOCAL_TRANSLATION_KEEP_ALIVE:-30m}
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes: ["../../runtime/local-ai-attestation:/attest:ro"]
+    depends_on: {ai-db: {condition: service_healthy}}
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    stop_grace_period: 16m
+    networks: [ai]
+
+  # One-shot translation batch (no scheduler, no restart). Example:
+  #   docker compose ... --profile translate run --rm ai-translate run --limit 3
+  ai-translate:
+    image: ${LOCAL_AI_API_IMAGE:-iran-monitor-local-ai-api:dev}
+    entrypoint: [python, -m, local_translation]
+    command: [status]
+    environment:
+      DATABASE_URL: postgresql://defence_monitor:${LOCAL_AI_DB_PASSWORD}@ai-db:5432/defence_monitor
+      AI_PROVIDER: disabled
+      LOCAL_AI_PROVIDER: ollama
+      LOCAL_AI_ATTESTATION: /attest/attestation.json
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma4:e2b-ollama0401-llamacpp-d1e84c607e13}
+      OLLAMA_MODEL_DIGEST: ${OLLAMA_MODEL_DIGEST:-}
+      LOCAL_AI_NUM_CTX: ${LOCAL_AI_NUM_CTX:-4096}
+      LOCAL_AI_TEMPERATURE: ${LOCAL_AI_TEMPERATURE:-0.1}
+      LOCAL_AI_MAX_OUTPUT_TOKENS: ${LOCAL_AI_MAX_OUTPUT_TOKENS:-512}
+      LOCAL_AI_CONCURRENCY: "1"
+      LOCAL_AI_TIMEOUT_SECONDS: ${LOCAL_AI_TIMEOUT_SECONDS:-900}
+      LOCAL_AI_NUM_THREAD: ${LOCAL_AI_NUM_THREAD:-8}
+      LOCAL_TRANSLATION_ENABLED: ${LOCAL_TRANSLATION_ENABLED:-false}
+      LOCAL_TRANSLATION_SLEEP_SECONDS: ${LOCAL_TRANSLATION_SLEEP_SECONDS:-2}
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    # Host attestation of the model artifact (scripts/attest_local_model.py), read-only.
+    volumes: ["../../runtime/local-ai-attestation:/attest:ro"]
+    depends_on: {ai-db: {condition: service_healthy}}
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+    stop_grace_period: 16m
+    profiles: [translate]
+    networks: [ai]
+
+networks:
+  ai:
+    name: iran-monitor-local-ai_default
+volumes:
+  ai-db-data:

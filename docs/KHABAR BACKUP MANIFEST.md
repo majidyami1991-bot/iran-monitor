@@ -23,10 +23,10 @@ branched from this same commit.
 
 | Service | Status |
 | --- | --- |
-| API (`iran-monitor-news-news-api-1`) | healthy, `Up 20 hours` |
-| Web (`iran-monitor-news-news-web-1`) | healthy, `Up 19 hours` |
-| Collector (`iran-monitor-news-news-collector-1`) | healthy, `Up 20 hours` |
-| PostgreSQL (`iran-monitor-news-news-db-1`) | healthy, `Up 5 days` |
+| API (`defence-monitor-news-news-api-1`) | healthy, `Up 20 hours` |
+| Web (`defence-monitor-news-news-web-1`) | healthy, `Up 19 hours` |
+| Collector (`defence-monitor-news-news-collector-1`) | healthy, `Up 20 hours` |
+| PostgreSQL (`defence-monitor-news-news-db-1`) | healthy, `Up 5 days` |
 | Scheduler | enabled, collector health `healthy`, next run `2026-09-25T09:39:08Z` |
 | Last collection cycle | succeeded — 12/12 sources, 0 failed, 1 inserted, 181 duplicates, 86 updates |
 
@@ -60,15 +60,15 @@ this backup process.
 | Size | 1,950,095 bytes |
 | SHA-256 | `8D25C30C1AC5DAAF760AC563007D93110256984E84D5D354DB62463FF9B7A670` |
 | Created (UTC) | 2026-09-25T09:32:57Z |
-| Dump command | `pg_dump -U iran_monitor -d iran_monitor -Fc -f khabar-backup-2026-09-25.dump` (run inside `iran-monitor-news-news-db-1`, password from the container's own `POSTGRES_PASSWORD`) |
-| Restore command | `pg_restore -U iran_monitor -d <target_database> khabar-backup-2026-09-25.dump` |
+| Dump command | `pg_dump -U defence_monitor -d defence_monitor -Fc -f khabar-backup-2026-09-25.dump` (run inside `defence-monitor-news-news-db-1`, password from the container's own `POSTGRES_PASSWORD`) |
+| Restore command | `pg_restore -U defence_monitor -d <target_database> khabar-backup-2026-09-25.dump` |
 
 ### Restore drill — performed and verified
 
 1. Created a throwaway database `restore_drill_test` on the same PostgreSQL
-   server (`CREATE DATABASE restore_drill_test OWNER iran_monitor`).
+   server (`CREATE DATABASE restore_drill_test OWNER defence_monitor`).
 2. Restored the dump file into it with `pg_restore`.
-3. Compared row counts against the live `iran_monitor` database:
+3. Compared row counts against the live `defence_monitor` database:
 
    | Table | Production | Restored | Match |
    | --- | --- | --- | --- |
@@ -90,7 +90,7 @@ this backup process.
 | Size | 646,043 bytes |
 | SHA-256 | `94FACD07FA0137F2DF6B410F55D19C880F1DBB8EAE19F06B489C4BB8ED3A2BA2` |
 | Restore drill | Extracted to a scratch directory; confirmed no `.env`/`*.dump` files present anywhere in the archive, and confirmed key source files present and readable (`apps/api/ops.py`, `apps/web-next/app/Dashboard.tsx`, `config/sources/classification-taxonomy-v2.json`). Extraction directory removed after verification. |
-| Frontend runnability | Not re-verified via a separate build from the extracted archive — redundant given the currently-running production containers (`iran-monitor-news-news-api:latest`, `iran-monitor-news-news-web:latest`) were built from this exact commit and are live and healthy right now, which is a stronger runnability proof than a cold extract-and-build would be. |
+| Frontend runnability | Not re-verified via a separate build from the extracted archive — redundant given the currently-running production containers (`defence-monitor-news-news-api:latest`, `defence-monitor-news-news-web:latest`) were built from this exact commit and are live and healthy right now, which is a stronger runnability proof than a cold extract-and-build would be. |
 
 Note: `git archive` does not include submodule content — `vendor/opencti-docker`
 appears as an empty directory reference in the zip. The submodule's own
@@ -115,11 +115,11 @@ git checkout khabar-backup-2026-09-25 -- apps deployment config docs scripts tes
 git checkout backup/khabar-backup-2026-09-25
 
 # Database rollback (destructive — confirm target first)
-docker exec -i iran-monitor-news-news-db-1 sh -c \
-  'PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -U iran_monitor -d iran_monitor --clean --if-exists' \
+docker exec -i defence-monitor-news-news-db-1 sh -c \
+  'PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -U defence_monitor -d defence_monitor --clean --if-exists' \
   < backups/khabar-backup-2026-09-25/khabar-backup-2026-09-25.dump
 ```
 
-Not exercised against the live `iran_monitor` database (only against the
+Not exercised against the live `defence_monitor` database (only against the
 throwaway `restore_drill_test` database, by design — the drill proves the
 mechanism without touching production).

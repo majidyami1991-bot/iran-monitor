@@ -1,114 +1,84 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { Shell } from '../design/Shell';
-import { useApi } from '../design/useApi';
-import { Chip, ErrorState, Skeleton, SourceMark, StatusPill, toHealth } from '../design/ui';
-import { fmt, fmtDateTime, sourceColor } from '../design/format';
+import { useApi, useNow } from '../design/useApi';
+import { fmt, fmtPercent, fmtRelative, sourceColor } from '../design/format';
+import { CardBones, Failure, PageHead, Segmented, SourceMark, Tag } from '../design/ui';
 
-interface CoverageSource {
-  source_id: string; hostname: string | null; url: string | null; source_type: string; category: string | null;
-  x_handle: string | null; coverage_state: string; reason: string; feed_url: string | null;
-  in_database: boolean; last_success_at: string | null; health_status: string | null; item_count: number;
+export interface Profile {
+  source_id: string; name: string; has_official_name: boolean; hostname: string; canonical_url: string | null; source_type: string | null;
+  category: string | null; language: string | null; feed_url: string | null; collection_tier: string | null; enabled_for_scheduler: boolean;
+  last_attempt_at: string | null; last_success_at: string | null; last_http_status: number | null; consecutive_failures: number; health_status: string;
+  item_count: number; items_24h: number; items_7d: number; last_published: string | null; last_received: string | null;
+  provenance_complete: number; translated: number; with_summary: number; runs_7d: number; runs_ok_7d: number; success_rate_7d: number | null;
+  coverage_share: number; translation_pct: number | null; provenance_pct: number | null; country: string | null; country_status: string;
+  language_provenance: string; channels: { rss: string; html: string; x: string }; freshness_minutes: number | null;
 }
-interface Coverage { registered: number; executable: number; monitored: number; by_state: Record<string, number>; sources: CoverageSource[] }
-interface LiveSource { source_id: string; display_name: string; item_count: number; items_24h: number; health_status: string; last_success_at: string | null; consecutive_failures: number }
+interface Resp { sources: Profile[]; total: number; metadata_completeness: { pct: number | null; filled: number; possible: number } }
 
-const STATE_LABEL: Record<string, string> = {
-  active_rss: 'فعال (RSS)', feed_candidate: 'نامزد خوراک', sitemap_candidate: 'نامزد Sitemap',
-  html_candidate: 'نامزد HTML', blocked: 'مسدود', not_covered: 'بدون پوشش',
-};
-const TYPE_LABEL: Record<string, string> = { news: 'خبرگزاری', think_tank: 'اندیشکده', x_account: 'حساب X' };
-// The API's `reason` field is a fixed, English, one-per-state sentence
-// (documentation-oriented). One-to-one with coverage_state, so a Persian
-// translation is keyed off the state itself rather than string-matching text.
-const REASON_FA: Record<string, string> = {
-  active_rss: 'خوراک RSS معتبر در هر چرخه زمان‌بندی‌شده دریافت می‌شود.',
-  feed_candidate: 'خوراک کارآمدی پیدا شده اما هنوز برای اجرا اعتبارسنجی نشده است.',
-  sitemap_candidate: 'خوراکی وجود ندارد؛ sitemap خوانا هست اما parser آزموده‌ای برای آن نیست.',
-  html_candidate: 'نه خوراک و نه sitemap پیدا نشد؛ نیازمند parser اختصاصی فهرست HTML است.',
-  blocked: 'ناشر به درخواست خودکار پاسخ ۴۰۳ می‌دهد یا آن را در robots.txt منع کرده است؛ جمع‌آوری نمی‌شود.',
-  not_covered: 'حساب X است؛ مسیر دسترسی مجاز یا سیاست استفاده هنوز مشخص نیست.',
-};
+export const TYPE_FA: Record<string, string> = { news: 'رسانه خبری', think_tank: 'اندیشکده', x_account: 'حساب X' };
+export function health(p: Profile) {
+  if (p.consecutive_failures >= 3) return ['خطای پیاپی', 'error'] as const;
+  if (p.consecutive_failures > 0) return ['نیازمند توجه', 'warn'] as const;
+  if (!p.last_success_at) return ['اجرا نشده', 'uncertain'] as const;
+  return ['سالم', 'ok'] as const;
+}
+export function freshness(min: number | null) {
+  if (min == null) return ['بدون دریافت', 'uncertain'] as const;
+  if (min <= 60) return ['تازه', 'ok'] as const;
+  if (min <= 60 * 24) return ['امروز', 'info'] as const;
+  return ['کهنه', 'warn'] as const;
+}
 
 export function SourcesList() {
-  const coverageQ = useApi<Coverage>('sources/coverage');
-  const liveQ = useApi<{ sources: LiveSource[] }>('sources?page_size=100');
-  const [stateFilter, setStateFilter] = useState<string>('');
-  const [typeFilter, setTypeFilter] = useState<string>('');
-
-  const liveById = useMemo(() => new Map((liveQ.data?.sources || []).map((s) => [s.source_id, s])), [liveQ.data]);
-
-  const rows = useMemo(() => {
-    let list = coverageQ.data?.sources || [];
-    if (stateFilter) list = list.filter((s) => s.coverage_state === stateFilter);
-    if (typeFilter) list = list.filter((s) => s.source_type === typeFilter);
-    return list;
-  }, [coverageQ.data, stateFilter, typeFilter]);
-
-  if (coverageQ.error) return <Shell title="منابع" breadcrumb="منابع"><ErrorState onRetry={coverageQ.reload}>دریافت فهرست منابع ممکن نشد.</ErrorState></Shell>;
-
+  const q = useApi<Resp>('source-profiles');
+  const now = useNow();
+  const [sort, setSort] = useState<'items' | 'recent' | 'name'>('items');
+  const list = [...(q.data?.sources ?? [])].sort((a, b) =>
+    sort === 'items' ? b.item_count - a.item_count : sort === 'recent' ? Date.parse(b.last_received ?? '0') - Date.parse(a.last_received ?? '0') : a.name.localeCompare(b.name));
   return (
-    <Shell title="منابع" breadcrumb="منابع">
-      <div className="page-head"><div><h1>منابع پایش‌شده</h1><p>هر سه عدد پوشش، ثبت‌شده، قابل‌اجرا و درحال‌پایش، جدا از هم گزارش می‌شوند.</p></div></div>
-
-      {coverageQ.loading ? <Skeleton height={110} radius={14} /> : coverageQ.data && (
-        <div className="stat-grid" style={{ marginBottom: 'var(--space-5)' }}>
-          <div className="stat-card"><span className="stat-label">ثبت‌شده در سند منابع</span><strong>{fmt(coverageQ.data.registered)}</strong><small>کل فهرست مشتری</small></div>
-          <div className="stat-card"><span className="stat-label">قابل اجرا</span><strong>{fmt(coverageQ.data.executable)}</strong><small>مسیر جمع‌آوری معتبر</small></div>
-          <div className="stat-card"><span className="stat-label">در حال پایش</span><strong>{fmt(coverageQ.data.monitored)}</strong><small>دریافت موفق واقعی</small></div>
-        </div>
-      )}
-
-      <div className="source-filter-row">
-        <Chip active={stateFilter === ''} onClick={() => setStateFilter('')}>همه</Chip>
-        {Object.entries(coverageQ.data?.by_state || {}).map(([state, count]) => (
-          <Chip key={state} active={stateFilter === state} onClick={() => setStateFilter(stateFilter === state ? '' : state)}>
-            {STATE_LABEL[state] || state} ({fmt(count)})
-          </Chip>
-        ))}
-        <span className="source-filter-sep" />
-        {Object.entries(TYPE_LABEL).map(([type, label]) => (
-          <Chip key={type} active={typeFilter === type} onClick={() => setTypeFilter(typeFilter === type ? '' : type)}>{label}</Chip>
-        ))}
+    <Shell>
+      <PageHead eyebrow="منابع" title="منابع تحت پایش"
+        lede="هر منبع با نام رسمی ثبت‌شده در خوراک خودش، وضعیت گردآورنده، تازگی، نرخ موفقیت و کیفیت داده. کشور و مالکیت فقط با شواهد مستند ثبت می‌شود و هنوز ثبت نشده است.">
+        {q.data && <Tag tone="info">کامل بودن فراداده: {fmtPercent(q.data.metadata_completeness.pct, 1)}</Tag>}
+        <Link href="/monitoring" className="btn-ghost">پوشش ۶۲ منبع ثبت‌شده</Link>
+      </PageHead>
+      <Segmented label="مرتب‌سازی منابع" value={sort} onChange={setSort} items={[['items', 'بیشترین خبر'], ['recent', 'تازه‌ترین دریافت'], ['name', 'نام']]} />
+      {q.error && <Failure onRetry={q.reload} />}
+      {!q.data && !q.error && <CardBones n={4} image={false} />}
+      <div className="src-grid">
+        {list.map((s) => {
+          const [hl, ht] = health(s);
+          const [fl, ft] = freshness(s.freshness_minutes);
+          return (
+            <article key={s.source_id} className="src-card">
+              <div className="src-head">
+                <SourceMark name={s.name} color={sourceColor(s.source_id)} size={40} />
+                <div style={{ minWidth: 0 }}>
+                  <h3><Link href={`/sources/${s.source_id}`}><bdi>{s.name}</bdi></Link></h3>
+                  <small dir="ltr">{s.hostname}</small>
+                </div>
+              </div>
+              <div className="card-flags">
+                <Tag>{TYPE_FA[s.source_type ?? ''] ?? 'نوع ثبت نشده'}</Tag>
+                <Tag tone={ht}>{hl}</Tag>
+                <Tag tone={ft}>{fl}</Tag>
+                {!s.has_official_name && <Tag tone="uncertain">نام رسمی ثبت نشده؛ نام میزبان نمایش داده می‌شود</Tag>}
+              </div>
+              <div className="src-metrics">
+                <div><span>کل خبرها</span><strong>{fmt(s.item_count)}</strong></div>
+                <div><span>۲۴ ساعت</span><strong>{fmt(s.items_24h)}</strong></div>
+                <div><span>موفقیت ۷ روز</span><strong>{s.success_rate_7d == null ? '—' : fmtPercent(s.success_rate_7d)}</strong></div>
+                <div><span>سهم پوشش</span><strong>{fmtPercent(s.coverage_share, 1)}</strong></div>
+                <div><span>منشأ کامل</span><strong>{fmtPercent(s.provenance_pct)}</strong></div>
+                <div><span>ترجمه</span><strong>{fmtPercent(s.translation_pct)}</strong></div>
+              </div>
+              <p className="muted">آخرین دریافت: {fmtRelative(s.last_received, now)} · زبان: {s.language ? <bdi>{s.language}</bdi> : 'اعلام نشده'}{s.language ? ' (اعلام‌شده در خوراک)' : ''}</p>
+            </article>
+          );
+        })}
       </div>
-
-      {coverageQ.loading ? <Skeleton height={400} radius={14} /> : (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead><tr>
-              <th>منبع</th><th>نوع</th><th>وضعیت پوشش</th><th>سلامت</th><th className="num">خبر</th><th>آخرین دریافت موفق</th><th>دلیل</th>
-            </tr></thead>
-            <tbody>
-              {rows.map((s) => {
-                const live = liveById.get(s.source_id);
-                const name = s.x_handle || live?.display_name || s.hostname || 'نام ثبت نشده';
-                const isLinked = s.coverage_state === 'active_rss';
-                return (
-                  <tr key={s.source_id}>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <SourceMark name={name} color={sourceColor(s.source_id)} />
-                        {isLinked ? <Link href={'/sources/' + s.source_id}>{name}</Link> : <span>{name}</span>}
-                      </div>
-                    </td>
-                    <td>{TYPE_LABEL[s.source_type] || s.source_type}</td>
-                    <td><StatusPill health={
-                      s.coverage_state === 'active_rss' ? 'healthy' :
-                      s.coverage_state === 'blocked' ? 'error' :
-                      s.coverage_state === 'not_covered' ? 'inactive' : 'attention'
-                    } label={STATE_LABEL[s.coverage_state] || s.coverage_state} /></td>
-                    <td>{live ? <StatusPill health={toHealth(live.health_status)} /> : '—'}</td>
-                    <td className="num">{live ? fmt(live.item_count) : '—'}</td>
-                    <td>{live?.last_success_at ? fmtDateTime(live.last_success_at) : 'ثبت نشده'}</td>
-                    <td className="source-reason">{REASON_FA[s.coverage_state] || s.reason}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
     </Shell>
   );
 }

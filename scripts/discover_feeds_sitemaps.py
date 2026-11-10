@@ -2,7 +2,7 @@ import json,re,time,urllib.request,urllib.error,hashlib
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urljoin,urlparse
-O=Path('config/sources'); caps=json.load(open(O/'collection-capabilities.json')); UA='IranMonitor-SourceDiscovery/0.1'
+O=Path('config/sources'); caps=json.load(open(O/'collection-capabilities.json')); UA='DefenceMonitor-SourceDiscovery/0.1'
 def get(u):
  try:
   q=urllib.request.Request(u,headers={'User-Agent':UA});

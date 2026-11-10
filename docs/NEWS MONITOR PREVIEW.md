@@ -1,4 +1,4 @@
-﻿# Iran Monitor dashboard preview — Phase 9A
+﻿# Defence Monitor dashboard preview — Phase 9A
 
 Preview only: `http://127.0.0.1:3002`. Existing application stays on port 3001. Internal pages link to the existing application; only the homepage is redesigned.
 
@@ -11,7 +11,7 @@ Time: UTC. Recent windows exclude future publications. Last registration is maxi
 Run (only preview):
 
 ```powershell
-docker compose --env-file .env -p iran-monitor-news -f deployment/news-monitor/compose.yml -f deployment/news-monitor/compose.preview.yml --profile preview up -d --no-deps news-web-next-preview
+docker compose --env-file .env -p defence-monitor-news -f deployment/news-monitor/compose.yml -f deployment/news-monitor/compose.preview.yml --profile preview up -d --no-deps news-web-next-preview
 ```
 
 No migration, collector, importer, volume or existing service modification. Preview uses non-root Node, read-only root filesystem, metadata read-only mount, dropped capabilities and no-new-privileges; binds only 127.0.0.1:3002. No push or cutover to 3001.

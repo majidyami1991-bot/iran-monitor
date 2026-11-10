@@ -128,8 +128,8 @@ affects.
 | Item | State |
 |---|---|
 | Production URL | `http://127.0.0.1:3001` — the redesigned build, healthy |
-| Preview (3002) | Stopped; its image (`iran-monitor-news-news-web-next-preview`) remains for reuse |
-| Rollback | **Exercised live, not just validated.** `docker compose -p iran-monitor-news --env-file .env -f deployment/news-monitor/compose.yml -f deployment/news-monitor/compose.rollback-pre-commercial-ui.yml up -d --no-deps news-web` was run against production, confirmed serving the pre-redesign markup while healthy, then rolled forward again with the plain `compose.yml` and reconfirmed serving the redesign. Both states passed their respective health checks. |
+| Preview (3002) | Stopped; its image (`defence-monitor-news-news-web-next-preview`) remains for reuse |
+| Rollback | **Exercised live, not just validated.** `docker compose -p defence-monitor-news --env-file .env -f deployment/news-monitor/compose.yml -f deployment/news-monitor/compose.rollback-pre-commercial-ui.yml up -d --no-deps news-web` was run against production, confirmed serving the pre-redesign markup while healthy, then rolled forward again with the plain `compose.yml` and reconfirmed serving the redesign. Both states passed their respective health checks. |
 | Database / API / Collector / Scheduler | Untouched by this phase apart from the 3 documented shape/filter fixes in `ops.py`; collection continued succeeding (12/12 sources) through the entire redesign, confirmed via `collection_runs`. |
 | OpenCTI and unrelated projects (`mlw-*`, `plane-preview-*`, …) | Untouched, confirmed running. |
 | Backup | Taken after promotion, verified via row counts in the backup log. |
