@@ -1,6 +1,8 @@
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
 import { Prefs } from './design/prefs';
+import { AuthProvider } from './auth/AuthContext';
+import { AuthGuard } from './auth/AuthGuard';
 
 export const metadata: Metadata = {
   title: { default: 'Defence Monitor | اتاق خبر رصد منابع باز', template: '%s | Defence Monitor' },
@@ -13,7 +15,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fa" dir="rtl">
       <body>
-        <Prefs>{children}</Prefs>
+        <Prefs>
+          <AuthProvider>
+            <AuthGuard>
+              {children}
+            </AuthGuard>
+          </AuthProvider>
+        </Prefs>
       </body>
     </html>
   );

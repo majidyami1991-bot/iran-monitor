@@ -2,10 +2,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bell, ChevronDown, Menu, Search, X, Radio, Languages } from 'lucide-react';
+import { Bell, ChevronDown, Menu, Search, X, Radio, Languages, LogOut, User as UserIcon } from 'lucide-react';
 import { useApi, useNow } from './useApi';
 import { fmt, fmtClock, fmtDateLong, fmtRelative } from './format';
 import { usePrefs } from './prefs';
+import { useAuth } from '../auth/AuthContext';
 
 type NavLeaf = { label: string; href: string; note?: string };
 type NavItem = NavLeaf | { label: string; children: NavLeaf[] };
@@ -127,6 +128,83 @@ function LangToggle() {
   );
 }
 
+function UserProfileMenu() {
+  const { user, logout } = useAuth();
+  if (!user) {
+    return (
+      <Link href="/login" style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
+        padding: '5px 12px',
+        borderRadius: '6px',
+        background: 'rgba(227, 179, 65, 0.12)',
+        border: '1px solid rgba(227, 179, 65, 0.3)',
+        color: '#f2c75a',
+        fontSize: '12px',
+        fontWeight: 600,
+      }}>
+        <UserIcon size={14} />
+        <span>ورود</span>
+      </Link>
+    );
+  }
+
+  return (
+    <div className="user-profile-widget" style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '8px',
+      background: 'rgba(22, 32, 43, 0.85)',
+      border: '1px solid #2a3a4a',
+      borderRadius: '20px',
+      padding: '3px 10px 3px 4px',
+      fontSize: '12px',
+    }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.15 }}>
+        <span style={{ fontWeight: 600, color: '#edf2f7', fontSize: '11.5px' }}>{user.name}</span>
+        <span style={{ fontSize: '9.5px', color: user.badgeColor || '#e3b341' }}>{user.role}</span>
+      </div>
+      <div style={{
+        width: '24px',
+        height: '24px',
+        borderRadius: '50%',
+        background: 'rgba(227, 179, 65, 0.15)',
+        border: `1px solid ${user.badgeColor || '#e3b341'}`,
+        color: user.badgeColor || '#f2c75a',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '10px',
+        fontWeight: 700,
+      }}>
+        {user.avatar}
+      </div>
+      <button
+        type="button"
+        onClick={logout}
+        title="خروج از حساب کاربری"
+        aria-label="خروج از حساب"
+        style={{
+          background: 'none',
+          border: 'none',
+          color: '#8497a8',
+          cursor: 'pointer',
+          padding: '2px 4px',
+          display: 'flex',
+          alignItems: 'center',
+          borderRadius: '4px',
+          transition: 'color 0.2s',
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.color = '#ef5a4f')}
+        onMouseLeave={(e) => (e.currentTarget.style.color = '#8497a8')}
+      >
+        <LogOut size={13} />
+      </button>
+    </div>
+  );
+}
+
 function NavMenu({ item, pathname }: { item: Extract<NavItem, { children: NavLeaf[] }>; pathname: string }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLLIElement>(null);
@@ -195,6 +273,7 @@ export function Shell({ children, wide = false }: { title?: string; breadcrumb?:
             <Clock />
             <LangToggle />
             <Notifications />
+            <UserProfileMenu />
           </div>
         </div>
         <nav className="primary-nav" aria-label="ناوبری اصلی">
