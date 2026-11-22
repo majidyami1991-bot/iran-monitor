@@ -40,6 +40,8 @@ htmlcov/
 *.pid
 
 # System & IDE
+# Temporary office lock files
+~$*
 .DS_Store
 Thumbs.db
 .idea/

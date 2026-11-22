@@ -519,10 +519,8 @@ def register_social(app):
             _history(c, post_id, action, _jsonable({k: before.get(k) for k in changes}), _jsonable(changes), analyst)
             _refresh_account(c, before['source_id'])
         if 'original_text' in changes:
-            # DB only: the local translation of the old text becomes stale at once.
-            import x_translate_worker as xw
-            with xw.connect(DSN) as conn:
-                xw.reconcile(conn, [post_id])
+            with psycopg.connect(DSN) as conn:
+                conn.execute("UPDATE x_post_translations SET status='pending', updated_at=now() WHERE x_post_id=%s", (post_id,))
         return post(post_id)
 
     @app.post('/api/v1/social/posts/{post_id}/ai')
@@ -557,14 +555,8 @@ _PROBE = {'at': 0.0, 'value': (False, False, None)}
 _PROBE_TTL = 30.0
 
 
-def _probe(s):
-    """Cached Ollama /api/tags probe (no generation, local host only)."""
-    import x_translate_worker as xw
-    now = time.monotonic()
-    if now - _PROBE['at'] > _PROBE_TTL:
-        _PROBE['value'] = xw.ollama_probe(s, timeout=2)
-        _PROBE['at'] = now
-    return _PROBE['value']
+def _probe(s=None):
+    return (False, False, None)
 
 
 def admin_token_ok(token):
@@ -596,29 +588,22 @@ TRANSLATION_PUBLIC_FIELDS = '''x_post_id, status, source_language, target_langua
 
 
 def register_translation(app):
-    import x_translate_worker as xw
-
     @app.get('/api/v1/social/translation/status')
     def translation_status():
-        s = xw.load_settings()
-        reachable, found, digest = _probe(s)
-        with xw.connect(DSN) as conn:
-            running = xw.worker_running(conn)
-        return {'mode': 'offline_batch', 'realtime': False, 'scheduler': False, 'provider': 'ollama/local',
-                'configured_model': s.model or None, 'prompt_version': xw.PROMPT_VERSION, 'enabled': s.enabled,
-                'ollama_reachable': reachable, 'model_found': found, 'model_digest': digest,
-                'concurrency': s.concurrency, 'batch_size': s.batch_size, 'max_attempts': s.max_attempts,
-                'timeout_seconds': s.timeout_seconds, 'worker_running': running, 'config_errors': s.errors,
+        return {'mode': 'vllm_pending', 'realtime': False, 'scheduler': False, 'provider': 'vllm/docker',
+                'configured_model': None, 'prompt_version': 'vllm-v1', 'enabled': False,
+                'ollama_reachable': False, 'model_found': False, 'model_digest': None,
+                'concurrency': 1, 'batch_size': 1, 'max_attempts': 3,
+                'timeout_seconds': 60, 'worker_running': False, 'config_errors': [],
                 'external_providers': False, 'cost_usd': 0}
 
     @app.get('/api/v1/social/translations/stats')
     def translation_stats():
-        s = xw.load_settings()
-        reachable, _, _ = _probe(s)
-        with xw.connect(DSN) as conn:
-            c = xw.counts(conn)
-            running = xw.worker_running(conn)
-        return {**c, 'ollama_reachable': reachable, 'configured_model': s.model or None, 'worker_running': running}
+        with psycopg.connect(DSN) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT status, count(*) FROM x_post_translations GROUP BY status")
+                counts = dict(cur.fetchall())
+        return {'total': sum(counts.values()), 'counts': counts, 'ollama_reachable': False, 'configured_model': None, 'worker_running': False}
 
     @app.get('/api/v1/social/posts/{post_id}/translation')
     def post_translation(post_id: str):
@@ -638,43 +623,21 @@ def register_translation(app):
     @app.post('/api/v1/social/posts/{post_id}/translation/enqueue')
     def translation_enqueue(post_id: str, x_im_admin: str | None = Header(None), x_im_csrf: str | None = Header(None),
                             x_im_origin: str | None = Header(None)):
-        """DB only: (re)queues one post by its internal id; never calls the model."""
         _require_admin(x_im_admin, x_im_csrf, x_im_origin)
         p = _one('SELECT post_id, original_text, availability_status FROM x_posts WHERE post_id=%(p)s', {'p': post_id})
         if not p:
             raise HTTPException(404, 'post_not_found')
         if not (p['original_text'] or '').strip() or p['availability_status'] == 'withdrawn':
             raise HTTPException(422, 'no_analyst_text_recorded')
-        with xw.connect(DSN) as conn:
-            xw.reconcile(conn, [post_id])
+        with psycopg.connect(DSN) as conn:
             conn.execute('''UPDATE x_post_translations SET status='pending', attempt_count=0, last_error=NULL, updated_at=now()
-                WHERE x_post_id=%s AND status IN ('failed','needs_review')''', (post_id,))
+                WHERE x_post_id=%s''', (post_id,))
         return post_translation(post_id)
 
     @app.post('/api/v1/social/translations/run-batch', status_code=202)
     def translation_run_batch(body: RunBatchIn, x_im_admin: str | None = Header(None), x_im_csrf: str | None = Header(None),
                               x_im_origin: str | None = Header(None)):
-        """Starts one bounded batch in the background and returns at once;
-        the request never waits for a translation."""
-        _require_admin(x_im_admin, x_im_csrf, x_im_origin)
-        s = xw.load_settings()
-        if s.errors:
-            raise HTTPException(409, 'configuration_error')
-        if not s.enabled:
-            raise HTTPException(409, 'x_translation_disabled')
-        with xw.connect(DSN) as conn:
-            if xw.worker_running(conn):
-                raise HTTPException(409, 'worker_already_running')
-
-        def _run():
-            try:
-                rep = xw.run_batch(DSN, s, limit=body.limit)
-                xw.LOG.info('api batch finished: %s', json.dumps(rep.as_dict(), default=str))
-            except Exception as exc:  # a background batch must never take the API down
-                xw.LOG.error('api batch failed: %s', type(exc).__name__)
-
-        threading.Thread(target=_run, name='x-translate-batch', daemon=True).start()
-        return {'started': True, 'limit': body.limit, 'concurrency': 1}
+        raise HTTPException(503, 'legacy_ollama_translation_retired:vllm_pending')
 
 
 # ------------------------------------------------------------------ AI actions

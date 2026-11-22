@@ -16,6 +16,8 @@ from assistant import register_assistant
 register_assistant(app)
 from lab_ops import register_lab_ops
 register_lab_ops(app)
+from auth import register_auth
+register_auth(app)
 import local_ai as _local_ai
 from fastapi import Request as _Request
 from fastapi.responses import JSONResponse as _JSONResponse

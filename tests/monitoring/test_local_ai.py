@@ -1,6 +1,6 @@
-"""Offline tests for the local AI platform: translation chunking/budget and
-glitch detection, assistant prompt safety and citation validation, and
-retrieval tokenisation. No database, no model, no network."""
+"""Offline tests for the local AI platform:
+assistant prompt safety and citation validation, and retrieval tokenisation.
+No database, no model, no network."""
 import json
 
 import pytest
@@ -8,49 +8,7 @@ import pytest
 import ai_gateway as gw
 import assistant as asst
 import local_ai
-import local_translation as lt
 import retrieval
-
-
-# ------------------------------------------------------------------ translation
-def test_chunks_respect_budget_and_keep_text():
-    text = ' '.join(f'Sentence number {i} says something about drones and radar coverage.' for i in range(40))
-    parts = lt.chunks(text, 400, 600)
-    assert len(parts[0]) <= 400 and all(len(p) <= 600 for p in parts)
-    assert ' '.join(parts).split() == text.split()
-
-
-def test_chunks_split_overlong_sentence_at_space():
-    text = 'word ' * 400
-    parts = lt.chunks(text, 600, 600)
-    assert all(len(p) <= 600 for p in parts) and ' '.join(parts).split() == text.split()
-
-
-def test_chunks_empty():
-    assert lt.chunks('') == [] and lt.chunks('   ') == []
-
-
-def test_predict_budget_capped():
-    assert lt.predict_for(10, 512) == 96
-    assert lt.predict_for(100000, 512) == 512
-    assert lt.predict_for(400, 512) == 360
-
-
-def test_decoding_glitch_detected_only_when_new():
-    src = {'title': 'Navy confirms drills', 'summary': 'The navy said drills ended.'}
-    assert lt.decoding_glitch(src, {'title_fa': 'نیروی دریایی رزمایش را تأیید کرد', 'summary_fa': 'نیروی دریایی گفت رزمایش تمام شد."}} to {'})
-    assert lt.decoding_glitch(src, {'title_fa': 'نیروی دریایی', 'summary_fa': 'رزمایش تمام شد<tool_call|>'})
-    assert lt.decoding_glitch(src, {'summary_fa': 'رزمایش تمام شد।'})
-    assert not lt.decoding_glitch(src, {'title_fa': 'نیروی دریایی رزمایش را تأیید کرد', 'summary_fa': 'نیروی دریایی گفت رزمایش تمام شد.'})
-    assert not lt.decoding_glitch({'summary': 'Array [1] {x}'}, {'summary_fa': 'آرایه [1] {x}'})
-
-
-def test_failure_classification():
-    R = lambda st, err=None: gw.GatewayResult(st, None, 'ollama/local', 'gemma4:e2b', 'v', 't', 'h', error=err)
-    assert lt.classify_failure(R('error', 'provider_unreachable:URLError'))[2] is True
-    assert lt.classify_failure(R('error', 'model_digest_mismatch:abc'))[2] is True
-    assert lt.classify_failure(R('error', 'transient_timeout:chat'))[3] is True
-    assert lt.classify_failure(R('invalid_response', 'output_not_valid_json'))[0] == 'failed'
 
 
 def test_settings_enforce_local_single_model(monkeypatch):
@@ -162,25 +120,3 @@ def test_window_detection():
 
 def test_like_escapes_wildcards():
     assert retrieval._like('50%_x\\') == '%50\\%\\_x\\\\%'
-
-
-def test_single_request_translation_cap(monkeypatch, tmp_path):
-    proposed_contract(tmp_path, monkeypatch)
-    monkeypatch.setenv('OLLAMA_MODEL', 'gemma4:e2b-ollama0401-llamacpp-d1e84c607e13')
-    monkeypatch.delenv('LOCAL_TRANSLATION_SINGLE_REQUEST', raising=False)
-    monkeypatch.setenv('LOCAL_TRANSLATION_MAX_OUTPUT_TOKENS', '99999')
-    s = lt.load_settings(allow_proposed='gemma4-e2b-ollama0401-llamacpp-d1e84c607e13')
-    assert s.single_request is True and s.output_tokens == 2048 and s.ai.max_output_tokens == 512 and not s.errors
-    monkeypatch.setenv('LOCAL_TRANSLATION_SINGLE_REQUEST', 'false')
-    assert lt.load_settings().output_tokens == 512
-
-
-def proposed_contract(tmp_path, monkeypatch):
-    """A copy of the contract with the artifact still 'proposed' (pre-gate state)."""
-    import json as _j
-    import model_identity as _mi
-    c = _mi.load_contract()
-    c['events'] = [e for e in c['events'] if e['event'] != 'rejected_quality_gate']
-    p = tmp_path / 'contract.json'
-    p.write_text(_j.dumps(c))
-    monkeypatch.setattr(_mi, 'CONTRACT_PATH', p)

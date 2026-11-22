@@ -138,8 +138,9 @@ def validate_answer(payload, records, question=None):
         return False, 'unknown_citation:' + ','.join(sorted(unknown))[:40]
     corpus = ' '.join(f"{r.get('title') or ''} {r.get('excerpt') or ''} {r.get('published_at') or ''} {r.get('source_name') or ''}"
                       for r in records) + ' ' + (question or '')  # numbers echoed from the question are not invented
-    import translation_tg as _tg
-    if _tg._FOREIGN.search(payload['answer_fa']) or _tg._MIXED.search(_CITE.sub(' ', payload['answer_fa'])):
+    _FOREIGN = re.compile(r'[\u0400-\u04ff\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]')
+    _MIXED = re.compile(r'[a-zA-Z]{3,}')
+    if _FOREIGN.search(payload['answer_fa']) or _MIXED.search(_CITE.sub(' ', payload['answer_fa'])):
         return False, 'foreign_or_mixed_script'
     import content_validator as cv
     answer_nums = cv.extract_numbers(_CITE.sub(' ', payload['answer_fa']))
