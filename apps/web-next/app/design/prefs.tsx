@@ -1,19 +1,27 @@
 'use client';
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, useMemo, type ReactNode } from 'react';
+import { getT, type Lang, type Translations } from './i18n';
 
-/** Per-viewer conveniences only (browser storage):
- *  - contentLang: 'fa' (Persian interface & RTL) or 'en' (English interface & LTR).
- *  - seen stories: story id -> content_updated_at, for the new/seen ring. */
-type Lang = 'fa' | 'en';
+export type { Lang };
 
 interface PrefsValue {
   contentLang: Lang;
   setContentLang: (l: Lang) => void;
   seen: Record<string, string>;
   markSeen: (id: string, stamp: string) => void;
+  t: Translations;
+  isEn: boolean;
 }
 
-const Ctx = createContext<PrefsValue>({ contentLang: 'fa', setContentLang: () => {}, seen: {}, markSeen: () => {} });
+const defaultT = getT('fa');
+const Ctx = createContext<PrefsValue>({ 
+  contentLang: 'fa', 
+  setContentLang: () => {}, 
+  seen: {}, 
+  markSeen: () => {},
+  t: defaultT,
+  isEn: false
+});
 
 function read<T>(key: string, fallback: T): T {
   try { const v = localStorage.getItem(key); return v ? (JSON.parse(v) as T) : fallback; } catch { return fallback; }
@@ -51,7 +59,10 @@ export function Prefs({ children }: { children: ReactNode }) {
     setSeen((s) => { const n = { ...s, [id]: stamp }; write('im.storiesSeen', n); return n; });
   }, []);
 
-  return <Ctx.Provider value={{ contentLang, setContentLang, seen, markSeen }}>{children}</Ctx.Provider>;
+  const t = useMemo(() => getT(contentLang), [contentLang]);
+  const isEn = contentLang === 'en';
+
+  return <Ctx.Provider value={{ contentLang, setContentLang, seen, markSeen, t, isEn }}>{children}</Ctx.Provider>;
 }
 
 export const usePrefs = () => useContext(Ctx);

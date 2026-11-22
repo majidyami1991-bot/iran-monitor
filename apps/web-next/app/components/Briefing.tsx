@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { ArrowDownLeft, ArrowUpLeft, FileText } from 'lucide-react';
 import { useApi, useNow } from '../design/useApi';
+import { usePrefs } from '../design/prefs';
 import { fmt, fmtDateTime, fmtRelative, fmtSigned } from '../design/format';
 import { AiTag, CategoryTag, Empty, Failure, ImportanceTag, RuleTag, Tag, Bone } from '../design/ui';
 
@@ -57,27 +58,29 @@ export function TopicDeltaList({ items, dir }: { items: TopicDelta[]; dir: 'up' 
 export function BriefingCard() {
   const q = useApi<BriefingResponse>('briefing/daily');
   const now = useNow();
-  if (q.error) return <section className="brief-panel"><Failure onRetry={q.reload}>خلاصه روزانه دریافت نشد.</Failure></section>;
+  const { t, isEn } = usePrefs();
+  if (q.error) return <section className="brief-panel"><Failure onRetry={q.reload}>{t.briefingFailed}</Failure></section>;
   if (!q.data) return <section className="brief-panel" aria-busy="true"><Bone h={20} w="50%" /><Bone h={14} /><Bone h={14} /><Bone h={14} w="70%" /></section>;
   const b = q.data.briefing;
-  if (!b) return <section className="brief-panel"><Empty title="خلاصه روزانه هنوز تولید نشده است" icon={<FileText size={24} />}>نخستین خلاصه پس از اولین اجرای زمان‌بند (هر ۱۵ دقیقه) ساخته می‌شود.</Empty></section>;
+  if (!b) return <section className="brief-panel"><Empty title={t.briefingEmptyTitle} icon={<FileText size={24} />}>{t.briefingEmptyDesc}</Empty></section>;
   const p = b.payload;
   const [fl, ft] = FRESH[q.data.status];
+  const freshLabel = isEn ? (q.data.status === 'fresh' ? 'Fresh' : q.data.status === 'stale' ? 'Older than 1h' : 'Outdated') : fl;
   return (
     <section className="brief-panel" aria-labelledby="brief-h">
       <div className="brief-top">
-        <span className="eyebrow">خلاصه روزانه</span>
-        <h2 id="brief-h">امروز چه اتفاقی افتاد؟</h2>
-        <div className="card-flags"><RuleTag>قاعده‌محور، بدون هوش مصنوعی</RuleTag><Tag tone={ft}>{fl}</Tag></div>
+        <span className="eyebrow">{t.dailyBriefingEyebrow}</span>
+        <h2 id="brief-h">{t.whatHappenedToday}</h2>
+        <div className="card-flags"><RuleTag>{t.ruleBasedNoAi}</RuleTag><Tag tone={ft}>{freshLabel}</Tag></div>
       </div>
       <p className="brief-narrative">{p.narrative_fa}</p>
       <div className="brief-stats">
-        <div><strong>{fmt(p.totals.items_24h)}</strong><span>خبر در ۲۴ ساعت</span></div>
-        <div><strong className={p.totals.change_pct != null && p.totals.change_pct < 0 ? 'down' : 'up'}>{p.totals.change_pct == null ? '—' : fmtSigned(p.totals.change_pct) + '٪'}</strong><span>نسبت به ۲۴ ساعت قبل</span></div>
-        <div><strong>{fmt(p.totals.active_sources)}</strong><span>منبع فعال</span></div>
+        <div><strong>{fmt(p.totals.items_24h)}</strong><span>{t.articles24h}</span></div>
+        <div><strong className={p.totals.change_pct != null && p.totals.change_pct < 0 ? 'down' : 'up'}>{p.totals.change_pct == null ? '—' : fmtSigned(p.totals.change_pct) + '٪'}</strong><span>{t.vsPrev24h}</span></div>
+        <div><strong>{fmt(p.totals.active_sources)}</strong><span>{t.activeSourcesCount}</span></div>
       </div>
-      <h3 className="brief-sub">تحولات کلیدی</h3>
-      {p.key_developments.length === 0 ? <p className="muted">در ۲۴ ساعت گذشته خبر موضوعی ثبت نشده است.</p> : (
+      <h3 className="brief-sub">{t.keyDevelopments}</h3>
+      {p.key_developments.length === 0 ? <p className="muted">{t.noKeyDevelopments}</p> : (
         <ol className="brief-devs">
           {p.key_developments.slice(0, 6).map((d) => (
             <li key={d.item_id}>
@@ -88,11 +91,11 @@ export function BriefingCard() {
         </ol>
       )}
       <div className="brief-foot">
-        <span>تولید: {fmtDateTime(b.generated_at)} · {b.generator_version}</span>
-        <Link href="/briefing" className="sec-link">گزارش کامل و شواهد</Link>
+        <span>{isEn ? "Generated: " : "تولید: "}{fmtDateTime(b.generated_at)} · {b.generator_version}</span>
+        <Link href="/briefing" className="sec-link">{isEn ? "Full Report & Evidence" : "گزارش کامل و شواهد"}</Link>
       </div>
       <div className="brief-ai">
-        <AiTag>خلاصه مدیریتی هوش مصنوعی</AiTag>
+        <AiTag>{isEn ? "AI Strategic Summary" : "خلاصه مدیریتی هوش مصنوعی"}</AiTag>
         <span>{AI_STATUS[q.data.ai.status] ?? q.data.ai.status}</span>
       </div>
     </section>

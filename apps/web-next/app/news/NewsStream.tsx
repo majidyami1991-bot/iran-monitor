@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { SlidersHorizontal, X } from 'lucide-react';
 import { Shell } from '../design/Shell';
 import { useApi, useNow } from '../design/useApi';
+import { usePrefs } from '../design/prefs';
 import type { FeedResponse } from '../design/types';
 import { fmt, qs } from '../design/format';
 import { CardBones, Empty, Failure, PageHead, Pager, Segmented } from '../design/ui';
@@ -30,6 +31,7 @@ export function NewsStream() {
   const router = useRouter();
   const pathname = usePathname();
   const now = useNow();
+  const { t, isEn } = usePrefs();
   const [open, setOpen] = useState(false);
   const p = useMemo(() => Object.fromEntries(KEYS.map((k) => [k, sp.get(k) ?? ''])) as Record<Key, string>, [sp]);
   const sort = (p.sort || 'newest') as 'newest' | 'important' | 'coverage' | 'oldest';
@@ -43,103 +45,102 @@ export function NewsStream() {
 
   const apiQs = qs({ ...p, sort, page, page_size: 24 });
   const q = useApi<FeedResponse>('feed' + apiQs, [apiQs]);
-  // Persian appears without a manual refresh: re-fetch every 60 s while an item on this page awaits translation.
   const awaiting = (q.data?.items ?? []).some((it) => ['translation_pending', 'processing', 'pending'].includes(it.title_fa_status));
   const ai = useAiState();
   useEffect(() => {
-    if (!awaiting || ai.off !== false) return;   // nothing will arrive while local AI is disabled
-    const t = setInterval(q.reload, 60000);
-    return () => clearInterval(t);
+    if (!awaiting || ai.off !== false) return;
+    const timer = setInterval(q.reload, 60000);
+    return () => clearInterval(timer);
   }, [awaiting, q.reload, ai.off]);
   const topics = useApi<Topics>('topics?window=all');
   const sources = useApi<Sources>('source-profiles');
 
-  const catLabel = (id: string) => topics.data?.categories.find((c) => c.id === id)?.label ?? (id === 'other' ? 'سایر' : id);
+  const catLabel = (id: string) => topics.data?.categories.find((c) => c.id === id)?.label ?? (id === 'other' ? t.filterOtherCategory : id);
   const subLabel = (id: string) => topics.data?.categories.flatMap((c) => c.subtopics).find((s) => s.id === id)?.label ?? id;
-  const srcLabel = (id: string) => sources.data?.sources.find((s) => s.source_id === id)?.name ?? 'منبع';
+  const srcLabel = (id: string) => sources.data?.sources.find((s) => s.source_id === id)?.name ?? t.filterSourceLabel;
   const active = (KEYS.filter((k) => p[k] && !['sort', 'page'].includes(k)) as Key[]).map((k) => ({
     k, label: k === 'category' ? catLabel(p[k]) : k === 'topic' ? subLabel(p[k]) : k === 'source_id' ? srcLabel(p[k])
-      : k === 'q' ? `«${p[k]}»` : k === 'date_from' ? `از ${p[k]}` : k === 'date_to' ? `تا ${p[k]}` : LABELS[k]?.[p[k]] ?? p[k],
+      : k === 'q' ? `«${p[k]}»` : k === 'date_from' ? (isEn ? `From ${p[k]}` : `از ${p[k]}`) : k === 'date_to' ? (isEn ? `To ${p[k]}` : `تا ${p[k]}`) : LABELS[k]?.[p[k]] ?? p[k],
   }));
 
   return (
     <Shell>
-      <PageHead eyebrow="جریان خبر" title="اخبار" lede="همه خبرهای گردآوری‌شده از منابع فعال. عنوان فارسی فقط وقتی نمایش داده می‌شود که ترجمه ماشینی واقعاً ذخیره شده باشد؛ در غیر این صورت متن اصلی منبع نمایش داده می‌شود." />
+      <PageHead eyebrow={t.newsStreamEyebrow} title={t.newsStreamTitle} lede={t.newsStreamLede} />
       <div className="stream">
-        <aside className="filters" data-open={open ? 'true' : 'false'} aria-label="فیلترها">
-          <h2>فیلترها</h2>
+        <aside className="filters" data-open={open ? 'true' : 'false'} aria-label={t.filtersTitle}>
+          <h2>{t.filtersTitle}</h2>
           <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); set({ q: String(f.get('q') || '') }); }}>
-            <label className="field">جست‌وجو<input name="q" defaultValue={p.q} key={p.q} placeholder="واژه در عنوان یا خلاصه" /></label>
+            <label className="field">{t.filterSearchLabel}<input name="q" defaultValue={p.q} key={p.q} placeholder={t.filterSearchPlaceholder} /></label>
           </form>
-          <label className="field">منبع
+          <label className="field">{t.filterSourceLabel}
             <select name="source_id" value={p.source_id} onChange={(e) => set({ source_id: e.target.value })}>
-              <option value="">همه منابع</option>
+              <option value="">{t.filterAllSources}</option>
               {sources.data?.sources.map((s) => <option key={s.source_id} value={s.source_id}>{s.name} ({fmt(s.item_count)})</option>)}
             </select>
           </label>
-          <label className="field">موضوع
+          <label className="field">{t.filterCategoryLabel}
             <select name="category" value={p.category} onChange={(e) => set({ category: e.target.value, topic: '' })}>
-              <option value="">همه موضوعات</option>
+              <option value="">{t.filterAllCategories}</option>
               {topics.data?.categories.map((c) => <option key={c.id} value={c.id}>{c.label} ({fmt(c.count)})</option>)}
-              <option value="other">سایر (با دلیل مشخص)</option>
+              <option value="other">{t.filterOtherCategory}</option>
             </select>
           </label>
           {p.category && topics.data?.categories.find((c) => c.id === p.category)?.subtopics.length ? (
-            <label className="field">زیرموضوع
+            <label className="field">{t.filterSubtopicLabel}
               <select name="topic" value={p.topic} onChange={(e) => set({ topic: e.target.value })}>
-                <option value="">همه زیرموضوع‌ها</option>
+                <option value="">{t.filterAllSubtopics}</option>
                 {topics.data.categories.find((c) => c.id === p.category)!.subtopics.map((s) => <option key={s.id} value={s.id}>{s.label} ({fmt(s.count)})</option>)}
               </select>
             </label>
           ) : null}
-          <label className="field">بازه زمانی
+          <label className="field">{t.filterWindowLabel}
             <select name="window" value={p.window} onChange={(e) => set({ window: e.target.value })}>
-              <option value="">همه زمان‌ها</option>
-              {Object.entries(LABELS.window!).map(([k, v]) => <option key={k} value={k}>{v} اخیر</option>)}
+              <option value="">{t.filterAllTimes}</option>
+              <option value="1h">{t.filterWindow1h}</option>
+              <option value="24h">{t.filterWindow24h}</option>
+              <option value="7d">{t.filterWindow7d}</option>
+              <option value="30d">{t.filterWindow30d}</option>
             </select>
           </label>
           <div className="grid-2">
-            <label className="field">از تاریخ<input type="date" name="date_from" value={p.date_from} onChange={(e) => set({ date_from: e.target.value })} /></label>
-            <label className="field">تا تاریخ<input type="date" name="date_to" value={p.date_to} onChange={(e) => set({ date_to: e.target.value })} /></label>
+            <label className="field">{isEn ? "From date" : "از تاریخ"}<input type="date" name="date_from" value={p.date_from} onChange={(e) => set({ date_from: e.target.value })} /></label>
+            <label className="field">{isEn ? "To date" : "تا تاریخ"}<input type="date" name="date_to" value={p.date_to} onChange={(e) => set({ date_to: e.target.value })} /></label>
           </div>
-          <label className="field">زبان محتوا
+          <label className="field">{t.filterLangLabel}
             <select name="lang" value={p.lang} onChange={(e) => set({ lang: e.target.value })}>
-              <option value="">همه</option>
-              {Object.entries(LABELS.lang!).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              <option value="">{t.filterAllLangs}</option>
+              <option value="en">{t.filterLangEn}</option>
+              <option value="fa">{t.filterLangFa}</option>
             </select>
           </label>
-          <label className="field">اهمیت (قاعده importance_v1)
+          <label className="field">{t.filterImportanceLabel}
             <select name="importance" value={p.importance} onChange={(e) => set({ importance: e.target.value })}>
-              <option value="">همه</option>
-              {Object.entries(LABELS.importance!).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              <option value="">{t.filterImportanceAll}</option>
+              <option value="high">{t.filterImportanceHigh}</option>
+              <option value="medium">{t.filterImportanceMed}</option>
+              <option value="low">{t.filterImportanceLow}</option>
             </select>
           </label>
-          <label className="field">وضعیت ترجمه
-            <select name="translation" value={p.translation} onChange={(e) => set({ translation: e.target.value })}>
-              <option value="">همه</option>
-              {Object.entries(LABELS.translation!).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
-          </label>
-          {active.length > 0 && <button type="button" className="btn-ghost" onClick={() => router.push(pathname)}>پاک کردن همه فیلترها</button>}
+          {active.length > 0 && <button type="button" className="btn-ghost" onClick={() => router.push(pathname)}>{t.clearFilters}</button>}
         </aside>
 
         <section aria-labelledby="stream-h" style={{ minWidth: 0 }}>
-          <h2 id="stream-h" className="sr-only">نتایج</h2>
+          <h2 id="stream-h" className="sr-only">{t.showingResults}</h2>
           <div className="stream-head">
-            <button type="button" className="btn-ghost filter-toggle" aria-expanded={open} onClick={() => setOpen(!open)}><SlidersHorizontal size={15} />فیلترها{active.length ? ` (${fmt(active.length)})` : ''}</button>
-            <span className="stream-count" role="status">{q.data ? `${fmt(q.data.total)} خبر` : 'در حال شمارش…'}</span>
-            <Segmented label="مرتب‌سازی" value={sort} onChange={(v) => set({ sort: v })}
-              items={[['newest', 'جدیدترین'], ['important', 'مهم‌ترین'], ['coverage', 'پربازتاب‌ترین'], ['oldest', 'قدیمی‌ترین']]} />
+            <button type="button" className="btn-ghost filter-toggle" aria-expanded={open} onClick={() => setOpen(!open)}><SlidersHorizontal size={15} />{t.filtersTitle}{active.length ? ` (${fmt(active.length)})` : ''}</button>
+            <span className="stream-count" role="status">{q.data ? `${fmt(q.data.total)} ${t.newsUnit}` : t.loadingText}</span>
+            <Segmented label={t.filterSortLabel} value={sort} onChange={(v) => set({ sort: v })}
+              items={[['newest', t.sortNewest], ['important', t.sortImportant7d], ['coverage', t.sortCoverage7d], ['oldest', t.filterOldest]]} />
           </div>
           {active.length > 0 && (
-            <div className="active-filters" aria-label="فیلترهای فعال">
-              {active.map((a) => <button key={a.k} type="button" onClick={() => set({ [a.k]: '' })} aria-label={`حذف فیلتر ${a.label}`}>{a.label}<X size={12} /></button>)}
+            <div className="active-filters" aria-label={isEn ? "Active Filters" : "فیلترهای فعال"}>
+              {active.map((a) => <button key={a.k} type="button" onClick={() => set({ [a.k]: '' })} aria-label={isEn ? `Remove filter ${a.label}` : `حذف فیلتر ${a.label}`}>{a.label}<X size={12} /></button>)}
             </div>
           )}
           {q.error && <Failure onRetry={q.reload} />}
           {!q.data && !q.error && <CardBones n={6} />}
           {q.data && q.data.items.length === 0 && (
-            <Empty title="هیچ خبری با این فیلترها پیدا نشد">فیلترها را کمتر کنید یا بازه زمانی را گسترش دهید.{p.translation === 'available' && ' تاکنون هیچ ترجمه فارسی موفقی در پایگاه داده ذخیره نشده است.'}</Empty>
+            <Empty title={t.emptyResults}>{isEn ? "Try broadening the time window or clearing selected filters." : "فیلترها را کمتر کنید یا بازه زمانی را گسترش دهید."}</Empty>
           )}
           {q.data && q.data.items.length > 0 && (
             <>

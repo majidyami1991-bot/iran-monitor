@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
-  Shield, 
   User, 
   Eye, 
   EyeOff, 
@@ -12,6 +11,7 @@ import {
   LogIn 
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import { IranMonitorLogo } from '../design/Logo';
 import { WORLD_COUNTRIES, CountryData } from './worldCountriesData';
 import './login.css';
 
@@ -118,8 +118,9 @@ export default function LoginPage() {
     if (!ctx) return;
 
     let animationFrameId: number;
-    let rotation = 0.95;
-    let currentTilt = -0.28; // Default view showing the top/Northern Hemisphere (Middle East, Europe, Asia)
+    // Initial camera rotation centered directly over Asia (Iran 53°E, India 78°E, China 105°E)
+    let rotation = -(75 * Math.PI) / 180;
+    let currentTilt = -0.28; // Default favorable perspective on Northern Hemisphere
     let targetTilt = -0.28;
     let cosT = Math.cos(currentTilt);
     let sinT = Math.sin(currentTilt);
@@ -130,21 +131,100 @@ export default function LoginPage() {
     let currentHoveredCountry: CountryData | null = null;
     let activeLift = 0; // 0 to 1 smooth extrusion factor
 
+    // Interactive Drag-to-Spin State (Horizontally constrained per user requirement)
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragRotationStart = 0;
+    let dragVelocity = 0;
+    let lastDragX = 0;
+    let lastDragTime = 0;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest('.login-card')) return;
+      isDragging = true;
+      dragStartX = e.clientX;
+      lastDragX = e.clientX;
+      lastDragTime = performance.now();
+      dragRotationStart = rotation;
+      dragVelocity = 0;
+      if (canvas) canvas.style.cursor = 'grabbing';
+    };
+
     const handleMouseMove = (e: MouseEvent) => {
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
       mouseX = e.clientX - rect.left;
       mouseY = e.clientY - rect.top;
+
+      if (isDragging) {
+        // Drag spinning ONLY applies to horizontal movement, not vertical
+        const deltaX = e.clientX - dragStartX;
+        const now = performance.now();
+        const dt = Math.max(1, now - lastDragTime);
+        const stepDeltaX = e.clientX - lastDragX;
+        dragVelocity = (stepDeltaX / dt) * 0.003;
+        lastDragX = e.clientX;
+        lastDragTime = now;
+        rotation = dragRotationStart + (deltaX * 0.005);
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (isDragging) {
+        isDragging = false;
+        if (canvas) canvas.style.cursor = 'grab';
+      }
+    };
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      const t = e.touches[0];
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest('.login-card')) return;
+      isDragging = true;
+      dragStartX = t.clientX;
+      lastDragX = t.clientX;
+      lastDragTime = performance.now();
+      dragRotationStart = rotation;
+      dragVelocity = 0;
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isDragging || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      const deltaX = t.clientX - dragStartX;
+      const now = performance.now();
+      const dt = Math.max(1, now - lastDragTime);
+      const stepDeltaX = t.clientX - lastDragX;
+      dragVelocity = (stepDeltaX / dt) * 0.003;
+      lastDragX = t.clientX;
+      lastDragTime = now;
+      rotation = dragRotationStart + (deltaX * 0.005);
+    };
+
+    const handleTouchEnd = () => {
+      isDragging = false;
     };
 
     const handleMouseLeave = () => {
+      if (isDragging) {
+        isDragging = false;
+        if (canvas) canvas.style.cursor = 'grab';
+      }
       mouseX = -9999;
       mouseY = -9999;
       currentHoveredCountry = null;
     };
 
+    window.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
     window.addEventListener('mouseleave', handleMouseLeave);
+    window.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    window.addEventListener('touchend', handleTouchEnd);
 
     const handleResize = () => {
       if (!canvas) return;
@@ -311,7 +391,14 @@ export default function LoginPage() {
     }
 
     const render = () => {
-      rotation += 0.0014; // Serene constant planetary rotation
+      if (!isDragging) {
+        if (Math.abs(dragVelocity) > 0.00005) {
+          rotation += dragVelocity;
+          dragVelocity *= 0.94; // Smooth inertial spin release
+        } else {
+          rotation += 0.0014; // Serene constant planetary rotation
+        }
+      }
 
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
@@ -689,8 +776,13 @@ export default function LoginPage() {
     return () => {
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('mouseleave', handleMouseLeave);
+      window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
     };
   }, []);
 
@@ -736,7 +828,7 @@ export default function LoginPage() {
             {/* Header Branding */}
             <div className="login-header">
               <div className="brand-badge">
-                <Shield size={32} />
+                <IranMonitorLogo size={42} />
               </div>
               <h1 className="login-title">سامانه رصد و پایش ایران</h1>
               <div className="login-subtitle">
@@ -766,7 +858,7 @@ export default function LoginPage() {
                     type="text"
                     autoComplete="username"
                     autoFocus
-                    placeholder="مانند admin یا intel_officer"
+                    placeholder="مانند admin یا r.karimi"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     className="tactical-input"

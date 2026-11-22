@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bell, ChevronDown, Menu, Search, X, Radio, Languages, LogOut, User as UserIcon } from 'lucide-react';
+import { Bell, ChevronDown, Menu, Search, X, Languages, LogOut, User as UserIcon } from 'lucide-react';
+import { IranMonitorLogo } from './Logo';
 import { useApi, useNow } from './useApi';
 import { fmt, fmtClock, fmtDateLong, fmtRelative } from './format';
 import { usePrefs } from './prefs';
@@ -361,10 +362,10 @@ export function Shell({ children, wide = false }: { title?: string; breadcrumb?:
           >
             <Menu size={20} />
           </button>
-          <Link href="/" className="logo" aria-label="Defence Monitor">
-            <span className="logo-mark" aria-hidden="true"><Radio size={18} /></span>
-            <span className="logo-word">Defence Monitor
-              <small>{isEn ? "Open Source Defense Intelligence Platform" : "اتاق خبر رصد منابع باز"}</small>
+          <Link href="/" className="logo" aria-label={isEn ? "Iran Monitor" : "سامانه رصد ایران"}>
+            <IranMonitorLogo size={32} />
+            <span className="logo-word">{isEn ? "Iran Monitor" : "سامانه رصد ایران"}
+              <small>{isEn ? "Defense & Strategic Intelligence Platform" : "اتاق خبر رصد منابع باز دفاعی و راهبردی"}</small>
             </span>
           </Link>
           <LiveStatus />
@@ -400,7 +401,10 @@ export function Shell({ children, wide = false }: { title?: string; breadcrumb?:
           <button type="button" className="drawer-scrim" aria-label={isEn ? "Close menu" : "بستن منو"} onClick={() => setDrawer(false)} />
           <aside className="drawer" role="dialog" aria-modal="true" aria-label={isEn ? "Main Menu" : "منوی اصلی"}>
             <div className="drawer-head">
-              <strong>Defence Monitor</strong>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <IranMonitorLogo size={24} />
+                <strong>{isEn ? "Iran Monitor" : "سامانه رصد ایران"}</strong>
+              </div>
               <button type="button" className="icon-btn" aria-label={isEn ? "Close menu" : "بستن منو"} onClick={() => setDrawer(false)} autoFocus><X size={20} /></button>
             </div>
             <form className="search drawer-search" role="search" onSubmit={search}>
