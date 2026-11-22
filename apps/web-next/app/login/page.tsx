@@ -219,6 +219,85 @@ export default function LoginPage() {
       };
     };
 
+    // Spherical Hemisphere Polygon Clipper (Sutherland-Hodgman)
+    // Clips polygons at the planetary horizon (z >= 0) and closes them along the circular limb.
+    // Completely eliminates visual glitches and chords when large countries (like Russia) wrap around the globe.
+    const clipRingToHemisphere = (
+      ring: [number, number][],
+      rad: number,
+      rot: number,
+      centerX: number,
+      centerY: number
+    ): { x: number; y: number }[] => {
+      const len = ring.length;
+      if (len === 0) return [];
+
+      const pts = ring.map(([rLon, rLat]) => {
+        const latRad = (rLat * Math.PI) / 180;
+        const lonRad = (rLon * Math.PI) / 180 + rot;
+        const x0 = rad * Math.cos(latRad) * Math.sin(lonRad);
+        const y0 = -rad * Math.sin(latRad);
+        const z0 = rad * Math.cos(latRad) * Math.cos(lonRad);
+        const xTilted = x0;
+        const yTilted = y0 * cosT - z0 * sinT;
+        const zTilted = y0 * sinT + z0 * cosT;
+        return { x: xTilted, y: yTilted, z: zTilted };
+      });
+
+      const clipped: { x: number; y: number }[] = [];
+      let lastExitAngle: number | null = null;
+
+      for (let i = 0; i < len; i++) {
+        const curr = pts[i];
+        const prev = pts[(i - 1 + len) % len];
+        const currIn = curr.z >= 0;
+        const prevIn = prev.z >= 0;
+
+        if (currIn) {
+          if (!prevIn) {
+            // Entering visible hemisphere from behind horizon
+            const t = -prev.z / (curr.z - prev.z);
+            const ix = prev.x + t * (curr.x - prev.x);
+            const iy = prev.y + t * (curr.y - prev.y);
+            const enterAngle = Math.atan2(iy, ix);
+
+            if (lastExitAngle !== null) {
+              const diff = ((enterAngle - lastExitAngle + Math.PI) % (2 * Math.PI)) - Math.PI;
+              const steps = Math.max(1, Math.floor(Math.abs(diff) / 0.08));
+              for (let s = 1; s < steps; s++) {
+                const a = lastExitAngle + diff * (s / steps);
+                clipped.push({ x: centerX + rad * Math.cos(a), y: centerY + rad * Math.sin(a) });
+              }
+              lastExitAngle = null;
+            }
+            clipped.push({ x: centerX + rad * Math.cos(enterAngle), y: centerY + rad * Math.sin(enterAngle) });
+          }
+          clipped.push({ x: centerX + curr.x, y: centerY + curr.y });
+        } else if (prevIn) {
+          // Exiting visible hemisphere to behind horizon
+          const t = prev.z / (prev.z - curr.z);
+          const ix = prev.x + t * (curr.x - prev.x);
+          const iy = prev.y + t * (curr.y - prev.y);
+          const exitAngle = Math.atan2(iy, ix);
+          clipped.push({ x: centerX + rad * Math.cos(exitAngle), y: centerY + rad * Math.sin(exitAngle) });
+          lastExitAngle = exitAngle;
+        }
+      }
+
+      if (lastExitAngle !== null && clipped.length > 0) {
+        const firstPt = clipped[0];
+        const firstAngle = Math.atan2(firstPt.y - centerY, firstPt.x - centerX);
+        const diff = ((firstAngle - lastExitAngle + Math.PI) % (2 * Math.PI)) - Math.PI;
+        const steps = Math.max(1, Math.floor(Math.abs(diff) / 0.08));
+        for (let s = 1; s < steps; s++) {
+          const a = lastExitAngle + diff * (s / steps);
+          clipped.push({ x: centerX + rad * Math.cos(a), y: centerY + rad * Math.sin(a) });
+        }
+      }
+
+      return clipped;
+    };
+
     // Deep cosmic background stars
     const backgroundStars: { x: number; y: number; r: number; alpha: number; speed: number }[] = [];
     for (let i = 0; i < 110; i++) {
@@ -373,26 +452,13 @@ export default function LoginPage() {
         ctx.lineWidth = isIran ? 2.4 : 1.3;
 
         for (const ring of country.rings) {
-          ctx.beginPath();
-          let drawn = false;
-          let first = true;
-
-          for (const [rLon, rLat] of ring) {
-            const pt = project3D(rLat, rLon, radius, rotation, cx, cy);
-            if (pt.visible) {
-              if (first) {
-                ctx.moveTo(pt.x, pt.y);
-                first = false;
-                drawn = true;
-              } else {
-                ctx.lineTo(pt.x, pt.y);
-              }
-            } else {
-              first = true;
+          const pts = clipRingToHemisphere(ring, radius, rotation, cx, cy);
+          if (pts.length >= 3) {
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length; i++) {
+              ctx.lineTo(pts[i].x, pts[i].y);
             }
-          }
-
-          if (drawn) {
             ctx.closePath();
             ctx.fill();
             ctx.stroke();
@@ -432,52 +498,38 @@ export default function LoginPage() {
         const country = currentHoveredCountry;
 
         for (const ring of country.rings) {
-          // Pre-calculate base and elevated vertices
-          const basePts = ring.map(([rLon, rLat]) => project3D(rLat, rLon, radius, rotation, cx, cy));
-          const liftedPts = ring.map(([rLon, rLat]) => project3D(rLat, rLon, radius + liftHeight, rotation, cx, cy));
+          const basePts = clipRingToHemisphere(ring, radius, rotation, cx, cy);
+          const liftedPts = clipRingToHemisphere(ring, radius + liftHeight, rotation, cx, cy);
 
           // Draw 3D Extruded Side Walls connecting ground to elevated polygon
-          for (let i = 0; i < ring.length - 1; i++) {
+          const minLen = Math.min(basePts.length, liftedPts.length);
+          for (let i = 0; i < minLen - 1; i++) {
             const b1 = basePts[i];
             const b2 = basePts[i + 1];
             const t1 = liftedPts[i];
             const t2 = liftedPts[i + 1];
 
-            if (b1.visible || b2.visible) {
-              ctx.beginPath();
-              ctx.moveTo(b1.x, b1.y);
-              ctx.lineTo(b2.x, b2.y);
-              ctx.lineTo(t2.x, t2.y);
-              ctx.lineTo(t1.x, t1.y);
-              ctx.closePath();
+            ctx.beginPath();
+            ctx.moveTo(b1.x, b1.y);
+            ctx.lineTo(b2.x, b2.y);
+            ctx.lineTo(t2.x, t2.y);
+            ctx.lineTo(t1.x, t1.y);
+            ctx.closePath();
 
-              ctx.fillStyle = `rgba(215, 135, 15, ${0.9 * activeLift})`;
-              ctx.strokeStyle = `rgba(255, 235, 140, ${activeLift})`;
-              ctx.lineWidth = 1.3;
-              ctx.fill();
-              ctx.stroke();
-            }
+            ctx.fillStyle = `rgba(215, 135, 15, ${0.9 * activeLift})`;
+            ctx.strokeStyle = `rgba(255, 235, 140, ${activeLift})`;
+            ctx.lineWidth = 1.3;
+            ctx.fill();
+            ctx.stroke();
           }
 
           // Draw Elevated Top Polygon Cap (Brilliant Luminous Sunny Gold & White Edges)
-          ctx.beginPath();
-          let first = true;
-          let capDrawn = false;
-          for (const pt of liftedPts) {
-            if (pt.visible) {
-              if (first) {
-                ctx.moveTo(pt.x, pt.y);
-                first = false;
-                capDrawn = true;
-              } else {
-                ctx.lineTo(pt.x, pt.y);
-              }
-            } else {
-              first = true;
+          if (liftedPts.length >= 3) {
+            ctx.beginPath();
+            ctx.moveTo(liftedPts[0].x, liftedPts[0].y);
+            for (let i = 1; i < liftedPts.length; i++) {
+              ctx.lineTo(liftedPts[i].x, liftedPts[i].y);
             }
-          }
-
-          if (capDrawn) {
             ctx.closePath();
             ctx.fillStyle = `rgba(255, 238, 140, ${0.96 * activeLift})`;
             ctx.shadowColor = '#f59e0b';

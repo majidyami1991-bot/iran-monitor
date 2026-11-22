@@ -18,117 +18,117 @@ ITERATIONS = 100_000
 
 router = APIRouter(prefix='/api/v1/auth', tags=['authentication'])
 
-# Pre-configured initial users (Admin + 10 Specialized Operational Intelligence Roles)
+# Pre-configured institutional users (Admin + 10 Senior Intelligence & Defense Analysts)
 INITIAL_USERS = [
     {
         "username": "admin",
-        "password": "Admin#Strategic2026!",
+        "password": "Admin#Strategic2026",
         "name": "مدیر کل امنیت و سامانه‌های راهبردی",
-        "role": "Super Admin & Defense Director",
+        "role": "Chief Information Security Officer",
         "department": "مرکز فرماندهی و کنترل راهبردی",
         "clearance_level": "Level 5 (Top Secret // SCI)",
         "badge_color": "amber",
         "avatar": "🛡️"
     },
     {
-        "username": "cipher_sentinel",
-        "password": "Sentinel#Secure91!",
-        "name": "فرمانده پایش سیگنالی و رمزنگاری",
-        "role": "Chief Cryptanalyst",
-        "department": "مرکز عملیات سیگنال و امواج",
+        "username": "r.karimi",
+        "password": "Karimi#Intel2026",
+        "name": "دکتر رضا کریمی",
+        "role": "Senior Defense Analyst",
+        "department": "معاونت برآورد تهدیدات و دکترین دفاعی",
         "clearance_level": "Level 5 (Top Secret)",
         "badge_color": "amber",
-        "avatar": "🔐"
+        "avatar": "📊"
     },
     {
-        "username": "vanguard_intel",
-        "password": "Vanguard@Ops2026",
-        "name": "سرپرست ارزیابی تهدیدات پیشرفته",
-        "role": "Principal Threat Analyst",
-        "department": "معاونت تحلیل و برآورد راهبردی",
-        "clearance_level": "Level 4 (Secret)",
-        "badge_color": "emerald",
-        "avatar": "🦅"
-    },
-    {
-        "username": "shadow_recon",
-        "password": "Recon#Orbital77!",
-        "name": "متخصص شناسایی و تصویربرداری ماهواره‌ای",
-        "role": "IMINT & Geospatial Analyst",
-        "department": "رصدخانه اطلاعات مکانی و مداری",
-        "clearance_level": "Level 4 (Secret)",
-        "badge_color": "emerald",
-        "avatar": "🛰️"
-    },
-    {
-        "username": "cyber_warden",
-        "password": "Warden@Shield42#",
-        "name": "مدیر پدافند سایبری و جنگ الکترونیک",
-        "role": "Cyber Threat Architect",
-        "department": "فرماندهی پدافند سایبری",
-        "clearance_level": "Level 4 (Secret)",
-        "badge_color": "emerald",
-        "avatar": "⚡"
-    },
-    {
-        "username": "nexus_analyst",
-        "password": "Nexus#Tactical88$",
-        "name": "تحلیل‌گر ارشد همگرایی ژئوپلیتیک",
-        "role": "Senior Geopolitical Analyst",
-        "department": "گروه مطالعات بحران‌های منطقه‌ای",
+        "username": "m.alavi",
+        "password": "Alavi#Research2026",
+        "name": "مریم علوی",
+        "role": "Head of Geopolitical Research",
+        "department": "میز تحلیل ژئوپلیتیک و تحولات منطقه‌ای",
         "clearance_level": "Level 4 (Secret)",
         "badge_color": "emerald",
         "avatar": "🌐"
     },
     {
-        "username": "apex_commander",
-        "password": "Apex@Command55!",
-        "name": "رئیس میز عملیات ۲۴ ساعته پایش",
-        "role": "Watch Operations Director",
-        "department": "مرکز عملیات وضعیت لحظه‌ای (TOC)",
+        "username": "s.hashemi",
+        "password": "Hashemi#OSINT2026",
+        "name": "سعید هاشمی",
+        "role": "OSINT Collection Lead",
+        "department": "شبکه پایش و اعتبارسنجی منابع آشکار",
         "clearance_level": "Level 4 (Secret)",
         "badge_color": "emerald",
-        "avatar": "🎯"
+        "avatar": "🛰️"
     },
     {
-        "username": "strato_observer",
-        "password": "Strato#SkyWatch99@",
-        "name": "افسر رصد و اخطار هوانوردی و موشکی",
-        "role": "Aerospace Intelligence Officer",
-        "department": "مرکز هشدار زودهنگام پدافند هوایی",
-        "clearance_level": "Level 3 (Confidential)",
-        "badge_color": "sky",
+        "username": "a.moradi",
+        "password": "Moradi#Defense2026",
+        "name": "امیر مرادی",
+        "role": "Aerospace & Missile Analyst",
+        "department": "مرکز ارزیابی توان هوافضا و موشکی",
+        "clearance_level": "Level 4 (Secret)",
+        "badge_color": "emerald",
         "avatar": "🚀"
     },
     {
-        "username": "iron_gate",
-        "password": "Iron#Defense33!",
-        "name": "سرپرست حریم اطلاعاتی و حفاظت زیرساخت",
-        "role": "Infrastructure Security Lead",
-        "department": "پایش زیرساخت‌های حیاتی و انرژی",
-        "clearance_level": "Level 3 (Confidential)",
-        "badge_color": "sky",
-        "avatar": "🏰"
+        "username": "f.tehrani",
+        "password": "Tehrani#Cyber2026",
+        "name": "فرهاد تهرانی",
+        "role": "Cyber Intelligence Architect",
+        "department": "مرکز پدافند و تحلیل تهدیدات سایبری",
+        "clearance_level": "Level 4 (Secret)",
+        "badge_color": "emerald",
+        "avatar": "💻"
     },
     {
-        "username": "horizon_scout",
-        "password": "Horizon@Radar24#",
-        "name": "سرپرست رصد متن‌باز و شبکه‌های منطقه‌ای",
-        "role": "Senior OSINT Scout",
-        "department": "شبکه جمع‌آوری اطلاعات منابع آشکار",
-        "clearance_level": "Level 3 (Confidential)",
-        "badge_color": "sky",
+        "username": "n.ebrahimi",
+        "password": "Ebrahimi#Policy2026",
+        "name": "ندا ابراهیمی",
+        "role": "Regional Strategic Forecaster",
+        "department": "گروه آینده‌پژوهی و سناریونگاری بحران",
+        "clearance_level": "Level 4 (Secret)",
+        "badge_color": "emerald",
         "avatar": "🔭"
     },
     {
-        "username": "ghost_matrix",
-        "password": "Matrix#Signal19$",
-        "name": "پژوهشگر جنگ روانی و تحلیل داده‌های کلان",
-        "role": "Info-Ops & Big Data Analyst",
-        "department": "مرکز داده‌کاوی و پردازش پیشرفته",
+        "username": "k.rostami",
+        "password": "Rostami#Data2026",
+        "name": "کامیار رستمی",
+        "role": "Senior Data Pipeline Engineer",
+        "department": "واحد مهندسی داده و پردازش کلان",
         "clearance_level": "Level 3 (Confidential)",
         "badge_color": "sky",
-        "avatar": "📡"
+        "avatar": "⚙️"
+    },
+    {
+        "username": "z.ahmadi",
+        "password": "Ahmadi#Watch2026",
+        "name": "زهرا احمدی",
+        "role": "24/7 Watch Operations Officer",
+        "department": "مرکز عملیات پایش زنده و رصد لحظه‌ای",
+        "clearance_level": "Level 3 (Confidential)",
+        "badge_color": "sky",
+        "avatar": "🎯"
+    },
+    {
+        "username": "h.soleimani",
+        "password": "Soleimani#Threat2026",
+        "name": "حسن سلیمانی",
+        "role": "Advanced Threat Analyst",
+        "department": "میز تخصصی ارزیابی بازیگران و نیروهای مسلح",
+        "clearance_level": "Level 3 (Confidential)",
+        "badge_color": "sky",
+        "avatar": "🔍"
+    },
+    {
+        "username": "d.rezvani",
+        "password": "Rezvani#Audit2026",
+        "name": "دانیال رضوانی",
+        "role": "Compliance & Security Auditor",
+        "department": "بازرسی امنیتی و پایش دسترسی‌ها",
+        "clearance_level": "Level 3 (Confidential)",
+        "badge_color": "sky",
+        "avatar": "📝"
     }
 ]
 

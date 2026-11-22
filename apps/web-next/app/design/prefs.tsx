@@ -1,12 +1,11 @@
 'use client';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 
-/** Per-viewer conveniences only (browser storage; safe to lose):
- *  - contentLang: which text leads on cards — the stored Persian machine
- *    translation when one exists ('fa'), or the publisher's original ('en').
- *    Interface chrome stays Persian; this only changes content order.
+/** Per-viewer conveniences only (browser storage):
+ *  - contentLang: 'fa' (Persian interface & RTL) or 'en' (English interface & LTR).
  *  - seen stories: story id -> content_updated_at, for the new/seen ring. */
-type Lang = 'fa' | 'en' | 'bi';   // bi = Persian translation and the publisher's original side by side
+type Lang = 'fa' | 'en';
+
 interface PrefsValue {
   contentLang: Lang;
   setContentLang: (l: Lang) => void;
@@ -26,11 +25,32 @@ function write(key: string, value: unknown) {
 export function Prefs({ children }: { children: ReactNode }) {
   const [contentLang, setLang] = useState<Lang>('fa');
   const [seen, setSeen] = useState<Record<string, string>>({});
-  useEffect(() => { const l = read<Lang>('im.contentLang', 'fa'); setLang(l === 'en' || l === 'bi' ? l : 'fa'); setSeen(read('im.storiesSeen', {})); }, []);
-  const setContentLang = useCallback((l: Lang) => { setLang(l); write('im.contentLang', l); }, []);
+
+  useEffect(() => {
+    const l = read<Lang>('im.contentLang', 'fa');
+    const validLang: Lang = l === 'en' ? 'en' : 'fa';
+    setLang(validLang);
+    if (typeof document !== 'undefined') {
+      document.documentElement.dir = validLang === 'en' ? 'ltr' : 'rtl';
+      document.documentElement.lang = validLang;
+    }
+    setSeen(read('im.storiesSeen', {}));
+  }, []);
+
+  const setContentLang = useCallback((l: Lang) => {
+    const validLang: Lang = l === 'en' ? 'en' : 'fa';
+    setLang(validLang);
+    write('im.contentLang', validLang);
+    if (typeof document !== 'undefined') {
+      document.documentElement.dir = validLang === 'en' ? 'ltr' : 'rtl';
+      document.documentElement.lang = validLang;
+    }
+  }, []);
+
   const markSeen = useCallback((id: string, stamp: string) => {
     setSeen((s) => { const n = { ...s, [id]: stamp }; write('im.storiesSeen', n); return n; });
   }, []);
+
   return <Ctx.Provider value={{ contentLang, setContentLang, seen, markSeen }}>{children}</Ctx.Provider>;
 }
 

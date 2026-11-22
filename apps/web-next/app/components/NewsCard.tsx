@@ -15,7 +15,7 @@ import { ItemImage } from './Visual';
 export function useHeadline(item: FeedItem) {
   const { contentLang } = usePrefs();
   const fa = contentLang === 'fa' && item.title_fa;
-  const bi = contentLang === 'bi';
+  const bi = false;
   return {
     title: fa ? item.title_fa! : item.title,
     titleDir: fa ? 'rtl' : 'ltr',
@@ -23,8 +23,8 @@ export function useHeadline(item: FeedItem) {
     summary: contentLang === 'fa' && item.summary_fa ? item.summary_fa : item.summary,
     summaryDir: contentLang === 'fa' && item.summary_fa ? 'rtl' : 'ltr',
     bi,
-    biTitle: bi ? (item.title_fa ?? item.title_fa_unverified ?? null) : null,
-    biTitleWarn: bi && !item.title_fa && !!item.title_fa_unverified,
+    biTitle: null,
+    biTitleWarn: false,
   } as const;
 }
 

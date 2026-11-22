@@ -51,21 +51,21 @@ docker compose ps
 
 User accounts are authenticated against the PostgreSQL database. Passwords are encrypted using **PBKDF2-HMAC-SHA256 (100,000 iterations)** with cryptographically unique salts.
 
-Eleven pre-configured operational intelligence accounts are available for testing:
+Eleven institutional intelligence and defense analyst accounts are configured for operational access:
 
 | Username | Password | Role & Title | Clearance Level |
 | :--- | :--- | :--- | :--- |
-| `admin` | `Admin#Strategic2026!` | Super Admin & Defense Director | Level 5 (Top Secret // SCI) |
-| `cipher_sentinel` | `Sentinel#Secure91!` | Chief Cryptanalyst & SIGINT Lead | Level 5 (Top Secret) |
-| `vanguard_intel` | `Vanguard@Ops2026` | Principal Strategic Threat Analyst | Level 4 (Secret) |
-| `shadow_recon` | `Recon#Orbital77!` | IMINT & Geospatial Analyst | Level 4 (Secret) |
-| `cyber_warden` | `Warden@Shield42#` | Cyber Threat Architect & EW Director | Level 4 (Secret) |
-| `nexus_analyst` | `Nexus#Tactical88$` | Senior Geopolitical Analyst | Level 4 (Secret) |
-| `apex_commander` | `Apex@Command55!` | 24/7 Watch Operations Director (TOC) | Level 4 (Secret) |
-| `strato_observer` | `Strato#SkyWatch99@` | Aerospace & Missile Defense Watch Officer | Level 3 (Confidential) |
-| `iron_gate` | `Iron#Defense33!` | Critical Infrastructure Defense Lead | Level 3 (Confidential) |
-| `horizon_scout` | `Horizon@Radar24#` | Senior OSINT Horizon Scout | Level 3 (Confidential) |
-| `ghost_matrix` | `Matrix#Signal19$` | Info-Ops & Big Data Warfare Analyst | Level 3 (Confidential) |
+| `admin` | `Admin#Strategic2026` | Chief Information Security Officer | Level 5 (Top Secret // SCI) |
+| `r.karimi` | `Karimi#Intel2026` | Senior Defense Analyst | Level 5 (Top Secret) |
+| `m.alavi` | `Alavi#Research2026` | Head of Geopolitical Research | Level 4 (Secret) |
+| `s.hashemi` | `Hashemi#OSINT2026` | OSINT Collection Lead | Level 4 (Secret) |
+| `a.moradi` | `Moradi#Defense2026` | Aerospace & Missile Analyst | Level 4 (Secret) |
+| `f.tehrani` | `Tehrani#Cyber2026` | Cyber Intelligence Architect | Level 4 (Secret) |
+| `n.ebrahimi` | `Ebrahimi#Policy2026` | Regional Strategic Forecaster | Level 4 (Secret) |
+| `k.rostami` | `Rostami#Data2026` | Senior Data Pipeline Engineer | Level 3 (Confidential) |
+| `z.ahmadi` | `Ahmadi#Watch2026` | 24/7 Watch Operations Officer | Level 3 (Confidential) |
+| `h.soleimani` | `Soleimani#Threat2026` | Advanced Threat Analyst | Level 3 (Confidential) |
+| `d.rezvani` | `Rezvani#Audit2026` | Compliance & Security Auditor | Level 3 (Confidential) |
 
 ---
 
