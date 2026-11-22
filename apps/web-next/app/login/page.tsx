@@ -119,9 +119,10 @@ export default function LoginPage() {
 
     let animationFrameId: number;
     let rotation = 0.95;
-    const tilt = 0.38; // ~22 degrees axial tilt
-    const cosT = Math.cos(tilt);
-    const sinT = Math.sin(tilt);
+    let currentTilt = -0.28; // Default view showing the top/Northern Hemisphere (Middle East, Europe, Asia)
+    let targetTilt = -0.28;
+    let cosT = Math.cos(currentTilt);
+    let sinT = Math.sin(currentTilt);
 
     // Mouse tracking for country hover & 3D extrusion
     let mouseX = -9999;
@@ -236,6 +237,19 @@ export default function LoginPage() {
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
       ctx.clearRect(0, 0, width, height);
+
+      // Dynamic interactive camera tilt:
+      // Moving mouse higher (mouseY -> 0) pitches camera up to reveal the top/Northern Hemisphere (-0.46 rad)
+      // Moving mouse lower tilts camera down towards equatorial & southern regions (+0.24 rad)
+      if (mouseY > -9000 && height > 0) {
+        const normY = Math.max(0, Math.min(1, mouseY / height));
+        targetTilt = -0.48 + normY * 0.72;
+      } else {
+        targetTilt = -0.28; // Default favorable perspective on Northern Hemisphere & Iran
+      }
+      currentTilt += (targetTilt - currentTilt) * 0.08;
+      cosT = Math.cos(currentTilt);
+      sinT = Math.sin(currentTilt);
 
       const now = Date.now();
 
@@ -490,10 +504,9 @@ export default function LoginPage() {
         if (centroidPt.visible) {
           const labelText = `${country.name.toUpperCase()} ${country.code ? `[${country.code}]` : ''}`;
           ctx.font = '700 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace';
+          ctx.textAlign = 'left'; // Enforce left alignment regardless of RTL document context
+          ctx.textBaseline = 'bottom'; // Baseline right above horizontal golden line
           const textWidth = ctx.measureText(labelText).width;
-
-          const tagX = centroidPt.x + 22;
-          const tagY = centroidPt.y - 18;
 
           // Glowing Centroid Target Beacon
           ctx.beginPath();
@@ -504,24 +517,31 @@ export default function LoginPage() {
           ctx.fill();
           ctx.shadowBlur = 0;
 
-          // Pointer Line
+          // Adapt line direction so it never clips off-screen on the right edge
+          const goLeft = centroidPt.x > cx + radius * 0.35;
+          const elbowX = goLeft ? centroidPt.x - 24 : centroidPt.x + 24;
+          const endX = goLeft ? elbowX - textWidth - 12 : elbowX + textWidth + 12;
+          const tagY = centroidPt.y - 20;
+
+          // Pointer Line: from centroid to elbow, then horizontal underline
           ctx.beginPath();
           ctx.moveTo(centroidPt.x, centroidPt.y);
-          ctx.lineTo(tagX, tagY + 2);
-          ctx.lineTo(tagX + textWidth + 8, tagY + 2);
-          ctx.strokeStyle = `rgba(255, 220, 100, ${0.9 * activeLift})`;
+          ctx.lineTo(elbowX, tagY + 2);
+          ctx.lineTo(endX, tagY + 2);
+          ctx.strokeStyle = `rgba(255, 220, 100, ${0.92 * activeLift})`;
           ctx.lineWidth = 1.8;
           ctx.stroke();
 
-          // High-contrast, crystal-clear glowing text (No black box)
+          // High-contrast, crystal-clear glowing text sitting strictly on top of the underline
+          const textX = goLeft ? endX + 4 : elbowX + 4;
           ctx.shadowColor = '#000000';
           ctx.shadowBlur = 8;
           ctx.fillStyle = '#ffffff';
-          ctx.fillText(labelText, tagX + 2, tagY - 4);
+          ctx.fillText(labelText, textX, tagY);
           ctx.shadowColor = '#f59e0b';
           ctx.shadowBlur = 6;
           ctx.fillStyle = '#fef08a';
-          ctx.fillText(labelText, tagX + 2, tagY - 4);
+          ctx.fillText(labelText, textX, tagY);
           ctx.shadowBlur = 0;
         }
       }

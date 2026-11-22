@@ -51,20 +51,21 @@ docker compose ps
 
 User accounts are authenticated against the PostgreSQL database. Passwords are encrypted using **PBKDF2-HMAC-SHA256 (100,000 iterations)** with cryptographically unique salts.
 
-Ten pre-configured intelligence accounts are available for testing:
+Eleven pre-configured operational intelligence accounts are available for testing:
 
 | Username | Password | Role & Title | Clearance Level |
 | :--- | :--- | :--- | :--- |
-| `admin` | `admin123` | System Administrator / Super Admin | Level 5 (Top Secret) |
-| `intel_officer` | `intel123` | Senior Intelligence Analyst | Level 4 (Secret) |
-| `defense_analyst` | `defense123` | Defense Strategy Analyst | Level 4 (Secret) |
-| `osint_lead` | `osint123` | OSINT Collection Lead | Level 3 (Confidential) |
-| `regional_expert` | `region123` | Middle East Regional Specialist | Level 3 (Confidential) |
-| `security_auditor` | `audit123` | Information Security Auditor | Level 4 (Secret) |
-| `data_engineer` | `data123` | Intelligence Data Pipeline Engineer | Level 3 (Confidential) |
-| `field_monitor` | `field123` | Tactical Field Intelligence Monitor | Level 2 (Restricted) |
-| `duty_operator` | `duty123` | Watch Center Duty Operator | Level 2 (Restricted) |
-| `guest_viewer` | `guest123` | Observer / Guest Viewer | Level 1 (Internal Only) |
+| `admin` | `Admin#Strategic2026!` | Super Admin & Defense Director | Level 5 (Top Secret // SCI) |
+| `cipher_sentinel` | `Sentinel#Secure91!` | Chief Cryptanalyst & SIGINT Lead | Level 5 (Top Secret) |
+| `vanguard_intel` | `Vanguard@Ops2026` | Principal Strategic Threat Analyst | Level 4 (Secret) |
+| `shadow_recon` | `Recon#Orbital77!` | IMINT & Geospatial Analyst | Level 4 (Secret) |
+| `cyber_warden` | `Warden@Shield42#` | Cyber Threat Architect & EW Director | Level 4 (Secret) |
+| `nexus_analyst` | `Nexus#Tactical88$` | Senior Geopolitical Analyst | Level 4 (Secret) |
+| `apex_commander` | `Apex@Command55!` | 24/7 Watch Operations Director (TOC) | Level 4 (Secret) |
+| `strato_observer` | `Strato#SkyWatch99@` | Aerospace & Missile Defense Watch Officer | Level 3 (Confidential) |
+| `iron_gate` | `Iron#Defense33!` | Critical Infrastructure Defense Lead | Level 3 (Confidential) |
+| `horizon_scout` | `Horizon@Radar24#` | Senior OSINT Horizon Scout | Level 3 (Confidential) |
+| `ghost_matrix` | `Matrix#Signal19$` | Info-Ops & Big Data Warfare Analyst | Level 3 (Confidential) |
 
 ---
 
