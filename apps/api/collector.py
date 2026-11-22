@@ -15,7 +15,7 @@ import media_pipeline as mp
 import classify_v2 as cv
 
 ROOT=Path('/app'); STATE=Path(os.getenv('COLLECTOR_STATE_DIR','/state'))
-MAX_BYTES=2*1024*1024;TIMEOUT=30;UA='DefenceMonitor/1.0 (bounded RSS monitoring; project news-feed collector)';VERSION='1.2.0'
+MAX_BYTES=2*1024*1024;TIMEOUT=30;UA=os.getenv('COLLECTOR_USER_AGENT','Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 (DefenceMonitor/1.2)');VERSION='1.2.0'
 LOG=logging.getLogger('defence_monitor.collector')
 LOCK_KEY=0x4952414E4D4F4E
 SOURCE_TERMINAL={'succeeded','failed_fetch','failed_parse','failed_normalize','committed_checkpoint_failed','failed_finalize'}
@@ -83,7 +83,17 @@ def log_failure(*,run_id,source_id,stage,exc,item_index=None,feed_format=None,fi
     LOG.error(json.dumps(record,ensure_ascii=False,separators=(',',':')))
     return record
 def parse(data,sid,received):
-    root=ET.fromstring(data);tag=root.tag.rsplit('}',1)[-1].lower();nodes=[]
+    raw_prefix = data.lstrip()[:100].lower() if isinstance(data, (bytes, bytearray)) else str(data).lstrip()[:100].lower()
+    if raw_prefix.startswith((b'<!doctype html', b'<html', '<!doctype html', '<html')):
+        raise ValueError('unsupported_feed_format: html_returned')
+    try:
+        root=ET.fromstring(data)
+    except Exception:
+        # Sanitize unescaped bare ampersands and malformed XML entities
+        text_data = data.decode('utf-8', errors='ignore') if isinstance(data, (bytes, bytearray)) else str(data)
+        cleaned = re.sub(r'&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)', '&amp;', text_data)
+        root=ET.fromstring(cleaned.encode('utf-8'))
+    tag=root.tag.rsplit('}',1)[-1].lower();nodes=[]
     xml_lang='{http://www.w3.org/XML/1998/namespace}lang'
     feed_language=root.attrib.get(xml_lang) or text(root,'channel/language') or text(root,'{*}language')
     # The publisher's own feed title is the only authoritative brand name in the
@@ -249,8 +259,8 @@ def recover_pending_checkpoints():
 def one_request(url):
     p=urlsplit(url)
     if p.scheme!='https' or not p.hostname:raise ValueError('invalid_manifest_url')
-    opener=build_opener(ProxyHandler(),NoRedirect())
-    req=Request(url,headers={'User-Agent':UA,'Accept':'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9'})
+    opener=build_opener(ProxyHandler(),HTTPRedirectHandler())
+    req=Request(url,headers={'User-Agent':UA,'Accept':'application/rss+xml, application/atom+xml, application/xml, text/xml, text/html;q=0.9, */*;q=0.8'})
     started=datetime.now(timezone.utc)
     try:
         with opener.open(req,timeout=TIMEOUT) as r:

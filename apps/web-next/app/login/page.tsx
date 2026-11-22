@@ -274,16 +274,16 @@ export default function LoginPage() {
 
       // 1. Atmospheric Volumetric Glows (Vibrant Golden Cream & Royal Navy)
       const outerGlow = ctx.createRadialGradient(cx, cy, radius * 0.88, cx, cy, radius * 1.68);
-      outerGlow.addColorStop(0, 'rgba(242, 199, 90, 0.28)'); // Radiant gold rim
-      outerGlow.addColorStop(0.3, 'rgba(56, 114, 210, 0.18)'); // Royal sapphire haze
-      outerGlow.addColorStop(0.68, 'rgba(15, 30, 65, 0.08)');
+      outerGlow.addColorStop(0, 'rgba(252, 211, 77, 0.42)'); // Radiant gold rim
+      outerGlow.addColorStop(0.24, 'rgba(96, 165, 250, 0.28)'); // Royal sapphire haze
+      outerGlow.addColorStop(0.65, 'rgba(20, 50, 100, 0.08)');
       outerGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = outerGlow;
       ctx.beginPath();
       ctx.arc(cx, cy, radius * 1.68, 0, Math.PI * 2);
       ctx.fill();
 
-      // 2. Planet Base Ocean Disc
+      // 2. Planet Base Ocean Disc (Deep, luminous sapphire navy)
       const planetGrad = ctx.createRadialGradient(
         cx - radius * 0.32,
         cy - radius * 0.38,
@@ -292,18 +292,18 @@ export default function LoginPage() {
         cy,
         radius
       );
-      planetGrad.addColorStop(0, '#162b4c');
-      planetGrad.addColorStop(0.4, '#0f1c32');
-      planetGrad.addColorStop(0.78, '#08111e');
-      planetGrad.addColorStop(1, '#03070f');
+      planetGrad.addColorStop(0, '#1d3e6d');
+      planetGrad.addColorStop(0.42, '#132847');
+      planetGrad.addColorStop(0.8, '#0a172a');
+      planetGrad.addColorStop(1, '#050c18');
       ctx.fillStyle = planetGrad;
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
       ctx.fill();
 
       // Atmospheric Rim Highlight
-      ctx.strokeStyle = 'rgba(242, 199, 90, 0.55)';
-      ctx.lineWidth = 1.8;
+      ctx.strokeStyle = 'rgba(252, 211, 77, 0.75)';
+      ctx.lineWidth = 2.0;
       ctx.stroke();
 
       // 3. Delicate Coordinate Graticule (Lat/Lon grid)
@@ -354,9 +354,9 @@ export default function LoginPage() {
 
         const isIran = country.name === 'Iran';
 
-        ctx.fillStyle = isIran ? 'rgba(242, 199, 90, 0.28)' : 'rgba(18, 38, 64, 0.75)';
-        ctx.strokeStyle = isIran ? 'rgba(242, 199, 90, 0.95)' : 'rgba(125, 168, 222, 0.35)';
-        ctx.lineWidth = isIran ? 1.6 : 0.8;
+        ctx.fillStyle = isIran ? 'rgba(242, 199, 90, 0.38)' : 'rgba(30, 58, 96, 0.9)';
+        ctx.strokeStyle = isIran ? 'rgba(255, 220, 90, 1.0)' : 'rgba(165, 210, 255, 0.85)';
+        ctx.lineWidth = isIran ? 2.4 : 1.3;
 
         for (const ring of country.rings) {
           ctx.beginPath();
@@ -437,15 +437,15 @@ export default function LoginPage() {
               ctx.lineTo(t1.x, t1.y);
               ctx.closePath();
 
-              ctx.fillStyle = `rgba(200, 135, 25, ${0.75 * activeLift})`;
-              ctx.strokeStyle = `rgba(245, 205, 95, ${0.9 * activeLift})`;
-              ctx.lineWidth = 1;
+              ctx.fillStyle = `rgba(215, 135, 15, ${0.9 * activeLift})`;
+              ctx.strokeStyle = `rgba(255, 235, 140, ${activeLift})`;
+              ctx.lineWidth = 1.3;
               ctx.fill();
               ctx.stroke();
             }
           }
 
-          // Draw Elevated Top Polygon Cap (Luminous Warm Gold Fill & Glowing Edges)
+          // Draw Elevated Top Polygon Cap (Brilliant Luminous Sunny Gold & White Edges)
           ctx.beginPath();
           let first = true;
           let capDrawn = false;
@@ -465,19 +465,19 @@ export default function LoginPage() {
 
           if (capDrawn) {
             ctx.closePath();
-            ctx.fillStyle = `rgba(245, 215, 115, ${0.85 * activeLift})`;
-            ctx.shadowColor = '#f2c75a';
-            ctx.shadowBlur = 18 * activeLift;
+            ctx.fillStyle = `rgba(255, 238, 140, ${0.96 * activeLift})`;
+            ctx.shadowColor = '#f59e0b';
+            ctx.shadowBlur = 28 * activeLift;
             ctx.fill();
             ctx.shadowBlur = 0;
 
-            ctx.strokeStyle = `rgba(255, 255, 240, ${activeLift})`;
-            ctx.lineWidth = 2.2;
+            ctx.strokeStyle = `rgba(255, 255, 255, ${activeLift})`;
+            ctx.lineWidth = 2.6;
             ctx.stroke();
           }
         }
 
-        // Draw Tactical Sci-Fi HUD Label with Country Name & Coordinates
+        // Draw Tactical Sci-Fi HUD Label with Country Name (Clean typography, NO black box)
         const centroidPt = project3D(
           country.centroid[0],
           country.centroid[1],
@@ -489,33 +489,40 @@ export default function LoginPage() {
 
         if (centroidPt.visible) {
           const labelText = `${country.name.toUpperCase()} ${country.code ? `[${country.code}]` : ''}`;
-          ctx.font = '600 12px monospace';
+          ctx.font = '700 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace';
           const textWidth = ctx.measureText(labelText).width;
 
           const tagX = centroidPt.x + 22;
           const tagY = centroidPt.y - 18;
 
+          // Glowing Centroid Target Beacon
+          ctx.beginPath();
+          ctx.arc(centroidPt.x, centroidPt.y, 4, 0, Math.PI * 2);
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = '#f59e0b';
+          ctx.shadowBlur = 10;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
           // Pointer Line
           ctx.beginPath();
           ctx.moveTo(centroidPt.x, centroidPt.y);
-          ctx.lineTo(tagX - 6, tagY);
-          ctx.lineTo(tagX + textWidth + 14, tagY);
-          ctx.strokeStyle = `rgba(242, 199, 90, ${0.85 * activeLift})`;
-          ctx.lineWidth = 1.4;
+          ctx.lineTo(tagX, tagY + 2);
+          ctx.lineTo(tagX + textWidth + 8, tagY + 2);
+          ctx.strokeStyle = `rgba(255, 220, 100, ${0.9 * activeLift})`;
+          ctx.lineWidth = 1.8;
           ctx.stroke();
 
-          // Tag Box Background
-          ctx.fillStyle = `rgba(8, 16, 28, ${0.9 * activeLift})`;
-          ctx.fillRect(tagX - 4, tagY - 14, textWidth + 16, 20);
-
-          // Tag Border
-          ctx.strokeStyle = `rgba(242, 199, 90, ${0.75 * activeLift})`;
-          ctx.lineWidth = 1;
-          ctx.strokeRect(tagX - 4, tagY - 14, textWidth + 16, 20);
-
-          // Tag Text
-          ctx.fillStyle = `rgba(255, 240, 180, ${activeLift})`;
-          ctx.fillText(labelText, tagX + 4, tagY);
+          // High-contrast, crystal-clear glowing text (No black box)
+          ctx.shadowColor = '#000000';
+          ctx.shadowBlur = 8;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(labelText, tagX + 2, tagY - 4);
+          ctx.shadowColor = '#f59e0b';
+          ctx.shadowBlur = 6;
+          ctx.fillStyle = '#fef08a';
+          ctx.fillText(labelText, tagX + 2, tagY - 4);
+          ctx.shadowBlur = 0;
         }
       }
 
