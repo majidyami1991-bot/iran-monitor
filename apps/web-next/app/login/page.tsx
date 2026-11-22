@@ -12,67 +12,91 @@ import {
   LogIn 
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import { WORLD_COUNTRIES, CountryData } from './worldCountriesData';
 import './login.css';
 
-// Geographic points for Earth landmass silhouette (lat, lon in degrees)
-const CONTINENTAL_POINTS: [number, number][] = [
-  // Middle East & Iran region
-  [35.6892, 51.3890], [32.4279, 53.6880], [38.0800, 46.2919], [29.5918, 52.5837], 
-  [36.2605, 59.6168], [31.8974, 54.3569], [27.1832, 56.2666], [37.2808, 49.5832],
-  [34.3277, 47.0778], [31.3183, 48.6706], [33.4878, 48.3558], [34.0954, 49.7013],
-  [25.2769, 55.2962], [24.4539, 54.3773], [21.4858, 39.1925], [24.7136, 46.6753],
-  [33.3152, 44.3661], [33.5138, 36.2765], [31.9522, 35.2332], [39.9334, 32.8597],
-  [41.0082, 28.9784], [30.0444, 31.2357], [36.7538, 3.0588], [33.8869, 35.5131],
-  // Eurasia / Europe / Asia
-  [55.7558, 37.6173], [59.9343, 30.3351], [52.5200, 13.4050], [48.8566, 2.3522],
-  [51.5074, -0.1278], [40.4168, -3.7038], [41.9028, 12.4964], [52.3676, 4.9041],
-  [50.0755, 14.4378], [52.2297, 21.0122], [59.3293, 18.0686], [60.1699, 24.9384],
-  [41.7151, 44.8271], [40.4093, 49.8671], [40.1792, 44.4991], [41.2995, 69.2401],
-  [33.6844, 73.0479], [28.6139, 77.2090], [19.0760, 72.8777], [39.9042, 116.4074],
-  [31.2304, 121.4737], [35.6762, 139.6503], [37.5665, 126.9780], [60.0, 100.0],
-  [56.0, 92.0], [52.0, 104.0], [62.0, 129.0], [53.0, 158.0],
-  // Africa
-  [9.0820, 8.6753], [6.5244, 3.3792], [-1.2921, 36.8219], [-26.2041, 28.0473],
-  [-33.9249, 18.4241], [14.6928, -17.4467], [8.9806, 38.7578], [0.3476, 32.5825],
-  // Americas
-  [38.9072, -77.0369], [40.7128, -74.0060], [34.0522, -118.2437], [41.8781, -87.6298],
-  [29.7604, -95.3698], [45.5017, -73.5673], [19.4326, -99.1332], [-23.5505, -46.6333],
-  [-34.6037, -58.3816], [-12.0464, -77.0428],
-  // Australia & SE Asia
-  [-33.8688, 151.2093], [-37.8136, 144.9631], [1.3521, 103.8198], [13.7563, 100.5018]
-];
-
-// Definition of 16 orbiting artificial intelligence satellites
+// 64 Orbiting Artificial Intelligence Satellites across 8 Tactical Orbital Planes
 interface OrbitSatellite {
   radiusFactor: number;
-  inclination: number; // radians
-  tiltY: number;
+  inclination: number; // inclination angle in radians
   speed: number;
   phase: number;
   size: number;
   color: string;
   glowColor: string;
   hasPing: boolean;
+  planeId: number;
 }
 
-const SATELLITE_CONFIGS: OrbitSatellite[] = [
-  { radiusFactor: 1.14, inclination: 0.28, tiltY: 0.1, speed: 0.85, phase: 0.2, size: 3.2, color: '#f2c75a', glowColor: '#e3b341', hasPing: true },
-  { radiusFactor: 1.22, inclination: -0.42, tiltY: -0.15, speed: -0.72, phase: 1.1, size: 2.8, color: '#e0f2fe', glowColor: '#38bdf8', hasPing: false },
-  { radiusFactor: 1.30, inclination: 0.65, tiltY: 0.25, speed: 0.55, phase: 2.3, size: 3.0, color: '#fef08a', glowColor: '#ca8a04', hasPing: true },
-  { radiusFactor: 1.18, inclination: -0.78, tiltY: 0.05, speed: -0.92, phase: 3.5, size: 2.5, color: '#ffffff', glowColor: '#93c5fd', hasPing: false },
-  { radiusFactor: 1.38, inclination: 0.15, tiltY: -0.3, speed: 0.48, phase: 4.1, size: 3.5, color: '#f2c75a', glowColor: '#d97706', hasPing: true },
-  { radiusFactor: 1.26, inclination: -0.32, tiltY: 0.2, speed: 0.68, phase: 5.0, size: 2.6, color: '#bfdbfe', glowColor: '#60a5fa', hasPing: false },
-  { radiusFactor: 1.45, inclination: 0.82, tiltY: -0.1, speed: -0.42, phase: 0.7, size: 3.2, color: '#fde047', glowColor: '#eab308', hasPing: true },
-  { radiusFactor: 1.12, inclination: -0.18, tiltY: 0.12, speed: 1.05, phase: 1.9, size: 2.4, color: '#ffffff', glowColor: '#cbd5e1', hasPing: false },
-  { radiusFactor: 1.34, inclination: 0.48, tiltY: -0.22, speed: -0.62, phase: 2.8, size: 3.1, color: '#fef9c3', glowColor: '#ca8a04', hasPing: false },
-  { radiusFactor: 1.50, inclination: -0.60, tiltY: 0.18, speed: 0.38, phase: 3.9, size: 3.6, color: '#f2c75a', glowColor: '#f59e0b', hasPing: true },
-  { radiusFactor: 1.20, inclination: 0.95, tiltY: -0.05, speed: 0.78, phase: 4.6, size: 2.7, color: '#e2e8f0', glowColor: '#94a3b8', hasPing: false },
-  { radiusFactor: 1.40, inclination: -0.88, tiltY: 0.28, speed: -0.50, phase: 5.5, size: 3.3, color: '#fde68a', glowColor: '#d97706', hasPing: true },
-  { radiusFactor: 1.16, inclination: 0.35, tiltY: -0.18, speed: -0.82, phase: 0.4, size: 2.5, color: '#bae6fd', glowColor: '#38bdf8', hasPing: false },
-  { radiusFactor: 1.28, inclination: -0.24, tiltY: 0.14, speed: 0.60, phase: 1.6, size: 2.9, color: '#fef08a', glowColor: '#eab308', hasPing: false },
-  { radiusFactor: 1.55, inclination: 0.52, tiltY: -0.25, speed: 0.32, phase: 2.7, size: 3.4, color: '#ffffff', glowColor: '#f2c75a', hasPing: true },
-  { radiusFactor: 1.42, inclination: -0.45, tiltY: 0.08, speed: -0.54, phase: 4.8, size: 3.0, color: '#fed7aa', glowColor: '#ea580c', hasPing: false }
-];
+const GENERATE_SATELLITES = (): OrbitSatellite[] => {
+  const satellites: OrbitSatellite[] = [];
+  const planes = [
+    { radiusFactor: 1.14, inclination: 0.15, speed: 0.75, color: '#f2c75a', glowColor: '#e3b341' },
+    { radiusFactor: 1.20, inclination: 0.65, speed: -0.85, color: '#e0f2fe', glowColor: '#38bdf8' },
+    { radiusFactor: 1.26, inclination: -0.58, speed: 0.68, color: '#fef08a', glowColor: '#ca8a04' },
+    { radiusFactor: 1.34, inclination: 1.05, speed: -0.52, color: '#ffffff', glowColor: '#93c5fd' },
+    { radiusFactor: 1.42, inclination: -0.32, speed: 0.42, color: '#f2c75a', glowColor: '#d97706' },
+    { radiusFactor: 1.18, inclination: 1.42, speed: 0.92, color: '#bfdbfe', glowColor: '#60a5fa' },
+    { radiusFactor: 1.28, inclination: -1.35, speed: -0.78, color: '#fed7aa', glowColor: '#ea580c' },
+    { radiusFactor: 1.55, inclination: 0.48, speed: 0.32, color: '#fef9c3', glowColor: '#f59e0b' }
+  ];
+
+  planes.forEach((plane, pIdx) => {
+    const countInPlane = 8;
+    for (let i = 0; i < countInPlane; i++) {
+      const phase = (i / countInPlane) * Math.PI * 2 + (pIdx * 0.4);
+      satellites.push({
+        radiusFactor: plane.radiusFactor + (Math.sin(i) * 0.02),
+        inclination: plane.inclination,
+        speed: plane.speed * (0.95 + (i % 3) * 0.05),
+        phase: phase,
+        size: 2.2 + (i % 3) * 0.6,
+        color: i % 4 === 0 ? '#ffffff' : plane.color,
+        glowColor: plane.glowColor,
+        hasPing: i % 2 === 0,
+        planeId: pIdx
+      });
+    }
+  });
+
+  return satellites;
+};
+
+const SATELLITE_FLEET = GENERATE_SATELLITES();
+
+// Point-in-polygon algorithm for GeoJSON country detection
+function isPointInRing(lon: number, lat: number, ring: [number, number][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    const intersect = ((yi > lat) !== (yj > lat)) &&
+      (lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function findCountryAtCoords(lonDeg: number, latDeg: number): CountryData | null {
+  let nLon = lonDeg;
+  while (nLon > 180) nLon -= 360;
+  while (nLon < -180) nLon += 360;
+
+  for (const country of WORLD_COUNTRIES) {
+    const [minLon, minLat, maxLon, maxLat] = country.bbox;
+    // Bounding box test
+    if (nLon < minLon - 0.5 || nLon > maxLon + 0.5 || latDeg < minLat - 0.5 || latDeg > maxLat + 0.5) {
+      continue;
+    }
+    // Ring test
+    for (const ring of country.rings) {
+      if (isPointInRing(nLon, latDeg, ring)) {
+        return country;
+      }
+    }
+  }
+  return null;
+}
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -99,12 +123,11 @@ export default function LoginPage() {
     const cosT = Math.cos(tilt);
     const sinT = Math.sin(tilt);
 
-    // Mouse tracking for tangible hover extrusion
+    // Mouse tracking for country hover & 3D extrusion
     let mouseX = -9999;
     let mouseY = -9999;
-    let smoothHoverLat = 0;
-    let smoothHoverLon = 0;
-    let hoverIntensity = 0; // 0 to 1 smooth fade
+    let currentHoveredCountry: CountryData | null = null;
+    let activeLift = 0; // 0 to 1 smooth extrusion factor
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!canvas) return;
@@ -116,6 +139,7 @@ export default function LoginPage() {
     const handleMouseLeave = () => {
       mouseX = -9999;
       mouseY = -9999;
+      currentHoveredCountry = null;
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -133,7 +157,7 @@ export default function LoginPage() {
     handleResize();
     window.addEventListener('resize', handleResize);
 
-    // Forward 3D Projection
+    // 3D Point Projection onto Tilted Rotating Sphere
     const project3D = (latDeg: number, lonDeg: number, radius: number, rot: number, cx: number, cy: number) => {
       const lat = (latDeg * Math.PI) / 180;
       const lon = (lonDeg * Math.PI) / 180 + rot;
@@ -151,7 +175,7 @@ export default function LoginPage() {
         x: cx + xTilted,
         y: cy + yTilted,
         z: zTilted,
-        visible: zTilted > 0
+        visible: zTilted > -radius * 0.05
       };
     };
 
@@ -162,7 +186,7 @@ export default function LoginPage() {
       const distSq = dx * dx + dy * dy;
 
       if (distSq > radius * radius) {
-        return null; // Outside sphere
+        return null;
       }
 
       const zTilted = Math.sqrt(radius * radius - distSq);
@@ -184,15 +208,19 @@ export default function LoginPage() {
       const lonTot = Math.atan2(sinLonTot, cosLonTot);
       const lon = lonTot - rot;
 
+      let lonDeg = (lon * 180) / Math.PI;
+      while (lonDeg > 180) lonDeg -= 360;
+      while (lonDeg < -180) lonDeg += 360;
+
       return {
         latDeg: (lat * 180) / Math.PI,
-        lonDeg: (lon * 180) / Math.PI
+        lonDeg: lonDeg
       };
     };
 
     // Deep cosmic background stars
     const backgroundStars: { x: number; y: number; r: number; alpha: number; speed: number }[] = [];
-    for (let i = 0; i < 90; i++) {
+    for (let i = 0; i < 110; i++) {
       backgroundStars.push({
         x: Math.random(),
         y: Math.random(),
@@ -203,14 +231,15 @@ export default function LoginPage() {
     }
 
     const render = () => {
-      rotation += 0.0015; // Serene constant planetary rotation
+      rotation += 0.0014; // Serene constant planetary rotation
 
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
       ctx.clearRect(0, 0, width, height);
 
-      // Render twinkling background stars
       const now = Date.now();
+
+      // Render cosmic background stars
       for (const star of backgroundStars) {
         const sx = star.x * width;
         const sy = star.y * height;
@@ -223,32 +252,38 @@ export default function LoginPage() {
 
       // Earth positioned on the RIGHT side, significantly BIGGER
       const isMobile = width < 960;
-      const cx = isMobile ? width * 0.5 : width * 0.68;
+      const cx = isMobile ? width * 0.5 : width * 0.70;
       const cy = isMobile ? height * 0.72 : height * 0.50;
-      const radius = Math.min(width, height) * (isMobile ? 0.45 : 0.48);
+      const radius = Math.min(width, height) * (isMobile ? 0.45 : 0.49);
 
-      // Check mouse raycast for tangible hover extrusion
+      // Check mouse raycast for country hover
       const hit = raycastSphere(mouseX, mouseY, radius, rotation, cx, cy);
       if (hit) {
-        hoverIntensity = Math.min(1, hoverIntensity + 0.12);
-        smoothHoverLat += (hit.latDeg - smoothHoverLat) * 0.25;
-        smoothHoverLon += (hit.lonDeg - smoothHoverLon) * 0.25;
+        const found = findCountryAtCoords(hit.lonDeg, hit.latDeg);
+        if (found) {
+          currentHoveredCountry = found;
+          activeLift = Math.min(1, activeLift + 0.15);
+        } else {
+          activeLift = Math.max(0, activeLift - 0.08);
+          if (activeLift <= 0.02) currentHoveredCountry = null;
+        }
       } else {
-        hoverIntensity = Math.max(0, hoverIntensity - 0.05);
+        activeLift = Math.max(0, activeLift - 0.08);
+        if (activeLift <= 0.02) currentHoveredCountry = null;
       }
 
-      // 1. Outer Atmospheric Volumetric Glows (Vibrant Golden Cream & Deep Royal Sapphire)
-      const outerGlow = ctx.createRadialGradient(cx, cy, radius * 0.88, cx, cy, radius * 1.65);
-      outerGlow.addColorStop(0, 'rgba(242, 199, 90, 0.26)'); // Vibrant warm gold
-      outerGlow.addColorStop(0.28, 'rgba(56, 114, 210, 0.18)'); // Royal sapphire haze
-      outerGlow.addColorStop(0.65, 'rgba(15, 30, 65, 0.08)');
+      // 1. Atmospheric Volumetric Glows (Vibrant Golden Cream & Royal Navy)
+      const outerGlow = ctx.createRadialGradient(cx, cy, radius * 0.88, cx, cy, radius * 1.68);
+      outerGlow.addColorStop(0, 'rgba(242, 199, 90, 0.28)'); // Radiant gold rim
+      outerGlow.addColorStop(0.3, 'rgba(56, 114, 210, 0.18)'); // Royal sapphire haze
+      outerGlow.addColorStop(0.68, 'rgba(15, 30, 65, 0.08)');
       outerGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = outerGlow;
       ctx.beginPath();
-      ctx.arc(cx, cy, radius * 1.65, 0, Math.PI * 2);
+      ctx.arc(cx, cy, radius * 1.68, 0, Math.PI * 2);
       ctx.fill();
 
-      // 2. Planet Globe Base with Terminator Shading
+      // 2. Planet Base Ocean Disc
       const planetGrad = ctx.createRadialGradient(
         cx - radius * 0.32,
         cy - radius * 0.38,
@@ -257,36 +292,37 @@ export default function LoginPage() {
         cy,
         radius
       );
-      planetGrad.addColorStop(0, '#1c345a');
-      planetGrad.addColorStop(0.35, '#12233c');
-      planetGrad.addColorStop(0.75, '#091322');
-      planetGrad.addColorStop(1, '#040812');
+      planetGrad.addColorStop(0, '#162b4c');
+      planetGrad.addColorStop(0.4, '#0f1c32');
+      planetGrad.addColorStop(0.78, '#08111e');
+      planetGrad.addColorStop(1, '#03070f');
       ctx.fillStyle = planetGrad;
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
       ctx.fill();
 
-      // Sharp golden atmospheric rim highlight
+      // Atmospheric Rim Highlight
       ctx.strokeStyle = 'rgba(242, 199, 90, 0.55)';
       ctx.lineWidth = 1.8;
       ctx.stroke();
 
-      // 3. Coordinate Graticule Grid (Delicate golden/blue mesh)
-      ctx.lineWidth = 0.65;
-      for (let lat = -70; lat <= 70; lat += 20) {
+      // 3. Delicate Coordinate Graticule (Lat/Lon grid)
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.clip();
+
+      ctx.lineWidth = 0.5;
+      for (let lat = -60; lat <= 60; lat += 20) {
         ctx.beginPath();
         let first = true;
-        for (let lon = 0; lon <= 360; lon += 5) {
+        for (let lon = -180; lon <= 180; lon += 5) {
           const pt = project3D(lat, lon, radius, rotation, cx, cy);
           if (pt.visible) {
-            const alpha = 0.06 + Math.max(0, pt.z / radius) * 0.16;
+            const alpha = 0.04 + Math.max(0, pt.z / radius) * 0.12;
             ctx.strokeStyle = `rgba(227, 179, 65, ${alpha})`;
-            if (first) {
-              ctx.moveTo(pt.x, pt.y);
-              first = false;
-            } else {
-              ctx.lineTo(pt.x, pt.y);
-            }
+            if (first) { ctx.moveTo(pt.x, pt.y); first = false; }
+            else { ctx.lineTo(pt.x, pt.y); }
           } else {
             first = true;
           }
@@ -294,20 +330,16 @@ export default function LoginPage() {
         ctx.stroke();
       }
 
-      for (let lon = 0; lon < 360; lon += 24) {
+      for (let lon = -180; lon <= 180; lon += 30) {
         ctx.beginPath();
         let first = true;
         for (let lat = -80; lat <= 80; lat += 5) {
           const pt = project3D(lat, lon, radius, rotation, cx, cy);
           if (pt.visible) {
-            const alpha = 0.05 + Math.max(0, pt.z / radius) * 0.14;
+            const alpha = 0.04 + Math.max(0, pt.z / radius) * 0.12;
             ctx.strokeStyle = `rgba(186, 215, 250, ${alpha})`;
-            if (first) {
-              ctx.moveTo(pt.x, pt.y);
-              first = false;
-            } else {
-              ctx.lineTo(pt.x, pt.y);
-            }
+            if (first) { ctx.moveTo(pt.x, pt.y); first = false; }
+            else { ctx.lineTo(pt.x, pt.y); }
           } else {
             first = true;
           }
@@ -315,127 +347,59 @@ export default function LoginPage() {
         ctx.stroke();
       }
 
-      // 4. Tangible Visual Effect: Extruding & Glowing 3D Square Region Tiles
-      // We generate sectors across latitude and longitude
-      const dLat = 8;
-      const dLon = 10;
-      if (hoverIntensity > 0.02) {
-        const hoverCenterLat = Math.round(smoothHoverLat / dLat) * dLat;
-        const hoverCenterLon = Math.round(smoothHoverLon / dLon) * dLon;
+      // 4. REAL WORLD MAP: Render all 175 Countries on the Sphere Surface
+      for (const country of WORLD_COUNTRIES) {
+        const isHovered = currentHoveredCountry?.name === country.name;
+        if (isHovered) continue; // Draw hovered country separately with 3D lift
 
-        // Render a 5x5 localized tile cluster around the cursor
-        for (let rLat = -2; rLat <= 2; rLat++) {
-          for (let rLon = -2; rLon <= 2; rLon++) {
-            const tileLat = hoverCenterLat + rLat * dLat;
-            const tileLon = hoverCenterLon + rLon * dLon;
+        const isIran = country.name === 'Iran';
 
-            if (tileLat < -80 || tileLat > 80) continue;
+        ctx.fillStyle = isIran ? 'rgba(242, 199, 90, 0.28)' : 'rgba(18, 38, 64, 0.75)';
+        ctx.strokeStyle = isIran ? 'rgba(242, 199, 90, 0.95)' : 'rgba(125, 168, 222, 0.35)';
+        ctx.lineWidth = isIran ? 1.6 : 0.8;
 
-            const distFromHover = Math.sqrt(rLat * rLat + rLon * rLon);
-            if (distFromHover > 2.6) continue;
+        for (const ring of country.rings) {
+          ctx.beginPath();
+          let drawn = false;
+          let first = true;
 
-            // Extrusion height based on distance to cursor & hover intensity
-            const factor = Math.max(0, 1 - distFromHover / 2.6);
-            const extrusionH = (18 * factor + 4) * hoverIntensity; // Up to 22px outward extrusion!
-
-            // 4 Corner coordinates of this spherical tile
-            const lat1 = tileLat - dLat * 0.44;
-            const lat2 = tileLat + dLat * 0.44;
-            const lon1 = tileLon - dLon * 0.44;
-            const lon2 = tileLon + dLon * 0.44;
-
-            // Base vertices (on globe surface)
-            const b1 = project3D(lat1, lon1, radius, rotation, cx, cy);
-            const b2 = project3D(lat2, lon1, radius, rotation, cx, cy);
-            const b3 = project3D(lat2, lon2, radius, rotation, cx, cy);
-            const b4 = project3D(lat1, lon2, radius, rotation, cx, cy);
-
-            // Extruded top vertices (pushed outwards along sphere normal)
-            const t1 = project3D(lat1, lon1, radius + extrusionH, rotation, cx, cy);
-            const t2 = project3D(lat2, lon1, radius + extrusionH, rotation, cx, cy);
-            const t3 = project3D(lat2, lon2, radius + extrusionH, rotation, cx, cy);
-            const t4 = project3D(lat1, lon2, radius + extrusionH, rotation, cx, cy);
-
-            if (b1.visible && b2.visible && b3.visible && b4.visible) {
-              // Draw 3D Extrusion Side Walls
-              ctx.fillStyle = `rgba(180, 130, 30, ${0.45 * hoverIntensity * factor})`;
-              ctx.strokeStyle = `rgba(242, 199, 90, ${0.6 * hoverIntensity * factor})`;
-              ctx.lineWidth = 1;
-
-              // Wall 1 (bottom edge)
-              ctx.beginPath();
-              ctx.moveTo(b1.x, b1.y);
-              ctx.lineTo(b4.x, b4.y);
-              ctx.lineTo(t4.x, t4.y);
-              ctx.lineTo(t1.x, t1.y);
-              ctx.closePath();
-              ctx.fill();
-              ctx.stroke();
-
-              // Wall 2 (right edge)
-              ctx.beginPath();
-              ctx.moveTo(b4.x, b4.y);
-              ctx.lineTo(b3.x, b3.y);
-              ctx.lineTo(t3.x, t3.y);
-              ctx.lineTo(t4.x, t4.y);
-              ctx.closePath();
-              ctx.fill();
-              ctx.stroke();
-
-              // Draw Extruded Top Cap (Luminous Golden Amber Face)
-              ctx.beginPath();
-              ctx.moveTo(t1.x, t1.y);
-              ctx.lineTo(t2.x, t2.y);
-              ctx.lineTo(t3.x, t3.y);
-              ctx.lineTo(t4.x, t4.y);
-              ctx.closePath();
-
-              const topAlpha = (0.35 + 0.55 * factor) * hoverIntensity;
-              ctx.fillStyle = `rgba(245, 210, 110, ${topAlpha})`;
-              ctx.shadowColor = '#f2c75a';
-              ctx.shadowBlur = 12 * factor * hoverIntensity;
-              ctx.fill();
-              ctx.shadowBlur = 0;
-
-              ctx.strokeStyle = `rgba(255, 245, 200, ${(0.6 + 0.4 * factor) * hoverIntensity})`;
-              ctx.lineWidth = 1.6;
-              ctx.stroke();
+          for (const [rLon, rLat] of ring) {
+            const pt = project3D(rLat, rLon, radius, rotation, cx, cy);
+            if (pt.visible) {
+              if (first) {
+                ctx.moveTo(pt.x, pt.y);
+                first = false;
+                drawn = true;
+              } else {
+                ctx.lineTo(pt.x, pt.y);
+              }
+            } else {
+              first = true;
             }
+          }
+
+          if (drawn) {
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
           }
         }
       }
 
-      // 5. Continental Landmass Silhouettes (Golden / Crisp Ivory Nodes)
-      for (const [lat, lon] of CONTINENTAL_POINTS) {
-        const pt = project3D(lat, lon, radius, rotation, cx, cy);
-        if (pt.visible) {
-          const depthAlpha = Math.max(0.12, pt.z / radius);
-          const isIran = lat > 25 && lat < 40 && lon > 44 && lon < 63;
-
-          ctx.fillStyle = isIran
-            ? `rgba(242, 199, 90, ${0.9 * depthAlpha})`
-            : `rgba(215, 230, 250, ${0.45 * depthAlpha})`;
-
-          ctx.beginPath();
-          ctx.arc(pt.x, pt.y, isIran ? 2.6 : 1.7, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-
-      // 6. Tactical Beacon over Tehran / Iran (Pulsing Amber Radar Core)
+      // Tactical Pulse Beacon over Tehran / Iran (Operating Hub)
       const tehran = project3D(35.6892, 51.3890, radius, rotation, cx, cy);
       if (tehran.visible) {
-        const alpha = Math.max(0.2, (tehran.z / radius) * 0.85);
+        const alpha = Math.max(0.2, (tehran.z / radius) * 0.9);
         const pulse = (Math.sin(now * 0.005) + 1) * 0.5;
 
-        // Expanding radio pulse ring
+        // Expanding radar pulse ring
         ctx.beginPath();
-        ctx.arc(tehran.x, tehran.y, 6 + pulse * 14, 0, Math.PI * 2);
+        ctx.arc(tehran.x, tehran.y, 6 + pulse * 15, 0, Math.PI * 2);
         ctx.strokeStyle = `rgba(242, 199, 90, ${alpha * (1 - pulse) * 0.8})`;
-        ctx.lineWidth = 1.4;
+        ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        // Bright beacon dot
+        // Glowing center dot
         ctx.beginPath();
         ctx.arc(tehran.x, tehran.y, 4, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(242, 199, 90, ${alpha})`;
@@ -445,18 +409,130 @@ export default function LoginPage() {
         ctx.shadowBlur = 0;
       }
 
-      // 7. Array of 16 Orbiting Artificial Satellites with Orbits and Trails
-      for (let i = 0; i < SATELLITE_CONFIGS.length; i++) {
-        const sat = SATELLITE_CONFIGS[i];
-        const orbitRadius = radius * sat.radiusFactor;
-        const currentAngle = (now * 0.00035 * sat.speed + sat.phase) % (Math.PI * 2);
+      ctx.restore(); // End base globe clipping
 
-        // Calculate 3D position on tilted orbital plane
+      // 5. 3D COUNTRY HIGHLIGHT & EXTRUSION / LIFT
+      // When a country is hovered, lift its polygon outward in 3D with extruded walls & glowing cap!
+      if (currentHoveredCountry && activeLift > 0.01) {
+        const liftHeight = 18 * activeLift; // Extrusion height up to 18px outward
+        const country = currentHoveredCountry;
+
+        for (const ring of country.rings) {
+          // Pre-calculate base and elevated vertices
+          const basePts = ring.map(([rLon, rLat]) => project3D(rLat, rLon, radius, rotation, cx, cy));
+          const liftedPts = ring.map(([rLon, rLat]) => project3D(rLat, rLon, radius + liftHeight, rotation, cx, cy));
+
+          // Draw 3D Extruded Side Walls connecting ground to elevated polygon
+          for (let i = 0; i < ring.length - 1; i++) {
+            const b1 = basePts[i];
+            const b2 = basePts[i + 1];
+            const t1 = liftedPts[i];
+            const t2 = liftedPts[i + 1];
+
+            if (b1.visible || b2.visible) {
+              ctx.beginPath();
+              ctx.moveTo(b1.x, b1.y);
+              ctx.lineTo(b2.x, b2.y);
+              ctx.lineTo(t2.x, t2.y);
+              ctx.lineTo(t1.x, t1.y);
+              ctx.closePath();
+
+              ctx.fillStyle = `rgba(200, 135, 25, ${0.75 * activeLift})`;
+              ctx.strokeStyle = `rgba(245, 205, 95, ${0.9 * activeLift})`;
+              ctx.lineWidth = 1;
+              ctx.fill();
+              ctx.stroke();
+            }
+          }
+
+          // Draw Elevated Top Polygon Cap (Luminous Warm Gold Fill & Glowing Edges)
+          ctx.beginPath();
+          let first = true;
+          let capDrawn = false;
+          for (const pt of liftedPts) {
+            if (pt.visible) {
+              if (first) {
+                ctx.moveTo(pt.x, pt.y);
+                first = false;
+                capDrawn = true;
+              } else {
+                ctx.lineTo(pt.x, pt.y);
+              }
+            } else {
+              first = true;
+            }
+          }
+
+          if (capDrawn) {
+            ctx.closePath();
+            ctx.fillStyle = `rgba(245, 215, 115, ${0.85 * activeLift})`;
+            ctx.shadowColor = '#f2c75a';
+            ctx.shadowBlur = 18 * activeLift;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            ctx.strokeStyle = `rgba(255, 255, 240, ${activeLift})`;
+            ctx.lineWidth = 2.2;
+            ctx.stroke();
+          }
+        }
+
+        // Draw Tactical Sci-Fi HUD Label with Country Name & Coordinates
+        const centroidPt = project3D(
+          country.centroid[0],
+          country.centroid[1],
+          radius + liftHeight + 6,
+          rotation,
+          cx,
+          cy
+        );
+
+        if (centroidPt.visible) {
+          const labelText = `${country.name.toUpperCase()} ${country.code ? `[${country.code}]` : ''}`;
+          ctx.font = '600 12px monospace';
+          const textWidth = ctx.measureText(labelText).width;
+
+          const tagX = centroidPt.x + 22;
+          const tagY = centroidPt.y - 18;
+
+          // Pointer Line
+          ctx.beginPath();
+          ctx.moveTo(centroidPt.x, centroidPt.y);
+          ctx.lineTo(tagX - 6, tagY);
+          ctx.lineTo(tagX + textWidth + 14, tagY);
+          ctx.strokeStyle = `rgba(242, 199, 90, ${0.85 * activeLift})`;
+          ctx.lineWidth = 1.4;
+          ctx.stroke();
+
+          // Tag Box Background
+          ctx.fillStyle = `rgba(8, 16, 28, ${0.9 * activeLift})`;
+          ctx.fillRect(tagX - 4, tagY - 14, textWidth + 16, 20);
+
+          // Tag Border
+          ctx.strokeStyle = `rgba(242, 199, 90, ${0.75 * activeLift})`;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(tagX - 4, tagY - 14, textWidth + 16, 20);
+
+          // Tag Text
+          ctx.fillStyle = `rgba(255, 240, 180, ${activeLift})`;
+          ctx.fillText(labelText, tagX + 4, tagY);
+        }
+      }
+
+      // 6. FLEET OF 64 ARTIFICIAL INTELLIGENCE SATELLITES
+      // Render orbital guide rings, phosphor tails, satellites and transmission pings
+      const drawnPlanes = new Set<number>();
+
+      for (let i = 0; i < SATELLITE_FLEET.length; i++) {
+        const sat = SATELLITE_FLEET[i];
+        const orbitRadius = radius * sat.radiusFactor;
+        const currentAngle = (now * 0.00032 * sat.speed + sat.phase) % (Math.PI * 2);
+
+        // Orbital mechanics on tilted orbital plane
         const satX0 = orbitRadius * Math.cos(currentAngle);
         const satY0 = 0;
         const satZ0 = orbitRadius * Math.sin(currentAngle);
 
-        // Rotate by inclination (around Z) and tilt (around X)
         const cosInc = Math.cos(sat.inclination);
         const sinInc = Math.sin(sat.inclination);
 
@@ -464,7 +540,6 @@ export default function LoginPage() {
         const yInc = satX0 * sinInc + satY0 * cosInc;
         const zInc = satZ0;
 
-        // Apply Earth tilt & perspective
         const xFinal = xInc;
         const yFinal = yInc * cosT - zInc * sinT;
         const zFinal = yInc * sinT + zInc * cosT;
@@ -472,24 +547,28 @@ export default function LoginPage() {
         const screenX = cx + xFinal;
         const screenY = cy + yFinal;
 
-        // Is satellite in front or behind the planet?
-        const isBehind = zFinal < 0 && (xFinal * xFinal + yFinal * yFinal < radius * radius);
-        if (isBehind) continue; // Occluded by the planet body
-
-        // Draw faint orbital guide path (subtle arc)
-        if (i % 2 === 0) {
+        // Draw orbital guide path once per plane
+        if (!drawnPlanes.has(sat.planeId)) {
+          drawnPlanes.add(sat.planeId);
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(sat.inclination * 0.4);
           ctx.beginPath();
-          ctx.ellipse(cx, cy, orbitRadius, orbitRadius * 0.38, sat.inclination, 0, Math.PI * 2);
-          ctx.strokeStyle = `rgba(227, 179, 65, 0.05)`;
-          ctx.setLineDash([2, 9]);
+          ctx.ellipse(0, 0, orbitRadius, orbitRadius * 0.42, sat.inclination, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(227, 179, 65, 0.06)';
+          ctx.setLineDash([2, 10]);
           ctx.lineWidth = 0.8;
           ctx.stroke();
-          ctx.setLineDash([]);
+          ctx.restore();
         }
 
-        // Phosphor comet tail behind satellite
-        for (let t = 1; t <= 4; t++) {
-          const tailAngle = currentAngle - (sat.speed > 0 ? 0.035 : -0.035) * t;
+        // Occlusion check: Is satellite behind the opaque planet body?
+        const isBehind = zFinal < 0 && (xFinal * xFinal + yFinal * yFinal < radius * radius);
+        if (isBehind) continue;
+
+        // Phosphor comet trail behind satellite
+        for (let t = 1; t <= 3; t++) {
+          const tailAngle = currentAngle - (sat.speed > 0 ? 0.04 : -0.04) * t;
           const tX0 = orbitRadius * Math.cos(tailAngle);
           const tZ0 = orbitRadius * Math.sin(tailAngle);
           const tXInc = tX0 * cosInc;
@@ -498,12 +577,12 @@ export default function LoginPage() {
           const tailScreenY = cy + (tYInc * cosT - tZ0 * sinT);
 
           ctx.beginPath();
-          ctx.arc(tailScreenX, tailScreenY, sat.size * (1 - t * 0.2), 0, Math.PI * 2);
+          ctx.arc(tailScreenX, tailScreenY, sat.size * (1 - t * 0.25), 0, Math.PI * 2);
           ctx.fillStyle = `${sat.glowColor}${Math.floor((0.35 / t) * 255).toString(16).padStart(2, '0')}`;
           ctx.fill();
         }
 
-        // Satellite body
+        // Satellite Body
         ctx.beginPath();
         ctx.arc(screenX, screenY, sat.size, 0, Math.PI * 2);
         ctx.fillStyle = sat.color;
@@ -512,11 +591,11 @@ export default function LoginPage() {
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        // Periodic telemetry beacon ping pulse
+        // Periodic telemetry radar beacon ping pulse
         if (sat.hasPing) {
           const pingPhase = ((now * 0.002 * Math.abs(sat.speed) + sat.phase * 3) % Math.PI);
           ctx.beginPath();
-          ctx.arc(screenX, screenY, sat.size + pingPhase * 10, 0, Math.PI * 2);
+          ctx.arc(screenX, screenY, sat.size + pingPhase * 9, 0, Math.PI * 2);
           ctx.strokeStyle = `${sat.glowColor}${Math.floor((1 - pingPhase / Math.PI) * 160).toString(16).padStart(2, '0')}`;
           ctx.lineWidth = 1;
           ctx.stroke();
@@ -558,7 +637,7 @@ export default function LoginPage() {
 
   return (
     <div className="login-viewport">
-      {/* Dynamic 3D Earth Canvas with Extruding Square Tiles & Satellites */}
+      {/* Dynamic 3D Earth with Real World Map, Country Lift & 64 Satellites */}
       <div className="login-bg" aria-hidden="true">
         <canvas ref={canvasRef} className="majestic-earth-canvas" />
         <div className="majestic-vignette" />
@@ -679,9 +758,7 @@ export default function LoginPage() {
         </div>
 
         {/* Right Side Spacer / Interactive Viewport Area */}
-        <div className="login-earth-hero" aria-hidden="true">
-          {/* Transparent interactive region letting the user interact with Earth */}
-        </div>
+        <div className="login-earth-hero" aria-hidden="true" />
       </div>
     </div>
   );
