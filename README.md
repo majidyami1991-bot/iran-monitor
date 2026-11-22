@@ -1,65 +1,112 @@
-# Iran Monitor — سامانه پایش و رصد هوشمند اطلاعات دفاعی
+# Iran Monitor — Strategic Defense Intelligence & OSINT Monitoring Platform
 
-سامانه **Iran Monitor** یک پلتفرم جامع و مدرن برای پایش، جمع‌آوری، رصد، طبقه‌بندی و تحلیل پیوسته داده‌های متنی و اخبار منابع باز (OSINT) در حوزه دفاعی و ژئوپلیتیک است. این پروژه بر پایه معماری میکروسرویس و کانتینری (Docker) پیاده‌سازی شده و تمامی اجزای آن به صورت هماهنگ و تنها با یک دستور راه‌اندازی می‌شوند.
+**Iran Monitor** is a comprehensive, production-grade intelligence monitoring and open-source intelligence (OSINT) analytics platform. It continuously crawls, classifies, indexes, and analyzes defense, geopolitical, military, and strategic developments concerning Iran and the Middle East.
+
+Engineered with a microservices-based, containerized Docker architecture, the complete platform can be orchestrated with a single command.
 
 ---
 
-## ۱. ساختار یکپارچه سرویس‌ها (Docker Services)
+## 1. Container Topology & Microservices
 
-| نام سرویس | نام کانتینر | پورت | فناوری / فریم‌ورک | وظیفه |
+| Service | Container Name | Host Port | Technology Stack | Core Responsibility |
 | :--- | :--- | :--- | :--- | :--- |
-| **frontend** | `iran_monitor_web` | `3000` | Next.js 16 (App Router) + React 19 | داشبورد رصد، صفحه ورود سه‌بعدی ماژستیک و نمایش اخبار |
-| **backend** | `iran_monitor_api` | `8000` | Python 3.12 + FastAPI | وب‌سرویس REST API، احراز هویت دیتابیسی و تحلیل محتوا |
-| **collector** | `iran_monitor_collector` | — | Python 3.12 | خزشگر دوره‌ای اخبار (هر ۱۵ دقیقه) |
-| **postgres** | `iran_monitor_db` | `5433` | PostgreSQL 16 Alpine | پایگاه داده پایدار با بیش از ۸,۰۰۰ خبر |
+| **frontend** | `iran_monitor_web` | `3000` | Next.js 16 (App Router) + React 19 + TypeScript | High-performance dashboard, 3D interactive login, and news visualizer |
+| **backend** | `iran_monitor_api` | `8000` | Python 3.12 + FastAPI + Uvicorn | RESTful API, PBKDF2 database authentication, and search/analytics engine |
+| **collector** | `iran_monitor_collector` | — | Python 3.12 + Ingestion Scheduler | Automated periodic crawler running every 15 minutes across verified feeds |
+| **postgres** | `iran_monitor_db` | `5433` (5432 internal) | PostgreSQL 16 Alpine | Persistent relational database storing 8,000+ indexed intelligence articles |
 
 ---
 
-## ۲. راهنمای سریع راه‌اندازی (Quickstart)
+## 2. Quickstart Guide
 
+### Prerequisites
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (version 24+ recommended with Docker Compose v2)
+- [Git](https://git-scm.com/)
+
+### Step-by-Step Launch
 ```bash
-# ۱. کپی فایل متغیرهای محیطی
+# 1. Clone repository (if not already local)
+git clone <repository-url>
+cd "Iran monitor-local-ai"
+
+# 2. Configure environment variables from template
 cp .env.example .env
 
-# ۲. ساخت و اجرای تمامی کانتینرها
+# 3. Build and launch all services in detached mode
 docker compose up -d --build
 
-# ۳. بررسی وضعیت کانتینرها
+# 4. Verify container health status
 docker compose ps
 ```
 
-### آدرس‌های دسترسی:
-- **سامانه و داشبورد:** [http://localhost:3000](http://localhost:3000)
-- **صفحه ورود امنیتی:** [http://localhost:3000/login](http://localhost:3000/login)
-- **وضعیت سلامت بک‌اند:** [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health)
-- **دیتابیس PostgreSQL:** پورت `5433` هاست (کاربر: `iran_monitor_user`)
+### Access Endpoints
+- **Intelligence Dashboard:** [http://localhost:3000](http://localhost:3000)
+- **3D Security Authentication:** [http://localhost:3000/login](http://localhost:3000/login)
+- **FastAPI Health & Metrics:** [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health)
+- **PostgreSQL Database:** `localhost:5433` (`iran_monitor_user` / `iran_monitor`)
 
 ---
 
-## ۳. احراز هویت و کاربران نمونه
+## 3. Authentication & Seeded Credentials
 
-رمزهای عبور با الگوریتم استاندارد **PBKDF2-HMAC-SHA256 (۱۰۰,۰۰۰ دور)** و نمک اختصاصی در دیتابیس هش شده‌اند. نمونه‌ای از کاربران پیش‌فرض جهت تست:
+User accounts are authenticated against the PostgreSQL database. Passwords are encrypted using **PBKDF2-HMAC-SHA256 (100,000 iterations)** with cryptographically unique salts.
 
-| شناسه کاربری (Username) | رمز عبور | سمت و نقش سازمانی | سطح دسترسی |
+Ten pre-configured intelligence accounts are available for testing:
+
+| Username | Password | Role & Title | Clearance Level |
 | :--- | :--- | :--- | :--- |
-| `admin` | `admin123` | مدیر ارشد سامانه (Super Admin) | Level 5 (Top Secret) |
-| `intel_officer` | `intel123` | افسر ارشد اطلاعات (Senior Intelligence Analyst) | Level 4 (Secret) |
-| `defense_analyst` | `defense123` | تحلیل‌گر استراتژی دفاعی (Defense Strategy Analyst) | Level 4 (Secret) |
-| `osint_lead` | `osint123` | سرپرست رصد متن‌باز (OSINT Collection Lead) | Level 3 (Confidential) |
-| `guest_viewer` | `guest123` | کاربر ناظر / مهمان (Observer / Guest) | Level 1 (Internal Only) |
+| `admin` | `admin123` | System Administrator / Super Admin | Level 5 (Top Secret) |
+| `intel_officer` | `intel123` | Senior Intelligence Analyst | Level 4 (Secret) |
+| `defense_analyst` | `defense123` | Defense Strategy Analyst | Level 4 (Secret) |
+| `osint_lead` | `osint123` | OSINT Collection Lead | Level 3 (Confidential) |
+| `regional_expert` | `region123` | Middle East Regional Specialist | Level 3 (Confidential) |
+| `security_auditor` | `audit123` | Information Security Auditor | Level 4 (Secret) |
+| `data_engineer` | `data123` | Intelligence Data Pipeline Engineer | Level 3 (Confidential) |
+| `field_monitor` | `field123` | Tactical Field Intelligence Monitor | Level 2 (Restricted) |
+| `duty_operator` | `duty123` | Watch Center Duty Operator | Level 2 (Restricted) |
+| `guest_viewer` | `guest123` | Observer / Guest Viewer | Level 1 (Internal Only) |
 
 ---
 
-## ۴. آمار و نرخ ورودی اخبار (News Intake Rate)
-- **بسامد چرخه‌ها:** هر ۱۵ دقیقه (۹۶ چرخه در شبانه‌روز)
-- **نرخ ورودی متوسط:** **~۱۲۰ الی ۱۴۰ خبر جدید در شبانه‌روز** (~۴ الی ۶ خبر در ساعت)
-- **کل اخبار ذخیره‌شده:** بیش از **۷,۹۸۰ خبر** با تاریخچه کامل
+## 4. News Ingestion Rate & Source Coverage
+
+- **Scheduler Frequency:** Every 15 minutes (96 collection cycles per 24 hours).
+- **Average Intake Rate:** **~120 to 140 new strategic articles per day** (~4 to 6 items per hour).
+- **Total Ingested Articles:** Over **8,000 indexed articles** with complete historical timelines.
+- **Active Sources:** **21 high-priority verified sources** (including Reuters, Al Jazeera, Defensenews, RealClearDefense, CENTCOM, USNI News, Brookings, CSIS, RAND, Defense Post, Air Force Magazine, Army Recognition, and more).
 
 ---
 
-## ۵. اسناد تخصصی معماری و راهنماها (`docs/`)
+## 5. Project Directory Structure
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): معماری کلان سیستم، جریان داده و برنامه آینده اتصال موتور ترجمه vLLM
-- [docs/SOURCES_AND_COLLECTION.md](docs/SOURCES_AND_COLLECTION.md): نرخ ورودی اخبار و جدول تطبیق پوشش منابع با `sites.docx`
-- [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md): راهنمای کامل احراز هویت، هشینگ و سطوح دسترسی
-- [docs/DEPLOYMENT_RUNBOOK.md](docs/DEPLOYMENT_RUNBOOK.md): راهنمای گام‌به‌گام دیپلوی، بک‌آپ‌گیری و عیب‌یابی
+```text
+├── apps/
+│   ├── api/                    # FastAPI REST backend service
+│   │   ├── Dockerfile          # Multi-stage Python 3.12-slim production image
+│   │   └── src/api/            # Routers (health, news, auth, stats, timeline)
+│   ├── collector/              # Automated intelligence crawling service
+│   │   └── src/collector/      # Crawlers, parsers, and deduplication logic
+│   └── web-next/               # Next.js 16 modern dashboard & 3D login
+│       ├── Dockerfile          # Multi-stage standalone Next.js image
+│       └── app/login/          # 3D interactive Earth login with raycast extrusion
+├── config/
+│   └── sources/                # Source registries and execution readiness matrices
+├── docs/                       # Technical architecture and operational runbooks
+│   ├── ARCHITECTURE.md         # System architecture, schemas, and vLLM integration
+│   ├── SOURCES_AND_COLLECTION.md # Intake rates, source catalog & sites.docx coverage
+│   ├── AUTHENTICATION.md       # PBKDF2 hashing, user roles & security model
+│   └── DEPLOYMENT_RUNBOOK.md   # Deployment, backup restore, and disaster recovery
+├── docker-compose.yml          # Container orchestration configuration
+└── tests/                      # Pytest automated test suites (480+ unit/integration tests)
+```
+
+---
+
+## 6. Comprehensive Technical Documentation
+
+Detailed technical documentation is maintained in the [`docs/`](docs/) directory:
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): Architectural diagram, data pipeline, microservices decoupling, and future vLLM neural translation engine.
+- [docs/SOURCES_AND_COLLECTION.md](docs/SOURCES_AND_COLLECTION.md): Complete mapping of `sites.docx` sources, RSS feeds, intake velocity, and scheduler controls.
+- [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md): Detailed cryptographic specifications, user schema, and token workflows.
+- [docs/DEPLOYMENT_RUNBOOK.md](docs/DEPLOYMENT_RUNBOOK.md): Container maintenance, database backup/restore procedures, and troubleshooting guide.

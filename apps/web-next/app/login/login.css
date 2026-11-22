@@ -1,25 +1,22 @@
-/* Iran Monitor - Majestic Dark Blue & Cream Auth Experience */
+/* Iran Monitor - Majestic Dark Blue & Warm Cream Auth Experience */
 
 .login-viewport {
   position: relative;
   min-height: 100vh;
   width: 100%;
-  background: radial-gradient(circle at 50% 45%, #0d1a2d 0%, #070d18 60%, #03060c 100%);
+  background: radial-gradient(ellipse at 70% 50%, #0d1e38 0%, #07101e 55%, #02050a 100%);
   color: #f1f5f9;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   font-family: inherit;
-  direction: rtl;
-  padding: 1.5rem;
 }
 
-/* Background Majestic Hazy Earth Canvas */
+/* Background Majestic Hazy Earth Canvas & Starfield */
 .login-bg {
   position: absolute;
   inset: 0;
-  pointer-events: none;
   overflow: hidden;
   z-index: 0;
   display: flex;
@@ -33,48 +30,72 @@
   position: absolute;
   inset: 0;
   display: block;
-  opacity: 0.88;
+  opacity: 0.96;
+  cursor: crosshair;
 }
 
 .majestic-vignette {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 50% 50%, rgba(7, 13, 24, 0.1) 0%, rgba(4, 7, 14, 0.75) 80%, rgba(2, 4, 8, 0.95) 100%);
+  background: radial-gradient(circle at 30% 50%, rgba(5, 10, 18, 0.4) 0%, rgba(3, 6, 12, 0.75) 75%, rgba(2, 4, 8, 0.95) 100%);
   pointer-events: none;
 }
 
-/* Centered Login Card Container */
-.login-card-container {
+/* Main Layout Grid: Panel on the LEFT, Earth Hero on the RIGHT */
+.login-layout-container {
+  direction: ltr; /* Ensures visual left is strictly left regardless of system locale */
   position: relative;
   z-index: 10;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
   width: 100%;
-  max-width: 440px;
-  margin: 0 auto;
+  max-width: 1440px;
+  min-height: 100vh;
+  padding: 2.5rem 5rem;
+  pointer-events: none; /* Let canvas underneath receive hover events freely */
 }
 
-/* Majestic Dark Blue & Cream Acrylic Card */
+/* Pinned Left Login Card Container */
+.login-card-container {
+  direction: rtl; /* Persian content inside card stays strictly RTL */
+  width: 100%;
+  max-width: 440px;
+  pointer-events: auto; /* Card remains fully interactive */
+  margin: 0;
+}
+
+/* Right Viewport Hero Spacer */
+.login-earth-hero {
+  flex: 1.2;
+  min-height: 600px;
+  pointer-events: none;
+}
+
+/* Majestic Dark Blue & Warm Cream Acrylic Card */
 .login-card {
   position: relative;
-  background: rgba(13, 23, 38, 0.82);
-  border: 1px solid rgba(227, 179, 65, 0.25);
+  background: rgba(11, 20, 34, 0.86);
+  border: 1px solid rgba(227, 179, 65, 0.28);
   border-radius: 18px;
   padding: 2.4rem 2.2rem;
   box-shadow: 
-    0 25px 50px -12px rgba(0, 0, 0, 0.85),
-    0 0 35px rgba(227, 179, 65, 0.08);
+    0 25px 50px -12px rgba(0, 0, 0, 0.9),
+    0 0 35px rgba(227, 179, 65, 0.10);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .login-card:hover {
-  border-color: rgba(227, 179, 65, 0.38);
+  border-color: rgba(227, 179, 65, 0.45);
   box-shadow: 
-    0 25px 50px -12px rgba(0, 0, 0, 0.85),
-    0 0 45px rgba(227, 179, 65, 0.12);
+    0 25px 50px -12px rgba(0, 0, 0, 0.92),
+    0 0 45px rgba(227, 179, 65, 0.16);
 }
 
-/* Subtle Warm Gold Card Corners */
+/* Warm Gold HUD Tactical Corners */
 .card-corner {
   position: absolute;
   width: 10px;
@@ -103,11 +124,11 @@
   width: 60px;
   height: 60px;
   border-radius: 16px;
-  background: linear-gradient(135deg, rgba(227, 179, 65, 0.2) 0%, rgba(245, 235, 215, 0.06) 100%);
-  border: 1px solid rgba(227, 179, 65, 0.45);
+  background: linear-gradient(135deg, rgba(227, 179, 65, 0.22) 0%, rgba(245, 235, 215, 0.08) 100%);
+  border: 1px solid rgba(227, 179, 65, 0.5);
   color: #f2c75a;
   margin-bottom: 1rem;
-  box-shadow: 0 0 25px rgba(227, 179, 65, 0.22);
+  box-shadow: 0 0 25px rgba(227, 179, 65, 0.25);
 }
 
 .login-title {
@@ -123,7 +144,7 @@
   align-items: center;
   gap: 0.5rem;
   font-size: 0.82rem;
-  color: #9fb0c3;
+  color: #a5b6c9;
 }
 
 .status-dot {
@@ -191,7 +212,7 @@
 .tactical-input {
   width: 100%;
   padding: 0.8rem 1rem;
-  background: rgba(10, 18, 30, 0.85);
+  background: rgba(8, 15, 26, 0.85);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
   color: #f8fafc;
@@ -202,7 +223,7 @@
 
 .tactical-input:focus {
   border-color: #e3b341;
-  background: rgba(10, 18, 30, 0.95);
+  background: rgba(8, 15, 26, 0.95);
   box-shadow: 0 0 0 3px rgba(227, 179, 65, 0.18);
 }
 
@@ -321,7 +342,32 @@
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to { rotate: 360deg; }
+}
+
+/* Responsive Breakpoints */
+@media (max-width: 1100px) {
+  .login-layout-container {
+    padding: 2rem 2.5rem;
+  }
+}
+
+@media (max-width: 960px) {
+  .login-layout-container {
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 1.5rem;
+  }
+
+  .login-card-container {
+    max-width: 440px;
+    margin: 0 auto;
+  }
+
+  .login-earth-hero {
+    display: none;
+  }
 }
 
 @media (max-width: 480px) {
