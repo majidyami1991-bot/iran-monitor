@@ -183,7 +183,7 @@ a.cat-tag:hover { color: var(--ink); text-decoration: underline; text-underline-
 .viewer-card { width: min(460px, 100%); height: min(820px, calc(100vh - 32px)); background: linear-gradient(180deg, color-mix(in srgb, var(--art) 30%, var(--panel)) 0%, var(--panel) 45%); border: 1px solid var(--line-2); border-radius: 18px; display: flex; flex-direction: column; overflow: hidden; box-shadow: var(--sh-3); }
 .viewer-progress { display: flex; gap: 4px; padding: 12px 14px 0; direction: ltr; }
 .viewer-progress span { flex: 1; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.2); overflow: hidden; }
-.viewer-progress i { display: block; height: 100%; background: #fff; transition: width 100ms linear; float: right; }
+.viewer-progress i { display: block; height: 100%; background: #fff; transition: width 100ms linear; float: left; }
 .viewer-head { display: flex; justify-content: space-between; align-items: flex-start; padding: 12px 14px; gap: 10px; }
 .viewer-head strong { display: block; font-size: var(--fs-md); }
 .viewer-head small { color: var(--ink-2); font-size: var(--fs-xs); }
@@ -204,8 +204,8 @@ a.cat-tag:hover { color: var(--ink); text-decoration: underline; text-underline-
 .viewer-text .btn-primary { align-self: flex-start; }
 .viewer-zone { position: absolute; top: 0; bottom: 45%; width: 28%; z-index: 2; display: flex; align-items: center; padding: 0 8px; color: rgba(255, 255, 255, 0); }
 .viewer-zone:hover, .viewer-zone:focus-visible { color: rgba(255, 255, 255, 0.9); }
-.viewer-zone-prev { inset-inline-start: 0; justify-content: flex-start; }
-.viewer-zone-next { inset-inline-end: 0; justify-content: flex-end; }
+.viewer-zone-prev { left: 0; right: auto; justify-content: flex-start; }
+.viewer-zone-next { right: 0; left: auto; justify-content: flex-end; }
 .viewer-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--line); font-size: var(--fs-2xs); color: var(--ink-3); flex-wrap: wrap; }
 .viewer-foot a { color: var(--brand); font-weight: var(--w-medium); }
 

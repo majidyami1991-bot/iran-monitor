@@ -385,8 +385,10 @@ def cycle(trigger='scheduled'):
             finally:lock.execute('SELECT pg_advisory_unlock(%s)',(LOCK_KEY,))
         return {**(final or {'run_id':rid,'status':'failed'}),'sources':results}
 def run():
-    interval=int(os.getenv('NEWS_COLLECTION_INTERVAL_SECONDS','900'));enabled=os.getenv('NEWS_COLLECTION_ENABLED','false').lower()=='true'
-    if interval!=900:raise ValueError('NEWS_COLLECTION_INTERVAL_SECONDS must be 900')
+    interval = int(os.getenv('NEWS_COLLECTION_INTERVAL_SECONDS', '300'))
+    enabled = os.getenv('NEWS_COLLECTION_ENABLED', 'false').lower() == 'true'
+    if interval < 60:
+        interval = 60  # Safe minimum floor to protect against accidental rapid loops
     recover_pending_checkpoints()
     import threading
     stopping=threading.Event();signal.signal(signal.SIGTERM,lambda *_:stopping.set());signal.signal(signal.SIGINT,lambda *_:stopping.set())

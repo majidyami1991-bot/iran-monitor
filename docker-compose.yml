@@ -97,7 +97,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-iran_monitor_user}:${POSTGRES_PASSWORD:-iran_monitor_secret_123}@postgres:5432/${POSTGRES_DB:-iran_monitor}
       NEWS_COLLECTION_ENABLED: ${NEWS_COLLECTION_ENABLED:-true}
-      NEWS_COLLECTION_INTERVAL_SECONDS: ${NEWS_COLLECTION_INTERVAL_SECONDS:-900}
+      NEWS_COLLECTION_INTERVAL_SECONDS: ${NEWS_COLLECTION_INTERVAL_SECONDS:-300}
       COLLECTOR_STATE_DIR: /state
     volumes:
       - collector_state:/state

@@ -14,7 +14,7 @@ import ai_gateway as aig
 import enrichment_worker as ew
 
 DSN=os.environ['DATABASE_URL']
-INTERVAL=int(os.getenv('NEWS_COLLECTION_INTERVAL_SECONDS','900'))
+INTERVAL=int(os.getenv('NEWS_COLLECTION_INTERVAL_SECONDS','300'))
 ROOT=Path('/app')
 METADATA_DIR=Path(os.getenv('COLLECTOR_METADATA_DIR','/app/sources'))
 METADATA_FILES=('source-registry.json','rss-execution-readiness.json','collection-capabilities.json','classification-taxonomy-v1.json','feed-sitemap-discovery.json')

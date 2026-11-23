@@ -121,8 +121,8 @@ export function StoryViewer({ stories, index, onIndex, onClose }: { stories: Sto
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
-      else if (e.key === 'ArrowLeft') { e.preventDefault(); next(); }
-      else if (e.key === 'ArrowRight') { e.preventDefault(); prev(); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); next(); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
       else if (e.key === ' ' && (e.target as HTMLElement)?.tagName !== 'A') { e.preventDefault(); setPaused((p) => !p); }
       else if (e.key === 'Tab') {
         const nodes = document.querySelectorAll<HTMLElement>('.viewer button, .viewer a[href]');
@@ -183,8 +183,8 @@ export function StoryViewer({ stories, index, onIndex, onClose }: { stories: Sto
               </div>
             </div>
           )}
-          <button type="button" className="viewer-zone viewer-zone-prev" onClick={prev} aria-label="بخش قبلی"><ChevronRight size={28} /></button>
-          <button type="button" className="viewer-zone viewer-zone-next" onClick={next} aria-label="بخش بعدی"><ChevronLeft size={28} /></button>
+          <button type="button" className="viewer-zone viewer-zone-prev" onClick={prev} aria-label="بخش قبلی"><ChevronLeft size={28} /></button>
+          <button type="button" className="viewer-zone viewer-zone-next" onClick={next} aria-label="بخش بعدی"><ChevronRight size={28} /></button>
         </div>
 
         <div className="viewer-foot">
