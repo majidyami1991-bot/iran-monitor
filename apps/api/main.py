@@ -127,18 +127,10 @@ def stats_sources(): return {'sources':q('select s.name,count(n.item_id)::int co
 @app.get('/api/v1/stats/provenance')
 def stats_provenance(): return {'provenance':q('select coalesce(provenance_status,\'UNKNOWN\') status,count(*)::int count from news_items group by 1 order by 1')}
 
-from fastapi import HTTPException
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-from pathlib import Path
-import mimetypes
-mimetypes.add_type('font/woff2','.woff2')
-WEB=Path(__file__).parent/'web'
-app.mount('/assets', StaticFiles(directory=WEB), name='assets')
 @app.get('/api/v1/sources/{source_id}')
 def source_detail(source_id: str):
  rows=q("select s.source_id,s.name,s.hostname,s.canonical_url,s.source_type,s.collection_tier,s.enabled,count(n.item_id)::int item_count,min(n.published_at) first,max(n.published_at) latest from sources s left join news_items n on n.source_id=s.source_id where s.source_id=%s group by s.id",(source_id,))
- if not rows: raise HTTPException(404,'???? ???? ???')
+ if not rows: raise HTTPException(404,'منبع یافت نشد')
  r=rows[0]
  r['timeline']=q("select date_trunc('day',published_at at time zone 'UTC') bucket,count(*)::int count from news_items where source_id=%s and published_at is not null group by 1 order by 1 limit 90",(source_id,))
  r['provenance']=q("select provenance_status status,count(*)::int count from news_items where source_id=%s group by 1 order by 1",(source_id,))
@@ -146,17 +138,7 @@ def source_detail(source_id: str):
 @app.get('/api/v1/stats/import')
 def latest_import():
  return {'latest':next(iter(q('select completed_at,status,input_item_count,inserted_count from import_runs order by started_at desc limit 1')),None)}
-@app.get('/news/{item_id}')
-def news_detail_page(item_id: str):
- return FileResponse(WEB/'index.html',status_code=200 if q('select 1 from news_items where item_id=%s',(item_id,)) else 404)
-@app.get('/sources/{source_id}')
-def source_detail_page(source_id: str):
- return FileResponse(WEB/'index.html',status_code=200 if q('select 1 from sources where source_id=%s',(source_id,)) else 404)
 @app.get('/')
-@app.get('/news')
-@app.get('/sources')
-@app.get('/analytics')
-@app.get('/about')
-def dashboard(): return FileResponse(WEB/'index.html')
-@app.get('/{path:path}')
-def missing_page(path: str): return FileResponse(WEB/'index.html',status_code=404)
+def api_root():
+ return {'service':'Iran Monitor API','status':'healthy','version':'1.2.0','docs':'/docs'}
+

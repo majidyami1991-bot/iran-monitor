@@ -47,25 +47,28 @@ docker compose ps
 
 ---
 
-## 3. Authentication & Seeded Credentials
+## 3. Institutional Authentication & Role Access Control
 
 User accounts are authenticated against the PostgreSQL database. Passwords are encrypted using **PBKDF2-HMAC-SHA256 (100,000 iterations)** with cryptographically unique salts.
 
-Eleven institutional intelligence and defense analyst accounts are configured for operational access:
+Institutional analyst and operator accounts configured in the system:
 
-| Username | Password | Role & Title | Clearance Level |
+| Username | Role & Title | Clearance Level | Department |
 | :--- | :--- | :--- | :--- |
-| `admin` | `Admin#Strategic2026` | Chief Information Security Officer | Level 5 (Top Secret // SCI) |
-| `r.karimi` | `Karimi#Intel2026` | Senior Defense Analyst | Level 5 (Top Secret) |
-| `m.alavi` | `Alavi#Research2026` | Head of Geopolitical Research | Level 4 (Secret) |
-| `s.hashemi` | `Hashemi#OSINT2026` | OSINT Collection Lead | Level 4 (Secret) |
-| `a.moradi` | `Moradi#Defense2026` | Aerospace & Missile Analyst | Level 4 (Secret) |
-| `f.tehrani` | `Tehrani#Cyber2026` | Cyber Intelligence Architect | Level 4 (Secret) |
-| `n.ebrahimi` | `Ebrahimi#Policy2026` | Regional Strategic Forecaster | Level 4 (Secret) |
-| `k.rostami` | `Rostami#Data2026` | Senior Data Pipeline Engineer | Level 3 (Confidential) |
-| `z.ahmadi` | `Ahmadi#Watch2026` | 24/7 Watch Operations Officer | Level 3 (Confidential) |
-| `h.soleimani` | `Soleimani#Threat2026` | Advanced Threat Analyst | Level 3 (Confidential) |
-| `d.rezvani` | `Rezvani#Audit2026` | Compliance & Security Auditor | Level 3 (Confidential) |
+| `admin` | Chief Information Security Officer | Level 5 (Top Secret // SCI) | Strategic Command & Defense Intelligence |
+| `r.karimi` | Senior Defense Analyst | Level 5 (Top Secret) | Geopolitical & Strategic Studies |
+| `m.alavi` | Head of Geopolitical Research | Level 4 (Secret) | Regional Analysis & Assessment |
+| `s.hashemi` | OSINT Collection Lead | Level 4 (Secret) | Satellite & Open-Source Collection |
+| `a.moradi` | Aerospace & Missile Analyst | Level 4 (Secret) | Missile Defense & Aerospace Operations |
+| `f.tehrani` | Cyber Intelligence Architect | Level 4 (Secret) | Cyber Defense & Signal Infrastructure |
+| `n.ebrahimi` | Regional Strategic Forecaster | Level 4 (Secret) | Strategic Forecasting & Scenario Modeling |
+| `k.rostami` | Senior Data Pipeline Engineer | Level 3 (Confidential) | Intelligence Ingestion & Pipeline Ops |
+| `z.ahmadi` | 24/7 Watch Operations Officer | Level 3 (Confidential) | 24/7 Global Surveillance & Tactical Watch |
+| `h.soleimani` | Advanced Threat Analyst | Level 3 (Confidential) | Tactical Threat Evaluation |
+| `d.rezvani` | Compliance & Security Auditor | Level 3 (Confidential) | Compliance, Integrity & Audit |
+
+> [!IMPORTANT]
+> Operational passwords must be issued directly to authorized personnel or provisioned via secure deployment environment variables. Plaintext credentials must never be committed to public repository documentation.
 
 ---
 

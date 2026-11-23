@@ -1,64 +1,7 @@
-<svg width="100" height="100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="shieldGoldGrad" x1="10%" y1="0%" x2="90%" y2="100%">
-      <stop offset="0%" stop-color="#fffbeb" />
-      <stop offset="25%" stop-color="#fcd34d" />
-      <stop offset="65%" stop-color="#d97706" />
-      <stop offset="100%" stop-color="#78350f" />
-    </linearGradient>
-    <radialGradient id="radarNavyGrad" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#1e3a8a" />
-      <stop offset="55%" stop-color="#0f1f3d" />
-      <stop offset="95%" stop-color="#050c18" />
-      <stop offset="100%" stop-color="#02060d" />
-    </radialGradient>
-    <radialGradient id="coreGlowGrad" cx="50%" cy="46%" r="45%">
-      <stop offset="0%" stop-color="#fef08a" stop-opacity="0.9" />
-      <stop offset="40%" stop-color="#f59e0b" stop-opacity="0.6" />
-      <stop offset="85%" stop-color="#3b82f6" stop-opacity="0.15" />
-      <stop offset="100%" stop-color="#1d4ed8" stop-opacity="0" />
-    </radialGradient>
-    <linearGradient id="wingAccent" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#fef3c7" />
-      <stop offset="50%" stop-color="#f59e0b" />
-      <stop offset="100%" stop-color="#b45309" />
-    </linearGradient>
-  </defs>
-
-  <!-- 1. Tactical Hexagonal Outer Rim -->
-  <polygon points="50,4 88,22 88,68 50,96 12,68 12,22" fill="url(#radarNavyGrad)" stroke="url(#shieldGoldGrad)" stroke-width="2.5" stroke-linejoin="round" />
-
-  <!-- 2. Inner Telemetry Radar Circle -->
-  <circle cx="50" cy="48" r="32" fill="#071326" stroke="#1d4ed8" stroke-width="1.2" stroke-dasharray="2 3" opacity="0.8" />
-  <line x1="50" y1="18" x2="50" y2="78" stroke="#38bdf8" stroke-width="0.8" opacity="0.35" />
-  <line x1="20" y1="48" x2="80" y2="48" stroke="#38bdf8" stroke-width="0.8" opacity="0.35" />
-
-  <!-- 3. Stylized Geopolitical Globe Meridians -->
-  <ellipse cx="50" cy="48" rx="24" ry="24" fill="url(#coreGlowGrad)" stroke="#60a5fa" stroke-width="1" opacity="0.75" />
-  <ellipse cx="50" cy="48" rx="14" ry="24" fill="none" stroke="#93c5fd" stroke-width="0.9" opacity="0.6" />
-  <ellipse cx="50" cy="48" rx="6" ry="24" fill="none" stroke="#fcd34d" stroke-width="0.9" opacity="0.7" />
-  <line x1="26" y1="48" x2="74" y2="48" stroke="#fcd34d" stroke-width="1" opacity="0.7" />
-  <line x1="31" y1="36" x2="69" y2="36" stroke="#93c5fd" stroke-width="0.8" stroke-dasharray="3 2" opacity="0.5" />
-  <line x1="31" y1="60" x2="69" y2="60" stroke="#93c5fd" stroke-width="0.8" stroke-dasharray="3 2" opacity="0.5" />
-
-  <!-- 4. Sovereign Falcon Wings Crest -->
-  <path d="M50 36 C42 26 26 25 14 34 C20 40 32 41 42 43 Z" fill="url(#wingAccent)" opacity="0.95" />
-  <path d="M48 43 C38 35 22 36 12 46 C20 50 31 50 42 50 Z" fill="url(#shieldGoldGrad)" opacity="0.85" />
-  <path d="M46 51 C38 46 22 48 14 59 C22 61 32 59 42 57 Z" fill="#b45309" opacity="0.8" />
-
-  <path d="M50 36 C58 26 74 25 86 34 C80 40 68 41 58 43 Z" fill="url(#wingAccent)" opacity="0.95" />
-  <path d="M52 43 C62 35 78 36 88 46 C80 50 69 50 58 50 Z" fill="url(#shieldGoldGrad)" opacity="0.85" />
-  <path d="M54 51 C62 46 78 48 86 59 C78 61 68 59 58 57 Z" fill="#b45309" opacity="0.8" />
-
-  <!-- 5. Orbital Telemetry Track & Satellite Nodes -->
-  <ellipse cx="50" cy="48" rx="38" ry="13" fill="none" stroke="url(#shieldGoldGrad)" stroke-width="1.2" transform="rotate(-28 50 48)" stroke-dasharray="7 3 2 3" opacity="0.85" />
-  <circle cx="78" cy="33" r="2.8" fill="#ffffff" stroke="#f59e0b" stroke-width="1.2" />
-  <circle cx="22" cy="63" r="2.0" fill="#38bdf8" />
-
-  <!-- 6. Central Strategic Apex Star -->
-  <polygon points="50,40 53,47 60,50 53,53 50,60 47,53 40,50 47,47" fill="#ffffff" stroke="#f59e0b" stroke-width="1" />
-  <circle cx="50" cy="50" r="1.8" fill="#e11d48" />
-
-  <!-- 7. Bottom Tactical Chevron -->
-  <path d="M40 76 L50 85 L60 76 L50 79 Z" fill="url(#shieldGoldGrad)" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="90 110 480 440" role="img" aria-label="Iran map with magnifying glass">
+<title>Iran Monitor</title>
+<desc>Simplified Iran outline sourced from Natural Earth, with a magnifying glass.</desc>
+<path transform="translate(0 -31.1) scale(1 1.1)" d="M 216.64,360.60 L 205.52,350.04 L 205.33,339.34 L 198.91,339.34 L 202.20,324.79 L 191.87,309.52 L 167.25,298.51 L 153.34,279.42 L 157.99,263.74 L 168.10,256.81 L 166.59,245.07 L 153.41,239.04 L 140.40,215.08 L 140.40,215.08 L 129.41,198.98 L 133.34,192.76 L 127.07,169.72 L 140.83,164.00 L 144.01,171.58 L 154.16,180.85 L 167.94,183.52 L 175.21,182.93 L 198.91,168.11 L 206.44,166.63 L 212.37,172.52 L 205.45,182.46 L 217.98,192.98 L 222.98,191.98 L 229.33,206.79 L 248.38,210.98 L 262.33,221.06 L 290.89,224.52 L 322.27,219.20 L 324.19,214.51 L 341.84,210.62 L 356.13,199.13 L 369.57,199.72 L 378.39,195.97 L 392.67,197.83 L 414.89,208.01 L 430.93,210.21 L 453.89,228.00 L 468.86,228.72 L 470.63,245.62 L 462.44,270.65 L 456.92,285.27 L 465.66,288.23 L 457.07,299.23 L 463.65,315.27 L 465.22,328.03 L 480.44,331.41 L 482.09,344.34 L 463.86,362.56 L 473.81,373.12 L 481.90,385.26 L 501.10,394.09 L 501.66,411.78 L 511.27,415.03 L 512.93,424.28 L 483.95,434.66 L 476.38,458.00 L 438.59,451.93 L 416.69,447.32 L 394.01,444.71 L 385.45,420.07 L 375.83,416.51 L 360.39,420.10 L 340.13,429.83 L 315.58,423.16 L 295.30,407.72 L 275.96,402.00 L 262.55,382.94 L 247.72,356.16 L 236.91,359.41 L 224.14,352.76 L 216.64,360.60 Z" fill="#159C9C"/>
+<circle cx="320" cy="311" r="97" fill="none" stroke="#F5F6F2" stroke-width="19"/>
+<path d="M 389 380 L 492 483" fill="none" stroke="#F5F6F2" stroke-width="23" stroke-linecap="round"/>
 </svg>

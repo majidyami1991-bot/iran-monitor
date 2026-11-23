@@ -10,22 +10,26 @@
 
 ---
 
-## ۲. فهرست ۱۰ کاربر سازمانی پیش‌فرض
+## ۲. فهرست کاربران و نقش‌های سازمانی
 
-تمامی کاربران در دیتابیس PostgreSQL ذخیره و رمزهای آن‌ها هش شده است:
+تمامی کاربران در دیتابیس PostgreSQL ذخیره و رمزهای آن‌ها با هش نمک‌دار محافظت شده است:
 
-| شناسه کاربری (Username) | رمز عبور ساده | نام کاربر | سمت و نقش سازمانی | اداره / دپارتمان | سطح دسترسی |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `admin` | `admin123` | مدیر ارشد سامانه | Super Admin | مرکز فرماندهی و رصد استراتژیک | Level 5 (Top Secret) |
-| `intel_officer` | `intel123` | افسر ارشد اطلاعات | Senior Intelligence Analyst | اداره کل اطلاعات و امنیت راهبردی | Level 4 (Secret) |
-| `defense_analyst` | `defense123` | تحلیل‌گر استراتژی دفاعی | Defense Strategy Analyst | قرارگاه مطالعات دفاعی و موشکی | Level 4 (Secret) |
-| `osint_lead` | `osint123` | سرپرست رصد متن‌باز | OSINT Collection Lead | شبکه پایش ماهواره‌ای و منابع باز | Level 3 (Confidential) |
-| `cyber_intel` | `cyber123` | کارشناس پایش سایبری | Cyber Threat Analyst | مرکز تحلیل تهدیدات فضای مجازی | Level 3 (Confidential) |
-| `geo_specialist` | `geo123` | متخصص مطالعات ژئوپلیتیک | Geopolitical Strategist | اندیشکده ژئوپلیتیک غرب آسیا | Level 3 (Confidential) |
-| `ai_operator` | `ai123` | اپراتور هوش مصنوعی | AI & NLP Operator | آزمایشگاه پردازش داده و هوش محلی | Level 3 (Confidential) |
-| `field_editor` | `editor123` | ویراستار صحت‌سنجی اخبار | News Verification Editor | اتاق خبر و راستی‌آزمایی روایت‌ها | Level 2 (Restricted) |
-| `strategic_planner` | `foresight123` | پژوهشگر آینده‌پژوهی | Strategic Foresight Officer | مرکز تحقیقات روندها و سناریونگاری | Level 2 (Restricted) |
-| `guest_viewer` | `guest123` | کاربر ناظر / مهمان | Observer / Guest | پژوهشکده روابط بین‌الملل | Level 1 (Internal Only) |
+| شناسه کاربری (Username) | نام کاربر | سمت و نقش سازمانی | اداره / دپارتمان | سطح دسترسی |
+| :--- | :--- | :--- | :--- | :--- |
+| `admin` | مدیر ارشد سامانه | Chief Information Security Officer | مرکز فرماندهی و رصد استراتژیک | Level 5 (Top Secret // SCI) |
+| `r.karimi` | رضا کریمی | Senior Defense Analyst | قرارگاه مطالعات دفاعی و موشکی | Level 5 (Top Secret) |
+| `m.alavi` | محمد علوی | Head of Geopolitical Research | اندیشکده ژئوپلیتیک غرب آسیا | Level 4 (Secret) |
+| `s.hashemi` | سارا هاشمی | OSINT Collection Lead | شبکه پایش ماهواره‌ای و منابع باز | Level 4 (Secret) |
+| `a.moradi` | علی مرادی | Aerospace & Missile Analyst | مرکز مطالعات هوافضا و موشکی | Level 4 (Secret) |
+| `f.tehrani` | فرناز تهرانی | Cyber Intelligence Architect | مرکز تحلیل تهدیدات فضای مجازی | Level 4 (Secret) |
+| `n.ebrahimi` | نوید ابراهیمی | Regional Strategic Forecaster | مرکز تحقیقات روندها و سناریونگاری | Level 4 (Secret) |
+| `k.rostami` | کیوان رستمی | Senior Data Pipeline Engineer | اداره زیرساخت و مهندسی داده | Level 3 (Confidential) |
+| `z.ahmadi` | زهرا احمدی | 24/7 Watch Operations Officer | اتاق مانیتورینگ و دیده‌بانی شبانه‌روزی | Level 3 (Confidential) |
+| `h.soleimani` | حسین سلیمانی | Advanced Threat Analyst | دپارتمان تحلیل تهدیدات تاکتیکی | Level 3 (Confidential) |
+| `d.rezvani` | داوود رضوانی | Compliance & Security Auditor | بازرسی و تطبیق استانداردهای امنیتی | Level 3 (Confidential) |
+
+> [!IMPORTANT]
+> کلمه‌های عبور اولیه و سازمانی به دلایل امنیتی درون مستندات عمومی یا ریپازیتوری نگهداری نمی‌شوند و از طریق پروتکل‌های امن سازمانی در اختیار پرسنل مجاز قرار می‌گیرند.
 
 ---
 

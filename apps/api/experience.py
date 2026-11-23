@@ -325,7 +325,12 @@ def build_stories():
     def add(kind, ref, title, subtitle, collection, target_type, href, frames, category=None, evidence=None):
         if not frames:
             return
-        lead_img = next((f.get('image_url') for f in frames if f.get('image_url')), None)
+        # Prioritize the frame containing the lead image so the bubble thumbnail on the rail
+        # always matches the first frame and article headline opened in the story viewer.
+        img_idx = next((i for i, f in enumerate(frames) if f.get('image_url')), 0)
+        if img_idx > 0:
+            frames = [frames[img_idx]] + [f for i, f in enumerate(frames) if i != img_idx]
+        lead_img = frames[0].get('image_url') if frames else None
         updated = max((f['published_at'] for f in frames if f.get('published_at')), default=None)
         out.append({'story_id': f'{kind}:{ref}', 'kind': kind, 'title_fa': title, 'subtitle_fa': subtitle,
                     'collection_label': collection, 'target_type': target_type, 'target_ref': ref,
