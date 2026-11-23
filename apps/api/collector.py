@@ -83,9 +83,12 @@ def log_failure(*,run_id,source_id,stage,exc,item_index=None,feed_format=None,fi
     LOG.error(json.dumps(record,ensure_ascii=False,separators=(',',':')))
     return record
 def parse(data,sid,received):
-    raw_prefix = data.lstrip()[:100].lower() if isinstance(data, (bytes, bytearray)) else str(data).lstrip()[:100].lower()
-    if raw_prefix.startswith((b'<!doctype html', b'<html', '<!doctype html', '<html')):
-        raise ValueError('unsupported_feed_format: html_returned')
+    if isinstance(data, (bytes, bytearray)):
+        if data.lstrip()[:100].lower().startswith((b'<!doctype html', b'<html')):
+            raise ValueError('unsupported_feed_format: html_returned')
+    else:
+        if str(data).lstrip()[:100].lower().startswith(('<!doctype html', '<html')):
+            raise ValueError('unsupported_feed_format: html_returned')
     try:
         root=ET.fromstring(data)
     except Exception:
