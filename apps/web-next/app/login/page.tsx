@@ -858,7 +858,6 @@ export default function LoginPage() {
                     type="text"
                     autoComplete="username"
                     autoFocus
-                    placeholder="مانند admin یا r.karimi"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     className="tactical-input"
@@ -877,7 +876,6 @@ export default function LoginPage() {
                     id="password"
                     type={showPassword ? 'text' : 'password'}
                     autoComplete="current-password"
-                    placeholder="کلمه عبور..."
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="tactical-input"
