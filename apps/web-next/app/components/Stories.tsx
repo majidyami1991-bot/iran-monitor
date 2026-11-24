@@ -140,6 +140,9 @@ export function StoryViewer({ stories, index, onIndex, onClose }: { stories: Sto
   const img = safeUrl(f?.image_url);
   return (
     <div className="viewer" role="dialog" aria-modal="true" aria-label={`استوری: ${summary.title_fa}`}>
+      <button type="button" className="viewer-nav viewer-nav-prev" onClick={prev} aria-label="بخش قبلی">
+        <ChevronLeft size={24} />
+      </button>
       <div className="viewer-card" style={{ ['--art' as string]: catVar(f?.category_id ?? summary.visual.category_id) }}>
         <div className="viewer-progress" aria-hidden="true">
           {(frames.length ? frames : [null]).map((_, i) => (
@@ -183,8 +186,8 @@ export function StoryViewer({ stories, index, onIndex, onClose }: { stories: Sto
               </div>
             </div>
           )}
-          <button type="button" className="viewer-zone viewer-zone-prev" onClick={prev} aria-label="بخش قبلی"><ChevronLeft size={28} /></button>
-          <button type="button" className="viewer-zone viewer-zone-next" onClick={next} aria-label="بخش بعدی"><ChevronRight size={28} /></button>
+          <div className="viewer-tap-zone viewer-tap-prev" onClick={prev} aria-hidden="true" />
+          <div className="viewer-tap-zone viewer-tap-next" onClick={next} aria-hidden="true" />
         </div>
 
         <div className="viewer-foot">
@@ -193,6 +196,9 @@ export function StoryViewer({ stories, index, onIndex, onClose }: { stories: Sto
           <span className="viewer-rule" title="استوری‌ها با قواعد نسخه‌دار از داده پایگاه داده ساخته می‌شوند">قاعده {summary.rule_version}</span>
         </div>
       </div>
+      <button type="button" className="viewer-nav viewer-nav-next" onClick={next} aria-label="بخش بعدی">
+        <ChevronRight size={24} />
+      </button>
     </div>
   );
 }
