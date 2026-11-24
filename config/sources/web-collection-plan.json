@@ -123,7 +123,7 @@
     "recommended_poll_interval_minutes": 30,
     "requires_custom_parser": false,
     "requires_javascript": false,
-    "compliance_notes": "disabled; planning only"
+    "compliance_notes": "Active verified RSS collection"
   },
   {
     "source_id": "a7040487-3b56-54d0-aa0a-a86ee5eac297",
