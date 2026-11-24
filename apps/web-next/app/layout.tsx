@@ -5,7 +5,7 @@ import { AuthProvider } from './auth/AuthContext';
 import { AuthGuard } from './auth/AuthGuard';
 
 export const metadata: Metadata = {
-  title: { default: 'Defence Monitor | اتاق خبر رصد منابع باز', template: '%s | Defence Monitor' },
+  title: { default: 'Defense Monitor | اتاق خبر رصد منابع باز', template: '%s | Defense Monitor' },
   description: 'رصد زنده، فارسی و مستند منابع باز: چه منتشر شد، کِی، از کدام منبع و درباره چه موضوعی.',
 };
 

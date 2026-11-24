@@ -830,7 +830,7 @@ export default function LoginPage() {
               <div className="brand-badge">
                 <IranMonitorLogo size={42} />
               </div>
-              <h1 className="login-title">سامانه رصد و پایش ایران</h1>
+              <h1 className="login-title">Defense Monitor</h1>
               <div className="login-subtitle">
                 <span className="status-dot" />
                 <span>مرکز پردازش اطلاعات و پایش دفاعی</span>

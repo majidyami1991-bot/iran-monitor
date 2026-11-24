@@ -24,7 +24,7 @@ export function IranMonitorLogo({
   const mark = (
     <img
       src="/logo.svg"
-      alt="Iran Monitor"
+      alt="Defense Monitor"
       width={size}
       height={size}
       className={className}
@@ -47,8 +47,8 @@ export function IranMonitorLogo({
     <div className={`brand-lockup ${className}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.65rem' }}>
       {mark}
       <div className="brand-text" style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15 }}>
-        <span style={{ fontWeight: 800, fontSize: '1.05rem', letterSpacing: isEn ? '-0.02em' : 'normal', color: '#f8fafc' }}>
-          {isEn ? 'Iran Monitor' : 'سامانه رصد ایران'}
+        <span style={{ fontWeight: 800, fontSize: '1.05rem', letterSpacing: '-0.02em', color: '#f8fafc' }}>
+          Defense Monitor
         </span>
         <small style={{ fontSize: '0.72rem', opacity: 0.72, color: '#e2e8f0' }}>
           {isEn ? 'Defense & Strategic Intelligence' : 'مرکز اطلاعات و پایش دفاعی'}

@@ -162,7 +162,7 @@ export interface Translations {
 
 export const DICTIONARY: Record<Lang, Translations> = {
   fa: {
-    brandName: 'سامانه رصد و پایش ایران',
+    brandName: 'Defense Monitor',
     brandTagline: 'اتاق خبر رصد منابع باز دفاعی و راهبردی',
     loginBrandSubtitle: 'مرکز پردازش اطلاعات و پایش دفاعی',
 
@@ -297,7 +297,7 @@ export const DICTIONARY: Record<Lang, Translations> = {
     sourceNotRecorded: 'منبع نامشخص',
     timeNotRecorded: 'زمان انتشار در خوراک منبع ثبت نشده',
 
-    loginHeading: 'سامانه رصد و پایش ایران',
+    loginHeading: 'Defense Monitor',
     loginSubheading: 'مرکز پردازش اطلاعات و پایش دفاعی',
     usernameLabel: 'نام کاربری',
     usernamePlaceholder: 'نام کاربری سازمانی (مانند admin یا r.karimi)',
@@ -314,7 +314,7 @@ export const DICTIONARY: Record<Lang, Translations> = {
   },
 
   en: {
-    brandName: 'Iran Monitor',
+    brandName: 'Defense Monitor',
     brandTagline: 'Open Source Defense & Strategic Intelligence Newsroom',
     loginBrandSubtitle: 'Information Processing & Defense Monitoring Center',
 
@@ -449,7 +449,7 @@ export const DICTIONARY: Record<Lang, Translations> = {
     sourceNotRecorded: 'Unknown Source',
     timeNotRecorded: 'Publication timestamp not provided in source feed',
 
-    loginHeading: 'Iran Monitor Intelligence System',
+    loginHeading: 'Defense Monitor',
     loginSubheading: 'Information Processing & Defense Monitoring Center',
     usernameLabel: 'Username',
     usernamePlaceholder: 'Institutional username (e.g. admin or r.karimi)',

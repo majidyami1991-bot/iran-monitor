@@ -362,9 +362,9 @@ export function Shell({ children, wide = false }: { title?: string; breadcrumb?:
           >
             <Menu size={20} />
           </button>
-          <Link href="/" className="logo" aria-label={isEn ? "Iran Monitor" : "سامانه رصد ایران"}>
+          <Link href="/" className="logo" aria-label="Defense Monitor">
             <IranMonitorLogo size={32} />
-            <span className="logo-word">{isEn ? "Iran Monitor" : "سامانه رصد ایران"}
+            <span className="logo-word">Defense Monitor
               <small>{isEn ? "Defense & Strategic Intelligence Platform" : "اتاق خبر رصد منابع باز دفاعی و راهبردی"}</small>
             </span>
           </Link>
@@ -403,7 +403,7 @@ export function Shell({ children, wide = false }: { title?: string; breadcrumb?:
             <div className="drawer-head">
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <IranMonitorLogo size={24} />
-                <strong>{isEn ? "Iran Monitor" : "سامانه رصد ایران"}</strong>
+                <strong>Defense Monitor</strong>
               </div>
               <button type="button" className="icon-btn" aria-label={isEn ? "Close menu" : "بستن منو"} onClick={() => setDrawer(false)} autoFocus><X size={20} /></button>
             </div>
