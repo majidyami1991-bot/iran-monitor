@@ -6,6 +6,7 @@ host scripts; /ops-sync: the news-sync scheduler log). A source that is not
 available is reported as status 'unknown' with a reason — never filled in.
 Alerts are derived from the same values with fixed thresholds.
 """
+import hashlib
 import json
 import os
 from datetime import datetime, timezone
@@ -176,7 +177,8 @@ def status():
     return out
 
 
-ALLOWED_ORIGINS = {o.strip() for o in (os.getenv('ASSISTANT_ALLOWED_ORIGINS') or '').split(',') if o.strip()}
+DEFAULT_ORIGINS = 'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3003,http://127.0.0.1:3003'
+ALLOWED_ORIGINS = {o.strip() for o in (os.getenv('ASSISTANT_ALLOWED_ORIGINS') or DEFAULT_ORIGINS).split(',') if o.strip()}
 
 
 def register_lab_ops(app):
@@ -196,9 +198,21 @@ def register_lab_ops(app):
         if local_ai.disabled_state():
             raise HTTPException(503, local_ai.disabled_state())
         with psycopg.connect(DSN) as c:
-            if not c.execute('SELECT 1 FROM news_items WHERE item_id=%s', (item_id,)).fetchone():
+            row = c.execute('SELECT item_id FROM news_items WHERE item_id=%s OR id::text=%s', (item_id, item_id)).fetchone()
+            if not row:
                 raise HTTPException(404, 'not_found')
+            real_item_id = row[0]
             c.execute('''CREATE TABLE IF NOT EXISTS translation_queue_requests (item_id text PRIMARY KEY REFERENCES news_items(item_id),
                 requested_at timestamptz NOT NULL DEFAULT now(), requested_by text)''')
-            c.execute('''INSERT INTO translation_queue_requests(item_id, requested_by) VALUES (%s, 'ui') ON CONFLICT (item_id) DO NOTHING''', (item_id,))
-        return {'queued': True, 'item_id': item_id}
+            c.execute('''INSERT INTO translation_queue_requests(item_id, requested_by) VALUES (%s, 'ui') ON CONFLICT (item_id) DO NOTHING''', (real_item_id,))
+            job_summary = hashlib.sha256(f'{real_item_id}|translation_summary'.encode()).hexdigest()[:32]
+            job_title = hashlib.sha256(f'{real_item_id}|translation_title'.encode()).hexdigest()[:32]
+            c.execute('''INSERT INTO enrichment_jobs(job_id,item_id,stage,status,available_at)
+                VALUES(%s,%s,'translation_summary','pending',now())
+                ON CONFLICT(item_id,stage) DO UPDATE SET status='pending', available_at=now(), attempts=0, updated_at=now()
+                WHERE enrichment_jobs.status NOT IN ('succeeded', 'processing')''', (job_summary, real_item_id))
+            c.execute('''INSERT INTO enrichment_jobs(job_id,item_id,stage,status,available_at)
+                VALUES(%s,%s,'translation_title','pending',now())
+                ON CONFLICT(item_id,stage) DO UPDATE SET status='pending', available_at=now(), attempts=0, updated_at=now()
+                WHERE enrichment_jobs.status NOT IN ('succeeded', 'processing')''', (job_title, real_item_id))
+        return {'queued': True, 'item_id': real_item_id}

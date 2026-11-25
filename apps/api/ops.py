@@ -8,10 +8,13 @@ from uuid import UUID
 from pathlib import Path
 from urllib.parse import urlsplit
 import psycopg
-from fastapi import HTTPException, Query, Response
+from fastapi import Body, HTTPException, Query, Response
 import classify_v2 as cv
 import ai_gateway as aig
 import enrichment_worker as ew
+import content_intelligence as ci
+import local_ai
+import time
 
 DSN=os.environ['DATABASE_URL']
 INTERVAL=int(os.getenv('NEWS_COLLECTION_INTERVAL_SECONDS','300'))
@@ -354,7 +357,34 @@ CREATE TABLE IF NOT EXISTS content_key_points(
   superseded_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(item_id,point_index,content_version));
-CREATE INDEX IF NOT EXISTS content_key_points_item_idx ON content_key_points(item_id) WHERE superseded_at IS NULL;
+CREATE TABLE IF NOT EXISTS ai_runtime_config (
+  id integer PRIMARY KEY DEFAULT 1,
+  provider text NOT NULL DEFAULT 'ollama',
+  base_url text NOT NULL DEFAULT 'http://host.docker.internal:11434',
+  model_translation text NOT NULL DEFAULT 'gemma4:e2b',
+  model_assistant text NOT NULL DEFAULT 'qwen3:8b',
+  timeout_seconds integer NOT NULL DEFAULT 60,
+  max_concurrency integer NOT NULL DEFAULT 1,
+  enabled_title_translation boolean NOT NULL DEFAULT false,
+  enabled_summary_translation boolean NOT NULL DEFAULT false,
+  enabled_body_translation boolean NOT NULL DEFAULT false,
+  enabled_executive_summary boolean NOT NULL DEFAULT false,
+  enabled_why_it_matters boolean NOT NULL DEFAULT false,
+  enabled_key_points boolean NOT NULL DEFAULT false,
+  enabled_assistant boolean NOT NULL DEFAULT false,
+  last_connection_test timestamptz,
+  last_connection_status text,
+  last_connection_error text,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT single_ai_config_row CHECK (id = 1));
+INSERT INTO ai_runtime_config(id) VALUES(1) ON CONFLICT(id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS source_circuit_breakers (
+  domain text PRIMARY KEY,
+  consecutive_failures integer NOT NULL DEFAULT 0,
+  cooldown_until timestamptz,
+  last_error text,
+  updated_at timestamptz NOT NULL DEFAULT now());
 '''
 REGISTRY=_metadata('source-registry.json')
 READY=_metadata('rss-execution-readiness.json')
@@ -947,6 +977,105 @@ def register_ops(app):
     app.get('/api/v1/ai/status')(ai_provider_status)
     app.get('/api/v1/ai/usage')(ai_cost_usage)
 
+    @app.get('/api/v1/admin/ai/config')
+    def admin_ai_config():
+        """Retrieve current AI runtime configuration, active circuit breakers, and queue statistics."""
+        cfg = aig.get_runtime_config(DSN)
+        queue_rows = q('''SELECT stage, status, count(*)::int FROM enrichment_jobs
+            WHERE stage IN ('translation_summary', 'translation_title', 'translation_body',
+                            'ai_executive_summary', 'ai_why_it_matters', 'ai_key_points', 'translation')
+            GROUP BY 1, 2''')
+        queues = {}
+        for stage, status, count in queue_rows:
+            queues.setdefault(stage, {})[status] = count
+
+        circuits = objects('''SELECT domain, consecutive_failures, cooldown_until, last_error, updated_at
+            FROM source_circuit_breakers WHERE cooldown_until > now() ORDER BY updated_at DESC''',
+            ['domain', 'consecutive_failures', 'cooldown_until', 'last_error', 'updated_at'])
+
+        capabilities = [
+            {'id': 'title', 'key': 'enabled_title_translation', 'label': 'Title Translation', 'label_fa': 'ترجمه عنوان', 'enabled': cfg.get('enabled_title_translation', False)},
+            {'id': 'summary', 'key': 'enabled_summary_translation', 'label': 'Publisher Summary Translation', 'label_fa': 'ترجمه خلاصه ناشر', 'enabled': cfg.get('enabled_summary_translation', False)},
+            {'id': 'body', 'key': 'enabled_body_translation', 'label': 'Full Article Body Translation', 'label_fa': 'ترجمه متن کامل مقاله', 'enabled': cfg.get('enabled_body_translation', False)},
+            {'id': 'executive_summary', 'key': 'enabled_executive_summary', 'label': 'Executive Summary', 'label_fa': 'خلاصه مدیریتی', 'enabled': cfg.get('enabled_executive_summary', False)},
+            {'id': 'why_it_matters', 'key': 'enabled_why_it_matters', 'label': 'Why It Matters', 'label_fa': 'چرا این خبر مهم است', 'enabled': cfg.get('enabled_why_it_matters', False)},
+            {'id': 'key_points', 'key': 'enabled_key_points', 'label': 'Key Points Extraction', 'label_fa': 'استخراج نکات کلیدی', 'enabled': cfg.get('enabled_key_points', False)},
+            {'id': 'assistant', 'key': 'enabled_assistant', 'label': 'Research Assistant', 'label_fa': 'دستیار پژوهشی', 'enabled': cfg.get('enabled_assistant', False)},
+        ]
+
+        return {
+            'config': cfg,
+            'queues': queues,
+            'active_circuit_breakers': circuits,
+            'capabilities': capabilities,
+        }
+
+    @app.post('/api/v1/admin/ai/config')
+    def admin_ai_update_config(payload: dict = Body(...)):
+        """Update AI runtime configuration (endpoint, models, concurrency, timeouts, capability toggles)."""
+        updated = aig.update_runtime_config(DSN, **payload)
+        return {'ok': True, 'config': updated}
+
+    @app.post('/api/v1/admin/ai/test-connection')
+    def admin_ai_test_connection(payload: dict = Body(default={})):
+        """Non-destructive test of Ollama connectivity and model availability."""
+        cfg = aig.get_runtime_config(DSN)
+        base_url = (payload.get('base_url') or cfg.get('base_url') or 'http://host.docker.internal:11434').strip()
+        model = (payload.get('model') or cfg.get('model_translation') or 'gemma4:e2b').strip()
+        timeout = int(payload.get('timeout') or 5)
+        res = aig.test_ollama_connection(base_url, model, timeout=timeout)
+        aig.update_runtime_config(
+            DSN,
+            last_connection_test_at=datetime.now(timezone.utc),
+            last_connection_status=res['status'],
+            last_connection_error=res.get('error')
+        )
+        return res
+
+    @app.post('/api/v1/admin/ai/test-translation')
+    def admin_ai_test_translation(payload: dict = Body(...)):
+        """Safely test translation on a short text snippet without enqueuing background work."""
+        text = (payload.get('text') or '').strip()
+        if not text:
+            raise HTTPException(422, 'Text cannot be empty')
+        if len(text) > 300:
+            text = text[:300]
+        cfg = aig.load_config(DSN)
+        if cfg.mode == aig.Mode.DISABLED:
+            raise HTTPException(503, 'Local AI is disabled by operator switch')
+        gateway = aig.build_default_gateway(DSN)
+        started = time.monotonic()
+        try:
+            with local_ai.inference_lock(DSN, wait_seconds=30):
+                res = ci.translate_to_persian(text, gateway=gateway)
+            latency_ms = int((time.monotonic() - started) * 1000)
+            return {
+                'ok': res['status'] in ('available', 'cached'),
+                'status': res['status'],
+                'translation': res['text'],
+                'latency_ms': latency_ms,
+                'model': res.get('model'),
+                'error': res.get('error'),
+            }
+        except local_ai.Busy as exc:
+            return {
+                'ok': False,
+                'status': 'model_busy',
+                'translation': '',
+                'latency_ms': int((time.monotonic() - started) * 1000),
+                'model': cfg.models.get('translation'),
+                'error': 'GPU inference lock busy; another task is running',
+            }
+        except Exception as exc:
+            return {
+                'ok': False,
+                'status': 'error',
+                'translation': '',
+                'latency_ms': int((time.monotonic() - started) * 1000),
+                'model': cfg.models.get('translation'),
+                'error': f'{type(exc).__name__}: {str(exc)[:150]}',
+            }
+
     _TRANSLATION_FIELDS=('title','body','summary','executive_summary','why_it_matters')
 
     def _content_intelligence_block(item_id):
@@ -1066,10 +1195,21 @@ def register_ops(app):
         with psycopg.connect(DSN) as c:
             c.execute('''UPDATE news_item_translations SET human_reviewed=false
                 WHERE item_id=%s AND field=%s AND target_language='fa' ''',(item_id,field))
-        cfg=aig.load_config()
+        cfg=aig.load_config(DSN)
         if cfg.mode!=aig.Mode.EXTERNAL_PROVIDER and cfg.mode!=aig.Mode.LOCAL:
             return {'item_id':item_id,'field':field,'status':'provider_not_configured',
                 'note':'No AI provider is configured; regeneration was not attempted and no text was written.'}
+        cap_map = {
+            'title': 'title_translation',
+            'summary': 'summary_translation',
+            'body': 'body_translation',
+            'executive_summary': 'executive_summary',
+            'why_it_matters': 'why_it_matters'
+        }
+        cap_key = cap_map.get(field)
+        if not cfg.capabilities.get(cap_key, False):
+            return {'item_id': item_id, 'field': field, 'status': 'capability_disabled',
+                    'note': f'Capability {field} is disabled in AI settings; regeneration was not attempted.'}
         outcome=ew.process_translation(item_id)
         return {'item_id':item_id,'field':field,'status':'regeneration_attempted','worker_outcome':outcome}
 

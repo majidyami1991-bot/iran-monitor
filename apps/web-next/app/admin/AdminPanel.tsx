@@ -1,9 +1,68 @@
 'use client';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Shell } from '../design/Shell';
 import { useApi, useNow } from '../design/useApi';
 import { ErrorState, Skeleton, Tag } from '../design/ui';
 import { fmt, fmtDateTime, fmtRelative } from '../design/format';
+
+interface AIConfig {
+  provider: string;
+  base_url: string;
+  model_translation: string;
+  model_assistant: string;
+  timeout_seconds: number;
+  max_concurrency: number;
+  enabled_title_translation: boolean;
+  enabled_summary_translation: boolean;
+  enabled_body_translation: boolean;
+  enabled_executive_summary: boolean;
+  enabled_why_it_matters: boolean;
+  enabled_key_points: boolean;
+  enabled_assistant: boolean;
+  last_connection_test_at: string | null;
+  last_connection_status: string | null;
+  last_connection_error: string | null;
+}
+
+interface AICapability {
+  id: string;
+  key: keyof AIConfig;
+  label: string;
+  label_fa: string;
+  enabled: boolean;
+}
+
+interface AIAdminData {
+  config: AIConfig;
+  queues: Record<string, Record<string, number>>;
+  active_circuit_breakers: {
+    domain: string;
+    consecutive_failures: number;
+    cooldown_until: string;
+    last_error: string;
+    updated_at: string;
+  }[];
+  capabilities: AICapability[];
+}
+
+interface ConnectionTestResult {
+  ok: boolean;
+  status: string;
+  error?: string | null;
+  latency_ms?: number | null;
+  version?: string | null;
+  available_models?: string[];
+  model_found?: boolean;
+}
+
+interface TestTranslationResult {
+  ok: boolean;
+  status: string;
+  translation: string;
+  latency_ms: number;
+  model: string | null;
+  error?: string | null;
+}
 
 /** Admin panel of the isolated 3003 lab. Every number comes from
  *  /api/v1/local-ai/ops (database + host status files); a source that is not
@@ -56,6 +115,376 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
   return <><dt>{k}</dt><dd>{v ?? <span className="muted">نامشخص</span>}</dd></>;
 }
 
+function AIControlsSection() {
+  const aiApi = useApi<AIAdminData>('admin/ai/config');
+  const d = aiApi.data;
+
+  const [baseUrl, setBaseUrl] = useState('');
+  const [modelTrans, setModelTrans] = useState('gemma4:e2b');
+  const [modelAsst, setModelAsst] = useState('qwen3:8b');
+  const [timeoutSec, setTimeoutSec] = useState(60);
+  const [maxConc, setMaxConc] = useState(1);
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
+
+  const [testTesting, setTestTesting] = useState(false);
+  const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
+
+  const [snippet, setSnippet] = useState('Defence forces conduct joint military exercises.');
+  const [transTesting, setTransTesting] = useState(false);
+  const [transResult, setTransResult] = useState<TestTranslationResult | null>(null);
+
+  useEffect(() => {
+    if (d?.config) {
+      setBaseUrl(d.config.base_url || 'http://host.docker.internal:11434');
+      setModelTrans(d.config.model_translation || 'gemma4:e2b');
+      setModelAsst(d.config.model_assistant || 'qwen3:8b');
+      setTimeoutSec(d.config.timeout_seconds || 60);
+      setMaxConc(d.config.max_concurrency || 1);
+    }
+  }, [d]);
+
+  const saveSettings = async () => {
+    setSaveStatus('saving');
+    try {
+      const res = await fetch('/api/v1/admin/ai/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          base_url: baseUrl,
+          model_translation: modelTrans,
+          model_assistant: modelAsst,
+          timeout_seconds: timeoutSec,
+          max_concurrency: maxConc,
+        }),
+      });
+      if (res.ok) {
+        setSaveStatus('saved');
+        aiApi.reload();
+        setTimeout(() => setSaveStatus(null), 3000);
+      } else {
+        setSaveStatus('error');
+      }
+    } catch {
+      setSaveStatus('error');
+    }
+  };
+
+  const toggleCapability = async (key: keyof AIConfig, current: boolean) => {
+    try {
+      await fetch('/api/v1/admin/ai/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key]: !current }),
+      });
+      aiApi.reload();
+    } catch (e) {
+      console.error('Failed to toggle capability', e);
+    }
+  };
+
+  const testConnection = async () => {
+    setTestTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch('/api/v1/admin/ai/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base_url: baseUrl, model: modelTrans }),
+      });
+      const data = await res.json();
+      setTestResult(data);
+      aiApi.reload();
+    } catch (err: unknown) {
+      setTestResult({
+        ok: false,
+        status: 'unreachable',
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setTestTesting(false);
+    }
+  };
+
+  const runTestTranslation = async () => {
+    if (!snippet.trim()) return;
+    setTransTesting(true);
+    setTransResult(null);
+    try {
+      const res = await fetch('/api/v1/admin/ai/test-translation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: snippet }),
+      });
+      const data = await res.json();
+      setTransResult(data);
+    } catch (err: unknown) {
+      setTransResult({
+        ok: false,
+        status: 'error',
+        translation: '',
+        latency_ms: 0,
+        model: modelTrans,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setTransTesting(false);
+    }
+  };
+
+  const getCapabilityStatus = (cap: AICapability) => {
+    if (!cap.enabled) {
+      return <Tag tone="neutral">غیرفعال (Disabled)</Tag>;
+    }
+    if (testResult && !testResult.ok) {
+      return <Tag tone="urgent">سرویس در دسترس نیست (Unavailable)</Tag>;
+    }
+    const qKey = cap.id === 'summary' ? 'translation_summary'
+      : cap.id === 'title' ? 'translation_title'
+      : cap.id === 'body' ? 'translation_body'
+      : cap.id === 'executive_summary' ? 'ai_executive_summary'
+      : cap.id === 'why_it_matters' ? 'ai_why_it_matters'
+      : cap.id === 'key_points' ? 'ai_key_points' : '';
+    const processing = d?.queues?.[qKey]?.['processing'] || 0;
+    if (processing > 0) {
+      return <Tag tone="uncertain">{`در حال پردازش (${fmt(processing)})`}</Tag>;
+    }
+    return <Tag tone="ok">{'فعال و آماده (Enabled & idle)'}</Tag>;
+  };
+
+  return (
+    <section className="panel" aria-labelledby="ai-ctrl-h" style={{ gridColumn: 'span 2' }}>
+      <div className="panel-title">
+        <h3 id="ai-ctrl-h">کنترل‌های عملیاتی هوش مصنوعی (AI Operational Controls)</h3>
+        <Tag tone="brand">{'Ollama & LAN Management'}</Tag>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', marginTop: '12px' }}>
+        {/* Connection Settings */}
+        <div style={{ background: 'var(--surface, #fafafa)', padding: '16px', borderRadius: '6px', border: '1px solid var(--border, #e5e5e5)' }}>
+          <h4 style={{ marginBottom: '12px', fontSize: '1rem' }}>تنظیمات اتصال سرور Ollama</h4>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px', fontWeight: 500 }}>آدرس سرور Ollama (Local/LAN):</label>
+              <input
+                type="text"
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder="http://host.docker.internal:11434"
+                style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #ccc', direction: 'ltr' }}
+              />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px', fontWeight: 500 }}>مدل ترجمه (Translation):</label>
+                <input
+                  type="text"
+                  value={modelTrans}
+                  onChange={(e) => setModelTrans(e.target.value)}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #ccc', direction: 'ltr' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px', fontWeight: 500 }}>مدل دستیار (Assistant):</label>
+                <input
+                  type="text"
+                  value={modelAsst}
+                  onChange={(e) => setModelAsst(e.target.value)}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #ccc', direction: 'ltr' }}
+                />
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px', fontWeight: 500 }}>مهلت زمانی (ثانیه):</label>
+                <input
+                  type="number"
+                  value={timeoutSec}
+                  onChange={(e) => setTimeoutSec(Number(e.target.value))}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #ccc', direction: 'ltr' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px', fontWeight: 500 }}>حداکثر همزمانی GPU:</label>
+                <input
+                  type="number"
+                  value={maxConc}
+                  onChange={(e) => setMaxConc(Number(e.target.value))}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #ccc', direction: 'ltr' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+              <button
+                type="button"
+                onClick={testConnection}
+                disabled={testTesting}
+                style={{ padding: '8px 14px', borderRadius: '4px', cursor: 'pointer', background: '#3b82f6', color: '#fff', border: 'none', fontWeight: 500 }}
+              >
+                {testTesting ? 'در حال بررسی...' : 'آزمون اتصال (Test Connection)'}
+              </button>
+              <button
+                type="button"
+                onClick={saveSettings}
+                style={{ padding: '8px 14px', borderRadius: '4px', cursor: 'pointer', background: '#10b981', color: '#fff', border: 'none', fontWeight: 500 }}
+              >
+                ذخیره تنظیمات
+              </button>
+            </div>
+            {saveStatus === 'saved' && <p style={{ color: '#059669', fontSize: '0.85rem' }}>تنظیمات با موفقیت در پایگاه داده ذخیره شد.</p>}
+            {saveStatus === 'error' && <p style={{ color: '#dc2626', fontSize: '0.85rem' }}>خطا در ذخیره تنظیمات.</p>}
+
+            {/* Test Connection Output */}
+            {testResult && (
+              <div style={{ marginTop: '10px', padding: '10px', borderRadius: '4px', background: testResult.ok ? '#ecfdf5' : '#fef2f2', border: `1px solid ${testResult.ok ? '#a7f3d0' : '#fecaca'}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <strong>وضعیت اتصال:</strong>
+                  {testResult.ok && testResult.status === 'connected' ? (
+                    <Tag tone="ok">{`متصل (${testResult.latency_ms} ms)`}</Tag>
+                  ) : testResult.status === 'model_missing' ? (
+                    <Tag tone="uncertain">مدل یافت نشد</Tag>
+                  ) : (
+                    <Tag tone="urgent">قطع ارتباط</Tag>
+                  )}
+                </div>
+                {testResult.version && <p style={{ fontSize: '0.8rem', marginTop: '4px' }}>نسخه سرور: {testResult.version}</p>}
+                {testResult.available_models && testResult.available_models.length > 0 && (
+                  <p style={{ fontSize: '0.8rem', marginTop: '4px' }}>مدل‌های موجود: {testResult.available_models.join(', ')}</p>
+                )}
+                {testResult.error && <p style={{ color: '#b91c1c', fontSize: '0.8rem', marginTop: '4px' }}>{testResult.error}</p>}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Safe Manual Testing */}
+        <div style={{ background: 'var(--surface, #fafafa)', padding: '16px', borderRadius: '6px', border: '1px solid var(--border, #e5e5e5)' }}>
+          <h4 style={{ marginBottom: '8px', fontSize: '1rem' }}>آزمون دستی و ایمن ترجمه (Safe Manual Testing)</h4>
+          <p style={{ fontSize: '0.8rem', color: '#666', marginBottom: '10px' }}>
+            ترجمه آزمایشی یک عبارت کوتاه بدون صف‌بندی پس‌زمینه و بدون تغییر مقالات در پایگاه داده.
+          </p>
+          <textarea
+            value={snippet}
+            onChange={(e) => setSnippet(e.target.value)}
+            rows={3}
+            placeholder="Enter English text to translate..."
+            style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #ccc', direction: 'ltr', fontSize: '0.9rem' }}
+          />
+          <div style={{ marginTop: '8px' }}>
+            <button
+              type="button"
+              onClick={runTestTranslation}
+              disabled={transTesting || !snippet.trim()}
+              style={{ padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', background: '#6366f1', color: '#fff', border: 'none', fontWeight: 500 }}
+            >
+              {transTesting ? 'در حال ترجمه...' : 'ترجمه آزمایشی'}
+            </button>
+          </div>
+          {transResult && (
+            <div style={{ marginTop: '12px', padding: '10px', borderRadius: '4px', background: transResult.ok ? '#f0fdf4' : '#fff1f2', border: '1px solid #ddd' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ fontSize: '0.8rem', color: '#555' }}>
+                  مدل: {transResult.model || modelTrans} · زمان: {transResult.latency_ms} ms
+                </span>
+                <Tag tone={transResult.ok ? 'ok' : 'urgent'}>{transResult.ok ? 'موفق' : 'ناموفق'}</Tag>
+              </div>
+              {transResult.translation && (
+                <p style={{ fontSize: '0.95rem', fontWeight: 500, marginTop: '6px', lineHeight: 1.5 }}>
+                  {transResult.translation}
+                </p>
+              )}
+              {transResult.error && (
+                <p style={{ color: '#be123c', fontSize: '0.8rem', marginTop: '4px' }}>
+                  {transResult.error}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 7 AI Capabilities Controls */}
+      <div style={{ marginTop: '20px' }}>
+        <h4 style={{ marginBottom: '10px', fontSize: '1rem' }}>کنترل مستقل قابلیت‌های هفت‌گانه هوش مصنوعی</h4>
+        <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '12px' }}>
+          تمامی قابلیت‌ها به‌صورت پیش‌فرض غیرفعال هستند و وضعیت آن‌ها در پایگاه داده ذخیره می‌شود. غیرفعال‌سازی سرویس را فوراً متوقف می‌کند.
+        </p>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="tbl" style={{ width: '100%' }}>
+            <thead>
+              <tr>
+                <th style={{ width: '40px' }}>فعال</th>
+                <th>قابلیت</th>
+                <th>نام سیستمی</th>
+                <th>وضعیت زنده</th>
+                <th>{'صف مربوطه (Pending / Proc / Err)'}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d?.capabilities?.map((cap) => {
+                const qKey = cap.id === 'summary' ? 'translation_summary'
+                  : cap.id === 'title' ? 'translation_title'
+                  : cap.id === 'body' ? 'translation_body'
+                  : cap.id === 'executive_summary' ? 'ai_executive_summary'
+                  : cap.id === 'why_it_matters' ? 'ai_why_it_matters'
+                  : cap.id === 'key_points' ? 'ai_key_points' : '';
+                const qPending = qKey ? (d?.queues?.[qKey]?.['pending'] || 0) : 0;
+                const qProc = qKey ? (d?.queues?.[qKey]?.['processing'] || 0) : 0;
+                const qDead = qKey ? (d?.queues?.[qKey]?.['dead_letter'] || 0) : 0;
+
+                return (
+                  <tr key={cap.id}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={cap.enabled}
+                        onChange={() => toggleCapability(cap.key, cap.enabled)}
+                        style={{ cursor: 'pointer', transform: 'scale(1.2)' }}
+                      />
+                    </td>
+                    <td>
+                      <strong>{cap.label_fa}</strong>
+                      {cap.id === 'body' && <small style={{ color: '#b45309', marginRight: '6px' }}>(غیرفعال به‌صورت پیش‌فرض)</small>}
+                    </td>
+                    <td dir="ltr"><code>{cap.id}</code></td>
+                    <td>{getCapabilityStatus(cap)}</td>
+                    <td>
+                      {qKey ? (
+                        <span style={{ fontSize: '0.85rem' }}>
+                          {'در صف: '}<strong>{fmt(qPending)}</strong>{' | در حال پردازش: '}<strong>{fmt(qProc)}</strong>{' | خطا: '}<strong>{fmt(qDead)}</strong>
+                        </span>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Circuit Breakers */}
+      {d?.active_circuit_breakers && d.active_circuit_breakers.length > 0 && (
+        <div style={{ marginTop: '20px', padding: '12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px' }}>
+          <h4 style={{ color: '#92400e', marginBottom: '8px' }}>قطع‌کننده‌های مدار فعال (Circuit Breakers Active)</h4>
+          <p style={{ fontSize: '0.8rem', color: '#b45309', marginBottom: '8px' }}>
+            دامنه‌های زیر به دلیل خطاهای متوالی (۴۰۳ یا مسدودسازی) در دوره استراحت (Cooldown) قرار دارند:
+          </p>
+          <ul style={{ margin: 0, paddingRight: '20px', fontSize: '0.85rem' }}>
+            {d.active_circuit_breakers.map((cb) => (
+              <li key={cb.domain}>
+                <strong>{cb.domain}</strong>: {cb.consecutive_failures} خطای متوالی ({cb.last_error}) · پایان استراحت: {cb.cooldown_until}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function AdminPanel() {
   const q = useApi<Ops>('local-ai/ops');
   const now = useNow(30000);
@@ -69,6 +498,9 @@ export function AdminPanel() {
       {!d && !q.error && <Skeleton height={320} />}
       {d && (
         <div className="admin-grid">
+          {/* AI Operational Controls & Configuration */}
+          <AIControlsSection />
+
           <section className="panel" aria-labelledby="al-h">
             <div className="panel-title"><h3 id="al-h">هشدارهای عملیاتی</h3><Tag tone={d.alerts.length ? 'uncertain' : 'info'}>{fmt(d.alerts.length)} هشدار فعال</Tag></div>
             {d.alerts.length === 0 ? <p className="muted">هشدار فعالی وجود ندارد.</p> : (

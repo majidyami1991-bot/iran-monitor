@@ -20,7 +20,9 @@ Design contract (see docs/AI GATEWAY.md for the full write-up):
     trips, calls return a clear status immediately, never a best-effort call
     that might blow the budget or hammer a failing provider.
 """
+import contextlib
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -434,6 +436,40 @@ class LocalModelAdapter(OpenAICompatibleAdapter):
         self.api_key, self.base, self.model, self.timeout = (api_key or 'local'), base_url.rstrip('/'), model, timeout
 
 
+def is_permitted_ollama_endpoint(base_url: str) -> bool:
+    """Validate Ollama endpoint for LAN and local deployment security.
+    Permits localhost/loopback, Docker host, LAN/private IPs (RFC 1918/4193),
+    mDNS/local domain suffixes (.local, .lan, .internal), and any explicit hosts
+    configured in OLLAMA_ALLOWED_HOSTS. Rejects public WAN addresses to prevent SSRF."""
+    if not base_url or not isinstance(base_url, str):
+        return False
+    from urllib.parse import urlsplit
+    try:
+        parts = urlsplit(base_url.strip())
+    except Exception:
+        return False
+    if parts.scheme not in ('http', 'https'):
+        return False
+    host = (parts.hostname or '').strip().lower()
+    if not host:
+        return False
+    if host in ('127.0.0.1', 'localhost', '::1', 'host.docker.internal'):
+        return True
+    allowed_env = os.getenv('OLLAMA_ALLOWED_HOSTS', '')
+    if allowed_env:
+        extra_hosts = {h.strip().lower() for h in allowed_env.split(',') if h.strip()}
+        if host in extra_hosts:
+            return True
+    if host.endswith('.local') or host.endswith('.lan') or host.endswith('.internal'):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+        return ip.is_private or ip.is_loopback
+    except ValueError:
+        pass
+    return False
+
+
 OLLAMA_LOCAL_HOSTS = frozenset(('127.0.0.1', 'localhost', '::1', 'host.docker.internal'))
 _FENCE_RE = re.compile(r'^\s*```(?:json)?\s*\n(.*)\n\s*```\s*$', re.DOTALL)
 
@@ -458,11 +494,94 @@ def local_ai_disabled_reason():
     return v if v in LOCAL_AI_DISABLED_STATES else 'disabled_by_operator'
 
 
+def test_ollama_connection(base_url: str, model: str = 'gemma4:e2b', timeout: int = 5) -> dict:
+    """Non-destructive connection test for Ollama endpoint and model availability:
+    1. Validates endpoint security (LAN/private/localhost only).
+    2. Probes /api/tags to verify daemon responsiveness.
+    3. Checks presence of target model and lists available models.
+    Does NOT initiate generation or consume GPU/CPU inference resources."""
+    from urllib.request import ProxyHandler, Request, build_opener
+    import time
+    if not is_permitted_ollama_endpoint(base_url):
+        return {
+            'ok': False,
+            'status': 'rejected_endpoint',
+            'error': f'Endpoint host is not permitted: {base_url}. Must be localhost, host.docker.internal, or private LAN IP.',
+            'latency_ms': None,
+            'version': None,
+            'available_models': [],
+            'model_found': False,
+        }
+
+    base = base_url.rstrip('/')
+    opener = build_opener(ProxyHandler({}))
+    started = time.monotonic()
+    try:
+        req = Request(f'{base}/api/tags')
+        with opener.open(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+        latency_ms = int((time.monotonic() - started) * 1000)
+    except HTTPError as exc:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        return {
+            'ok': False,
+            'status': 'http_error',
+            'error': f'HTTP {exc.code}: {exc.reason}',
+            'latency_ms': latency_ms,
+            'version': None,
+            'available_models': [],
+            'model_found': False,
+        }
+    except Exception as exc:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        return {
+            'ok': False,
+            'status': 'unreachable',
+            'error': f'{type(exc).__name__}: {str(exc)[:150]}',
+            'latency_ms': latency_ms,
+            'version': None,
+            'available_models': [],
+            'model_found': False,
+        }
+
+    # Fetch version if available
+    version = None
+    try:
+        with opener.open(Request(f'{base}/api/version'), timeout=timeout) as vresp:
+            vdata = json.loads(vresp.read().decode('utf-8'))
+            version = vdata.get('version')
+    except Exception:
+        pass
+
+    raw_models = data.get('models', [])
+    model_names = [m.get('name') for m in raw_models if m.get('name')]
+    
+    # Check if target model is present
+    target_clean = (model or '').strip().lower()
+    model_found = False
+    if target_clean:
+        for name in model_names:
+            nl = name.lower()
+            if nl == target_clean or nl.split(':')[0] == target_clean or target_clean.split(':')[0] == nl:
+                model_found = True
+                break
+
+    return {
+        'ok': True,
+        'status': 'connected' if (model_found or not model) else 'model_missing',
+        'error': None if model_found else f'Model "{model}" not found on server. Available: {", ".join(model_names) or "none"}',
+        'latency_ms': latency_ms,
+        'version': version,
+        'available_models': model_names,
+        'model_found': model_found,
+    }
+
+
 class OllamaAdapter(Adapter):
-    """Ollama's native /api/chat on this machine only (CPU inference).
+    """Ollama's native /api/chat on this machine or configured LAN server.
 
     Native rather than the OpenAI-compatible endpoint because only the native
-    API takes `format` (a JSON schema for structured output) and the CPU
+    API takes `format` (a JSON schema for structured output) and the CPU/GPU
     options (num_ctx, num_predict, num_thread). There is no fallback model:
     the configured model must exist under exactly that name (and digest, when
     one is pinned) or every call fails closed. Cost is always 0."""
@@ -473,9 +592,8 @@ class OllamaAdapter(Adapter):
         from urllib.parse import urlsplit
         if local_ai_disabled_reason():
             raise GatewayError('local_ai_disabled')
-        parts = urlsplit(base_url or '')
-        if parts.scheme != 'http' or (parts.hostname or '') not in OLLAMA_LOCAL_HOSTS:
-            raise GatewayError('ollama_host_not_local')
+        if not is_permitted_ollama_endpoint(base_url):
+            raise GatewayError('ollama_host_not_permitted')
         if not model:
             raise GatewayError('ollama_model_not_configured')
         self.base, self.model, self.timeout = base_url.rstrip('/'), model, timeout
@@ -852,12 +970,80 @@ class GatewayConfig:
     max_concurrency: int
     daily_budget_usd: float | None
     options: dict = field(default_factory=dict)  # adapter-specific (e.g. Ollama num_ctx, digest pin)
+    capabilities: dict = field(default_factory=dict)
 
 
-def load_config() -> GatewayConfig:
-    provider = (os.getenv('AI_PROVIDER') or 'disabled').strip().lower()
-    mode = Mode.DISABLED
-    if provider == 'disabled' or not provider:
+DEFAULT_AI_CONFIG = {
+    'provider': 'ollama',
+    'base_url': 'http://host.docker.internal:11434',
+    'model_translation': 'gemma4:e2b',
+    'model_assistant': 'qwen3:8b',
+    'timeout_seconds': 60,
+    'max_concurrency': 1,
+    'enabled_title_translation': False,
+    'enabled_summary_translation': False,
+    'enabled_body_translation': False,
+    'enabled_executive_summary': False,
+    'enabled_why_it_matters': False,
+    'enabled_key_points': False,
+    'enabled_assistant': False,
+}
+
+
+def get_runtime_config(dsn=None) -> dict:
+    """Fetch runtime AI configuration from the database (ai_runtime_config).
+    Falls back to safe defaults with all AI capabilities DISABLED."""
+    target_dsn = dsn or os.getenv('DATABASE_URL')
+    if not target_dsn:
+        return dict(DEFAULT_AI_CONFIG)
+    try:
+        import psycopg
+        from psycopg.rows import dict_row
+        with psycopg.connect(target_dsn, row_factory=dict_row) as conn:
+            row = conn.execute('SELECT * FROM ai_runtime_config WHERE id=1').fetchone()
+            if row:
+                res = dict(row)
+                res['created_at'] = str(res.get('created_at')) if res.get('created_at') else None
+                res['updated_at'] = str(res.get('updated_at')) if res.get('updated_at') else None
+                res['last_connection_test_at'] = str(res.get('last_connection_test_at')) if res.get('last_connection_test_at') else None
+                return res
+    except Exception:
+        pass
+    return dict(DEFAULT_AI_CONFIG)
+
+
+def update_runtime_config(dsn=None, **fields) -> dict:
+    """Update runtime AI configuration in the database."""
+    target_dsn = dsn or os.environ.get('DATABASE_URL')
+    if not target_dsn:
+        raise RuntimeError("No database DSN provided")
+    allowed_cols = {
+        'provider', 'base_url', 'model_translation', 'model_assistant',
+        'timeout_seconds', 'max_concurrency',
+        'enabled_title_translation', 'enabled_summary_translation', 'enabled_body_translation',
+        'enabled_executive_summary', 'enabled_why_it_matters', 'enabled_key_points', 'enabled_assistant',
+        'last_connection_test_at', 'last_connection_status', 'last_connection_error'
+    }
+    updates = {k: v for k, v in fields.items() if k in allowed_cols}
+    if not updates:
+        return get_runtime_config(target_dsn)
+    import psycopg
+    set_clauses = [f"{k} = %({k})s" for k in updates]
+    set_clauses.append("updated_at = now()")
+    sql = f"UPDATE ai_runtime_config SET {', '.join(set_clauses)} WHERE id=1"
+    with psycopg.connect(target_dsn, autocommit=True) as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, updates)
+    return get_runtime_config(target_dsn)
+
+
+def load_config(dsn=None) -> GatewayConfig:
+    rt_cfg = get_runtime_config(dsn)
+    provider = (rt_cfg.get('provider') or os.getenv('AI_PROVIDER') or 'disabled').strip().lower()
+    
+    if local_ai_disabled_reason():
+        mode = Mode.DISABLED
+    elif provider == 'disabled' or not provider:
         mode = Mode.DISABLED
     elif provider == 'deterministic':
         mode = Mode.DETERMINISTIC
@@ -865,20 +1051,39 @@ def load_config() -> GatewayConfig:
         mode = Mode.LOCAL
     else:
         mode = Mode.EXTERNAL_PROVIDER
+
+    base_url = rt_cfg.get('base_url') or os.getenv('AI_BASE_URL', 'http://host.docker.internal:11434')
+    model_trans = rt_cfg.get('model_translation') or os.getenv('AI_MODEL_TRANSLATION', 'gemma4:e2b')
+    model_asst = rt_cfg.get('model_assistant') or os.getenv('AI_MODEL_ASSISTANT', 'qwen3:8b')
+    timeout_sec = int(rt_cfg.get('timeout_seconds') or os.getenv('AI_REQUEST_TIMEOUT', '60'))
+    max_conc = int(rt_cfg.get('max_concurrency') or os.getenv('AI_MAX_CONCURRENCY', '1'))
     budget = os.getenv('AI_DAILY_BUDGET_LIMIT')
+
+    capabilities = {
+        'title_translation': bool(rt_cfg.get('enabled_title_translation', False)),
+        'summary_translation': bool(rt_cfg.get('enabled_summary_translation', False)),
+        'body_translation': bool(rt_cfg.get('enabled_body_translation', False)),
+        'executive_summary': bool(rt_cfg.get('enabled_executive_summary', False)),
+        'why_it_matters': bool(rt_cfg.get('enabled_why_it_matters', False)),
+        'key_points': bool(rt_cfg.get('enabled_key_points', False)),
+        'assistant': bool(rt_cfg.get('enabled_assistant', False)),
+    }
+
     return GatewayConfig(
         mode=mode, provider=provider,
-        base_url=os.getenv('AI_BASE_URL', ''), api_key=os.getenv('AI_API_KEY', ''),
+        base_url=base_url, api_key=os.getenv('AI_API_KEY', ''),
         models={
-            'translation': os.getenv('AI_MODEL_TRANSLATION', ''),
-            'summary': os.getenv('AI_MODEL_SUMMARY', ''),
+            'translation': model_trans,
+            'summary': model_trans,
             'classification': os.getenv('AI_MODEL_CLASSIFICATION', ''),
             'signal_analysis': os.getenv('AI_MODEL_SIGNAL_ANALYSIS', ''),
             'scenario': os.getenv('AI_MODEL_SCENARIO', ''),
+            'assistant': model_asst,
         },
-        timeout_seconds=int(os.getenv('AI_REQUEST_TIMEOUT', '60')),
-        max_concurrency=int(os.getenv('AI_MAX_CONCURRENCY', '3')),
+        timeout_seconds=timeout_sec,
+        max_concurrency=max_conc,
         daily_budget_usd=float(budget) if budget else None,
+        capabilities=capabilities,
     )
 
 
@@ -1161,6 +1366,7 @@ def build_default_gateway(dsn=None):
     """Convenience factory: a gateway wired to Postgres cache/log/budget
     when a DSN is given, or fully in-memory (no persistence) otherwise —
     useful for one-off scripts and tests."""
+    cfg = load_config(dsn)
     if dsn:
-        return AIGateway(cache=PostgresCache(dsn), logger=PostgresLogger(dsn), budget_check=postgres_budget_check(dsn))
-    return AIGateway()
+        return AIGateway(config=cfg, cache=PostgresCache(dsn), logger=PostgresLogger(dsn), budget_check=postgres_budget_check(dsn))
+    return AIGateway(config=cfg)

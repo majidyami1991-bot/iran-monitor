@@ -65,6 +65,11 @@ REJECTED_FA = ('پاسخ مدل محلی معیار استناد را رعایت
 def enabled():
     if local_ai.disabled_state():
         return False
+    try:
+        cfg = gw.get_runtime_config(DSN)
+        return bool(cfg.get('enabled_assistant', False))
+    except Exception:
+        pass
     return (os.getenv('ASSISTANT_ENABLED') or 'false').strip().lower() == 'true'
 
 

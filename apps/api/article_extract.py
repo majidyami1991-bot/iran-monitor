@@ -10,7 +10,7 @@ tag and by a curated class/id keyword list. Never fetches more than one page
 per item; the caller enforces that budget, this module just does the one
 fetch it's given.
 """
-import hashlib, html, re, threading, time, urllib.parse
+import hashlib, html, os, re, threading, time, urllib.parse
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlsplit, urlunsplit, parse_qsl, urlencode
 
@@ -417,12 +417,15 @@ def _to_int(v):
 
 class SourceCircuitBreaker:
     """Tracks consecutive persistent access failures (e.g. 403, 401, bot protection) per hostname/domain.
-    If a domain fails 3 consecutive times with access denied, it is put into cooldown for 2 hours."""
+    If a domain fails 3 consecutive times with access denied, it is put into cooldown for 2 hours.
+    Persists state to PostgreSQL source_circuit_breakers table so circuit status survives container restarts
+    and is shared across worker processes."""
     def __init__(self, failure_threshold=3, cooldown_seconds=7200):
         self._lock = threading.Lock()
         self._failure_threshold = failure_threshold
         self._cooldown_seconds = cooldown_seconds
         self._state = {}
+        self._dsn = os.getenv('DATABASE_URL')
 
     def _extract_domain(self, url: str) -> str:
         try:
@@ -434,15 +437,39 @@ class SourceCircuitBreaker:
         domain = self._extract_domain(url)
         if not domain:
             return False, None
+        now = time.time()
         with self._lock:
             info = self._state.get(domain)
-            if not info:
-                return False, None
-            now = time.time()
-            if info['cooldown_until'] > now:
+            if info and info['cooldown_until'] > now:
                 remaining = int(info['cooldown_until'] - now)
                 return True, f"circuit_open:{info['last_error']}_cooldown_{remaining}s"
-            return False, None
+
+        # Check DB if configured
+        if self._dsn:
+            try:
+                import psycopg
+                from datetime import datetime, timezone
+                with psycopg.connect(self._dsn) as conn:
+                    row = conn.execute(
+                        "SELECT consecutive_failures, cooldown_until, last_error FROM source_circuit_breakers WHERE domain=%s",
+                        (domain,)
+                    ).fetchone()
+                    if row:
+                        fails, cooldown, err = row
+                        if cooldown:
+                            now_dt = datetime.now(timezone.utc)
+                            if cooldown > now_dt:
+                                rem = int((cooldown - now_dt).total_seconds())
+                                with self._lock:
+                                    self._state[domain] = {
+                                        'consecutive_failures': fails,
+                                        'cooldown_until': now + rem,
+                                        'last_error': err or ''
+                                    }
+                                return True, f"circuit_open:{err or 'access_denied'}_cooldown_{rem}s"
+            except Exception:
+                pass
+        return False, None
 
     def record_success(self, url: str):
         domain = self._extract_domain(url)
@@ -452,26 +479,69 @@ class SourceCircuitBreaker:
             if domain in self._state:
                 self._state[domain]['consecutive_failures'] = 0
                 self._state[domain]['cooldown_until'] = 0
+        if self._dsn:
+            try:
+                import psycopg
+                with psycopg.connect(self._dsn, autocommit=True) as conn:
+                    conn.execute(
+                        "UPDATE source_circuit_breakers SET consecutive_failures=0, cooldown_until=NULL, updated_at=now() WHERE domain=%s",
+                        (domain,)
+                    )
+            except Exception:
+                pass
 
     def record_failure(self, url: str, error_reason: str):
         domain = self._extract_domain(url)
         if not domain:
             return
         is_access_denied = any(tok in str(error_reason).lower() for tok in ('403', 'forbidden', '401', 'unauthorized', 'access_denied', 'cloudflare', 'blocked'))
+        now = time.time()
+        cooldown_ts = 0
         with self._lock:
             info = self._state.setdefault(domain, {'consecutive_failures': 0, 'cooldown_until': 0, 'last_error': ''})
             if is_access_denied:
                 info['consecutive_failures'] += 1
                 info['last_error'] = str(error_reason)[:50]
                 if info['consecutive_failures'] >= self._failure_threshold:
-                    info['cooldown_until'] = time.time() + self._cooldown_seconds
+                    info['cooldown_until'] = now + self._cooldown_seconds
+                    cooldown_ts = info['cooldown_until']
+            fails = info['consecutive_failures']
+            err = info['last_error']
+
+        if self._dsn and is_access_denied:
+            try:
+                import psycopg
+                cooldown_interval = f"{self._cooldown_seconds} seconds" if cooldown_ts else None
+                with psycopg.connect(self._dsn, autocommit=True) as conn:
+                    if cooldown_ts:
+                        conn.execute('''
+                            INSERT INTO source_circuit_breakers(domain, consecutive_failures, cooldown_until, last_error, updated_at)
+                            VALUES(%s, %s, now() + %s::interval, %s, now())
+                            ON CONFLICT(domain) DO UPDATE SET
+                                consecutive_failures=EXCLUDED.consecutive_failures,
+                                cooldown_until=EXCLUDED.cooldown_until,
+                                last_error=EXCLUDED.last_error,
+                                updated_at=now()
+                        ''', (domain, fails, cooldown_interval, err))
+                    else:
+                        conn.execute('''
+                            INSERT INTO source_circuit_breakers(domain, consecutive_failures, last_error, updated_at)
+                            VALUES(%s, %s, %s, now())
+                            ON CONFLICT(domain) DO UPDATE SET
+                                consecutive_failures=EXCLUDED.consecutive_failures,
+                                last_error=EXCLUDED.last_error,
+                                updated_at=now()
+                        ''', (domain, fails, err))
+            except Exception:
+                pass
 
 
 _CIRCUIT_BREAKER = SourceCircuitBreaker()
 
 
 class PlaywrightBrowserManager:
-    """Singleton warm Chromium browser instance with bounded concurrency and isolated contexts."""
+    """Singleton warm Chromium browser instance with bounded concurrency, isolated contexts,
+    and automatic browser instance recycling after 100 pages to prevent memory leaks."""
     _instance = None
     _lock = threading.Lock()
 
@@ -480,6 +550,7 @@ class PlaywrightBrowserManager:
         self._browser = None
         self._max_contexts = 3
         self._sem = threading.Semaphore(self._max_contexts)
+        self._pages_served = 0
 
     @classmethod
     def get_instance(cls):
@@ -505,6 +576,7 @@ class PlaywrightBrowserManager:
                 headless=True,
                 args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
             )
+            self._pages_served = 0
         return self._browser
 
     def fetch_page(self, url: str, timeout_ms: int = 25000):
@@ -514,6 +586,7 @@ class PlaywrightBrowserManager:
 
         context = None
         page = None
+        recycle_after = False
         try:
             with self._lock:
                 browser = self._ensure_browser()
@@ -534,6 +607,12 @@ class PlaywrightBrowserManager:
             result['final_url'] = page.url
             result['content_sha256'] = hashlib.sha256(html_text.encode('utf-8')).hexdigest()
             result['extraction_engine'] = 'playwright'
+
+            with self._lock:
+                self._pages_served += 1
+                if self._pages_served >= 100:
+                    recycle_after = True
+
             return result
         except Exception as exc:
             with self._lock:
@@ -552,6 +631,8 @@ class PlaywrightBrowserManager:
                 except Exception:
                     pass
             self._sem.release()
+            if recycle_after:
+                self.close()
 
     def close(self):
         with self._lock:
