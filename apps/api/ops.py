@@ -1,6 +1,6 @@
 """Additive PostgreSQL metadata, bounded operational read APIs and migrations."""
 import json, os, re, math, dataclasses
-from datetime import datetime, date, time, timezone
+from datetime import datetime, date, time as dt_time, timezone
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
@@ -37,7 +37,7 @@ def to_json_compatible(value, *, path='$'):
         if value.tzinfo is None or value.utcoffset() is None: raise TypeError(f'unsupported_json_type:{path}:naive_datetime')
         return value.astimezone(timezone.utc).isoformat().replace('+00:00','Z')
     if isinstance(value,date) and not isinstance(value,datetime): return value.isoformat()
-    if isinstance(value,time):
+    if isinstance(value,dt_time):
         if value.tzinfo is None or value.utcoffset() is None: raise TypeError(f'unsupported_json_type:{path}:naive_time')
         return value.isoformat()
     if isinstance(value,UUID): return str(value).lower()
