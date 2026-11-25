@@ -16,7 +16,7 @@ MAX_REDIRECTS = 3
 CONNECT_TIMEOUT = 8
 READ_TIMEOUT = 20
 DEFAULT_MAX_BYTES = 8 * 1024 * 1024
-UA = 'DefenceMonitor/1.0 (bounded enrichment fetch; project news-feed collector)'
+UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
 
 # IANA special-purpose address blocks that must never be reachable from here:
 # loopback, link-local (includes the 169.254.169.254 cloud metadata address),
@@ -117,7 +117,12 @@ def _single_request(method, url, *, max_bytes, extra_headers=None):
         conn = HTTPConnection(p.hostname, port, timeout=READ_TIMEOUT)
         conn.sock = raw_sock
 
-    headers = {'User-Agent': UA, 'Accept-Encoding': 'identity'}
+    headers = {
+        'User-Agent': UA,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'identity'
+    }
     headers.update(extra_headers or {})
     path = urlunsplit(('', '', p.path or '/', p.query, ''))
     try:

@@ -114,6 +114,25 @@ services:
     networks:
       - iran_monitor_net
 
+  # ----------------------------------------------------
+  # ۵. سرویس غنی‌سازی و استخراج خودکار متن کامل اخبار (Enrichment Worker)
+  # ----------------------------------------------------
+  enrichment:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: iran_monitor_enrichment
+    restart: unless-stopped
+    command: ["python", "enrichment_worker.py", "--daemon"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-iran_monitor_user}:${POSTGRES_PASSWORD:-iran_monitor_secret_123}@postgres:5432/${POSTGRES_DB:-iran_monitor}
+      ENRICHMENT_POLL_INTERVAL: 10
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - iran_monitor_net
+
 volumes:
   postgres_data:
     name: iran_monitor_pgdata

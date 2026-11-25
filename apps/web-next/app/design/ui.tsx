@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { AlertTriangle, Inbox, PlugZap, Sparkles, Languages, Zap, CircleDashed, ChevronLeft } from 'lucide-react';
 import { catVar, fmt } from './format';
 import type { Importance, Integration } from './types';
+import { usePrefs } from './prefs';
 
 /* ------------------------------------------------------------------ v2 primitives */
 
@@ -15,20 +16,27 @@ export function Tag({ children, tone = 'neutral', title, icon }: {
 }
 
 export function CategoryTag({ id, label, href = true }: { id: string | null | undefined; label: string | null | undefined; href?: boolean }) {
-  const text = label || 'دسته‌بندی‌نشده';
+  const { t } = usePrefs();
+  const text = label || t.tagUncategorized;
   const inner = <><i style={{ background: catVar(id) }} />{text}</>;
   if (href && id) return <Link href={`/topics/${id}`} className="cat-tag">{inner}</Link>;
   return <span className="cat-tag">{inner}</span>;
 }
 
-const IMP_LABEL: Record<Importance, string> = { high: 'اهمیت زیاد', medium: 'اهمیت متوسط', low: 'اهمیت کم' };
 export function ImportanceTag({ level, showLow = false }: { level: Importance; showLow?: boolean }) {
+  const { t } = usePrefs();
   if (level === 'low' && !showLow) return null;
-  return <span className={`imp imp-${level}`} title="بر اساس قاعده importance_v1 — صفحه «درباره» را ببینید"><i />{IMP_LABEL[level]}</span>;
+  const labels: Record<Importance, string> = {
+    high: t.importanceHigh,
+    medium: t.importanceMed,
+    low: t.importanceLow,
+  };
+  return <span className={`imp imp-${level}`} title={t.importanceTitle}><i />{labels[level]}</span>;
 }
 
 export function BreakingTag() {
-  return <Tag tone="urgent" icon={<Zap size={12} />}>فوری</Tag>;
+  const { t } = usePrefs();
+  return <Tag tone="urgent" icon={<Zap size={12} />}>{t.tagBreaking}</Tag>;
 }
 
 /** The client's rule: a machine translation is always visibly labelled, with
@@ -36,33 +44,35 @@ export function BreakingTag() {
 export const MACHINE_LABEL = 'ترجمه خودکار ـ تأیید انسانی نشده';
 
 export function TranslationTag({ status, review }: { status: string | null | undefined; review?: string | null }) {
+  const { t } = usePrefs();
   // 3003 lab pipeline (TranslateGemma 27B + QC v2.1): passing QC is not proof of correctness.
   if (status === 'translated_auto')
-    return <Tag tone="ai" icon={<Languages size={12} />} title="کنترل کیفیت خودکار اشکالی نیافت؛ این به معنی صحت قطعی نیست">{MACHINE_LABEL}</Tag>;
+    return <Tag tone="ai" icon={<Languages size={12} />} title={t.translationQcPassTitle}>{t.tagMachineLabel}</Tag>;
   if (status === 'qc_warning')
-    return <Tag tone="uncertain" icon={<Languages size={12} />} title="برخی اعداد، نام‌ها یا اصطلاحات قابل تأیید خودکار نبود؛ متن اصلی ملاک است">ترجمه با هشدار کیفیت</Tag>;
+    return <Tag tone="uncertain" icon={<Languages size={12} />} title={t.translationQcWarnTitle}>{t.translationQcWarnLabel}</Tag>;
   if (status === 'qc_failed')
-    return <Tag tone="uncertain" icon={<Languages size={12} />} title="کنترل کیفیت خطای بحرانی یافت؛ ترجمه نمایش داده نمی‌شود">ترجمه رد شد (خطای کیفیت)</Tag>;
+    return <Tag tone="uncertain" icon={<Languages size={12} />} title={t.translationQcFailedTitle}>{t.translationQcFailedLabel}</Tag>;
   if (status === 'translation_pending' || status === 'processing')
-    return <Tag tone="uncertain" icon={<Languages size={12} />} title="در صف ترجمه خودکار؛ تا آماده شدن، متن اصلی نمایش داده می‌شود">{status === 'processing' ? 'در حال ترجمه' : 'در انتظار ترجمه'}</Tag>;
+    return <Tag tone="uncertain" icon={<Languages size={12} />} title={t.translationPendingTitle}>{status === 'processing' ? t.translationProcessingLabel : t.translationPendingLabel}</Tag>;
   if (status === 'translation_failed')
-    return <Tag tone="uncertain" icon={<Languages size={12} />} title="پس از چند تلاش ناموفق ماند؛ متن اصلی معتبر است">ترجمه ناموفق (دائمی)</Tag>;
+    return <Tag tone="uncertain" icon={<Languages size={12} />} title={t.translationFailedTitle}>{t.translationFailedLabel}</Tag>;
   if (status === 'no_source_text')
-    return <Tag tone="neutral" icon={<Languages size={12} />} title="منبع متنی برای ترجمه منتشر نکرده است">بدون متن برای ترجمه</Tag>;
+    return <Tag tone="neutral" icon={<Languages size={12} />} title={t.translationNoTextTitle}>{t.translationNoTextLabel}</Tag>;
   if (status === 'translation_error')
-    return <Tag tone="uncertain" icon={<Languages size={12} />} title="ترجمه خودکار ناموفق بود و با تأخیر دوباره تلاش می‌شود">خطای ترجمه</Tag>;
+    return <Tag tone="uncertain" icon={<Languages size={12} />} title={t.translationErrorTitle}>{t.translationErrorLabel}</Tag>;
   if (status === 'available') {
-    const reviewed = review === 'approved' ? ' · بازبینی‌شده' : review === 'pending_review' ? ' · در صف بازبینی' : ' · بازبینی‌نشده';
-    return <Tag tone="ai" icon={<Languages size={12} />} title="ترجمه ماشینی؛ متن اصلی منبع حفظ شده است">ترجمه ماشینی{reviewed}</Tag>;
+    const reviewed = review === 'approved' ? ` · ${t.translationReviewed}` : review === 'pending_review' ? ` · ${t.translationPendingReview}` : ` · ${t.translationUnreviewed}`;
+    return <Tag tone="ai" icon={<Languages size={12} />} title={t.tagMachineLabel}>{t.translationMachine}{reviewed}</Tag>;
   }
-  const label = status === 'error' || status === 'failed' ? 'ترجمه ناموفق' : status === 'unavailable' ? 'ترجمه ناموجود'
-    : status === 'needs_review' ? 'ترجمه ردشده در کنترل کیفیت' : status === 'processing' ? 'در حال ترجمه'
-    : status === 'stale' ? 'متن اصلی تغییر کرده؛ ترجمه کهنه' : status === 'not_required' ? 'متن اصلی فارسی است' : 'ترجمه در انتظار';
-  return <Tag tone="uncertain" icon={<Languages size={12} />} title="هنوز ترجمه فارسی ذخیره نشده؛ متن اصلی نمایش داده می‌شود">{label}</Tag>;
+  const label = status === 'error' || status === 'failed' ? t.translationFailedLabel : status === 'unavailable' ? t.translationUnavailable
+    : status === 'needs_review' ? t.translationQcRejected : status === 'processing' ? t.translationProcessingLabel
+    : status === 'stale' ? t.translationStale : status === 'not_required' ? t.translationNotRequired : t.translationPendingLabel;
+  return <Tag tone="uncertain" icon={<Languages size={12} />} title={t.translationPendingTitle}>{label}</Tag>;
 }
 
-export function AiTag({ children = 'تولیدشده با هوش مصنوعی' }: { children?: ReactNode }) {
-  return <Tag tone="ai" icon={<Sparkles size={12} />}>{children}</Tag>;
+export function AiTag({ children }: { children?: ReactNode }) {
+  const { t } = usePrefs();
+  return <Tag tone="ai" icon={<Sparkles size={12} />}>{children ?? t.tagAiGenerated}</Tag>;
 }
 
 export function RuleTag({ children }: { children: ReactNode }) {
@@ -105,11 +115,12 @@ export function Empty({ title, children, icon }: { title: string; children?: Rea
 }
 
 export function Failure({ children, onRetry }: { children?: ReactNode; onRetry?: () => void }) {
+  const { t } = usePrefs();
   return (
     <div className="failure" role="alert">
       <AlertTriangle size={18} />
-      <span>{children ?? 'دریافت داده از سرور ناموفق بود. داده‌ای حدس زده یا جایگزین نشده است.'}</span>
-      {onRetry && <button type="button" className="btn-ghost" onClick={onRetry}>تلاش دوباره</button>}
+      <span>{children ?? t.failureDefault}</span>
+      {onRetry && <button type="button" className="btn-ghost" onClick={onRetry}>{t.retryAction}</button>}
     </div>
   );
 }
@@ -119,8 +130,9 @@ export function Bone({ h = 14, w = '100%', r }: { h?: number; w?: number | strin
 }
 
 export function CardBones({ n = 4, image = true }: { n?: number; image?: boolean }) {
+  const { t } = usePrefs();
   return (
-    <div className="bones" role="status" aria-label="در حال بارگذاری">
+    <div className="bones" role="status" aria-label={t.loadingText}>
       {Array.from({ length: n }).map((_, i) => (
         <div key={i} className="bone-card">
           {image && <Bone h={84} w={120} r={8} />}
@@ -131,26 +143,32 @@ export function CardBones({ n = 4, image = true }: { n?: number; image?: boolean
   );
 }
 
-const INTEGRATION_STATUS: Record<string, [string, 'ok' | 'warn' | 'error' | 'uncertain']> = {
-  active: ['فعال', 'ok'], configured: ['پیکربندی‌شده', 'ok'], stale: ['متوقف یا با تأخیر', 'warn'],
-  blocked: ['مسدود', 'error'], not_configured: ['اتصال پیکربندی نشده', 'uncertain'],
-  manual_only: ['پایش دستی', 'ok'],
-};
-
 /** Honest state for a capability whose data source is not connected: which
  *  integration, its live status, why — and never a placeholder number. */
 export function IntegrationNotice({ integration, title, children }: { integration: Integration | null | undefined; title?: string; children?: ReactNode }) {
-  const [label, tone] = INTEGRATION_STATUS[integration?.live_status ?? 'not_configured'] ?? [integration?.live_status ?? '—', 'uncertain'];
+  const { t, isEn } = usePrefs();
+  const statusMap: Record<string, [string, 'ok' | 'warn' | 'error' | 'uncertain']> = {
+    active: [t.statusActive, 'ok'],
+    configured: [t.statusConfigured, 'ok'],
+    stale: [t.statusStale, 'warn'],
+    blocked: [t.statusBlocked, 'error'],
+    not_configured: [t.statusNotConfigured, 'uncertain'],
+    manual_only: [t.statusManualOnly, 'ok'],
+  };
+  const [label, tone] = statusMap[integration?.live_status ?? 'not_configured'] ?? [integration?.live_status ?? '—', 'uncertain'];
+  const displayTitle = title ?? (isEn && integration?.name ? integration.name : (integration?.name_fa ?? t.dataConnection));
+  const displayReason = (isEn && integration?.reason ? integration.reason : null) || integration?.reason_fa;
+
   return (
     <div className={`integration integration-${tone}`}>
       <div className="integration-head">
         <PlugZap size={18} />
-        <strong>{title ?? integration?.name_fa ?? 'اتصال داده'}</strong>
+        <strong>{displayTitle}</strong>
         <Tag tone={tone}>{label}</Tag>
       </div>
-      {integration?.reason_fa && <p>{integration.reason_fa}</p>}
+      {displayReason && <p>{displayReason}</p>}
       {children}
-      {tone !== 'ok' && <small>هیچ داده نمایشی یا ساختگی در این بخش نشان داده نمی‌شود.</small>}
+      {tone !== 'ok' && <small>{t.noMockDataNote}</small>}
     </div>
   );
 }
@@ -176,11 +194,12 @@ export function Segmented<T extends string>({ value, onChange, items, label }: {
 }
 
 export function Pager({ page, hasNext, onPage, total }: { page: number; hasNext: boolean; onPage: (p: number) => void; total?: number }) {
+  const { t } = usePrefs();
   return (
-    <nav className="pager" aria-label="صفحه‌بندی">
-      <button type="button" className="btn-ghost" disabled={page <= 1} onClick={() => onPage(page - 1)}>صفحه قبل</button>
-      <span>صفحه {fmt(page)}{total != null ? ` · ${fmt(total)} مورد` : ''}</span>
-      <button type="button" className="btn-ghost" disabled={!hasNext} onClick={() => onPage(page + 1)}>صفحه بعد</button>
+    <nav className="pager" aria-label={t.pagerAria}>
+      <button type="button" className="btn-ghost" disabled={page <= 1} onClick={() => onPage(page - 1)}>{t.pagerPrev}</button>
+      <span>{t.pagerPage} {fmt(page)}{total != null ? ` · ${fmt(total)} ${t.pagerItems}` : ''}</span>
+      <button type="button" className="btn-ghost" disabled={!hasNext} onClick={() => onPage(page + 1)}>{t.pagerNext}</button>
     </nav>
   );
 }
@@ -194,9 +213,7 @@ export function SourceMark({ name, color, size = 28 }: { name: string; color: st
    (kept so the retained review and monitoring pages compile unchanged) */
 
 export type Health = 'healthy' | 'fresh' | 'attention' | 'stopped' | 'error' | 'inactive';
-const HEALTH_LABEL: Record<Health, string> = {
-  healthy: 'سالم', fresh: 'تازه', attention: 'نیازمند توجه', stopped: 'متوقف', error: 'خطادار', inactive: 'غیرفعال',
-};
+
 export function toHealth(apiValue: string | null | undefined): Health {
   switch (apiValue) {
     case 'healthy': return 'healthy';
@@ -206,32 +223,61 @@ export function toHealth(apiValue: string | null | undefined): Health {
     default: return 'inactive';
   }
 }
+
 export function StatusPill({ health, label, title }: { health: Health; label?: string; title?: string }) {
-  return <span className={'status-pill status-' + health} title={title}><i />{label ?? HEALTH_LABEL[health]}</span>;
+  const { isEn } = usePrefs();
+  const healthLabel: Record<Health, string> = {
+    healthy: isEn ? 'Healthy' : 'سالم',
+    fresh: isEn ? 'Fresh' : 'تازه',
+    attention: isEn ? 'Attention' : 'نیازمند توجه',
+    stopped: isEn ? 'Stopped' : 'متوقف',
+    error: isEn ? 'Error' : 'خطادار',
+    inactive: isEn ? 'Inactive' : 'غیرفعال',
+  };
+  return <span className={'status-pill status-' + health} title={title}><i />{label ?? healthLabel[health]}</span>;
 }
+
 export function Badge({ children, tone = 'default', title }: { children: ReactNode; tone?: 'default' | 'accent' | 'error' | 'muted'; title?: string }) {
   return <span className={tone === 'default' ? 'badge' : `badge badge-${tone}`} title={title}>{children}</span>;
 }
+
 export function EmptyState({ title, children }: { title: string; children?: ReactNode }) {
   return <Empty title={title}>{children}</Empty>;
 }
+
 export function ErrorState({ children, onRetry }: { children: ReactNode; onRetry?: () => void }) {
   return <Failure onRetry={onRetry}>{children}</Failure>;
 }
+
 export function Skeleton({ height = 16, width = '100%', radius }: { height?: number; width?: number | string; radius?: number }) {
   return <Bone h={height} w={width} r={radius} />;
 }
-const FIELD_LABEL: Record<string, string> = {
-  available: 'موجود', pending: 'در صف', unavailable: 'ناموجود', error: 'خطا', not_processed: 'پردازش‌نشده',
-  summary_only: 'فقط خلاصه', full_syndicated: 'متن کامل', link_only: 'فقط پیوند', not_generated: 'تولید نشده',
-  provider_not_configured: 'ارائه‌دهنده تنظیم نشده', needs_review: 'نیازمند بازبینی', pending_review: 'در صف بازبینی',
-  approved: 'تأییدشده', rejected: 'ردشده', not_applicable: '—', source_summary_missing: 'خلاصه منبع موجود نیست',
-};
+
 const FIELD_TONE: Record<string, 'accent' | 'default' | 'muted' | 'error'> = {
   available: 'accent', full_syndicated: 'accent', approved: 'accent', pending: 'default', summary_only: 'default',
   pending_review: 'default', error: 'error', rejected: 'error', needs_review: 'error',
 };
+
 export function FieldStatus({ label, status, title }: { label: string; status?: string | null; title?: string }) {
+  const { isEn } = usePrefs();
+  const fieldLabels: Record<string, string> = {
+    available: isEn ? 'Available' : 'موجود',
+    pending: isEn ? 'Pending' : 'در صف',
+    unavailable: isEn ? 'Unavailable' : 'ناموجود',
+    error: isEn ? 'Error' : 'خطا',
+    not_processed: isEn ? 'Not processed' : 'پردازش‌نشده',
+    summary_only: isEn ? 'Summary only' : 'فقط خلاصه',
+    full_syndicated: isEn ? 'Full text' : 'متن کامل',
+    link_only: isEn ? 'Link only' : 'فقط پیوند',
+    not_generated: isEn ? 'Not generated' : 'تولید نشده',
+    provider_not_configured: isEn ? 'Provider not configured' : 'ارائه‌دهنده تنظیم نشده',
+    needs_review: isEn ? 'Needs review' : 'نیازمند بازبینی',
+    pending_review: isEn ? 'In review queue' : 'در صف بازبینی',
+    approved: isEn ? 'Approved' : 'تأییدشده',
+    rejected: isEn ? 'Rejected' : 'ردشده',
+    not_applicable: '—',
+    source_summary_missing: isEn ? 'Source summary missing' : 'خلاصه منبع موجود نیست',
+  };
   const key = status || 'unavailable';
-  return <Badge tone={FIELD_TONE[key] ?? 'muted'} title={title}>{label} · {FIELD_LABEL[key] ?? key}</Badge>;
+  return <Badge tone={FIELD_TONE[key] ?? 'muted'} title={title}>{label} · {fieldLabels[key] ?? key}</Badge>;
 }

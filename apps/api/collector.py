@@ -47,6 +47,9 @@ def clean(s):
         return None
     if not s:return None
     p=Text();p.feed(html.unescape(s));p.close();t=' '.join(' '.join(p.parts).split());t=re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]','',t).strip()
+    t=re.sub(r'(?i)\s*The post\s+.+?\s+appeared first on\s+.+?\.?$', '', t).strip()
+    t=re.sub(r'(?i)\s*Click to read more\s*$', '', t).strip()
+    t=re.sub(r'(?i)\s*skip to main content\s*', ' ', t).strip()
     return t[:2000] or None
 def text(node,path):
     n=node.find(path)
@@ -122,15 +125,35 @@ def parse(data,sid,received):
             sidhash=hashlib.sha256((sid+'|'+canonical).encode()).hexdigest()
             if sidhash in seen:rejected+=1;continue
             seen.add(sidhash)
-            candidates=[('content_encoded',text(n,'{http://purl.org/rss/1.0/modules/content/}encoded')),('description',text(n,'description')),('description',text(n,'{*}description')),('atom_summary',text(n,'{*}summary')),('atom_content',text(n,'{*}content'))]
-            source=None;summary=None;content_html=None
-            for kind,value in candidates:
-                summary=clean(value)
-                if summary:source=kind;content_html=value;break
-            # The richest payload carries the body; a short description may coexist
-            # with a full content:encoded block, so keep the largest for extraction.
-            for kind,value in candidates:
-                if kind in ('content_encoded','atom_content') and value and len(value)>len(content_html or ''):content_html=value
+            # Separate publisher summary candidates from article body content candidates.
+            # Treat RSS <description> and Atom <summary> as publisher-provided summaries.
+            summary_candidates = [
+                ('description', text(n, 'description')),
+                ('description', text(n, '{*}description')),
+                ('atom_summary', text(n, '{*}summary'))
+            ]
+            summary = None
+            summary_source = None
+            for kind, value in summary_candidates:
+                val = clean(value)
+                if val:
+                    summary = val
+                    summary_source = kind
+                    break
+
+            # Treat RSS <content:encoded> and Atom <content> as article content, not summaries.
+            content_candidates = [
+                ('content_encoded', text(n, '{http://purl.org/rss/1.0/modules/content/}encoded')),
+                ('atom_content', text(n, '{*}content'))
+            ]
+            content_html = None
+            content_source = None
+            for kind, value in content_candidates:
+                if value and len(value.strip()) > 0:
+                    content_html = value
+                    content_source = kind
+                    break
+
             rawdate=text(n,'pubDate') or text(n,'{*}published') or text(n,'{*}updated') or text(n,'{*}date');published=None
             if rawdate:
                 try:
@@ -146,7 +169,26 @@ def parse(data,sid,received):
             try:rss_media=[x.to_dict() for x in mp.rss_candidates(n,canonical)]
             except Exception:rss_media=[]
             language=n.attrib.get(xml_lang) or feed_language
-            items.append({'item_id':sidhash,'source_id':sid,'title':title,'canonical_url':canonical,'external_guid':guid,'published_at':published.isoformat() if published else None,'collected_at':received,'fetched_at':received,'summary_raw':summary,'summary_text':summary,'summary_source':source,'summary_available':bool(summary),'content_html':content_html,'content_language':language.strip()[:64] if language and language.strip() else None,'classification':None,'topics':[],'rss_media':rss_media})
+            items.append({
+                'item_id': sidhash,
+                'source_id': sid,
+                'title': title,
+                'canonical_url': canonical,
+                'external_guid': guid,
+                'published_at': published.isoformat() if published else None,
+                'collected_at': received,
+                'fetched_at': received,
+                'summary_raw': summary,
+                'summary_text': summary,
+                'summary_source': summary_source,
+                'summary_available': bool(summary),
+                'content_html': content_html,
+                'content_source': content_source,
+                'content_language': language.strip()[:64] if language and language.strip() else None,
+                'classification': None,
+                'topics': [],
+                'rss_media': rss_media
+            })
         except (ValueError,TypeError):rejected+=1
     return items,len(nodes),rejected,{'feed_title':feed_title[:200] if feed_title else None,'feed_language':feed_language}
 def atomic_json(path,obj):
@@ -190,20 +232,32 @@ def store_content(c,item):
     if not raw:
         c.execute('''INSERT INTO news_item_content(item_id,original_language,original_text,text_chars,extraction_method,extraction_status,display_policy,source_url,content_sha256)
             VALUES(%s,%s,NULL,0,'feed_payload','unavailable','link_only',%s,NULL)
-            ON CONFLICT(item_id) DO UPDATE SET extraction_status='unavailable',display_policy='link_only',updated_at=now()''',
+            ON CONFLICT(item_id) DO UPDATE SET extraction_status='unavailable',display_policy='link_only',updated_at=now()
+            WHERE news_item_content.extraction_status IS DISTINCT FROM 'available' ''',
             (item['item_id'],item.get('content_language'),item['canonical_url']))
+        c.execute('''INSERT INTO enrichment_jobs(job_id,item_id,stage,status)
+            VALUES(%s,%s,'extraction','pending')
+            ON CONFLICT(item_id,stage) DO NOTHING''',
+            (hashlib.sha256(f"{item['item_id']}|extraction".encode()).hexdigest()[:32], item['item_id']))
         return 0
-    result=extract_content(raw,item_id=item['item_id'],base_url=item['canonical_url'],summary_source=item.get('summary_source'))
-    text=result['text'];policy=display_policy(item.get('summary_source'),text)
+    content_src = item.get('content_source') or item.get('summary_source') or 'unknown'
+    result=extract_content(raw,item_id=item['item_id'],base_url=item['canonical_url'],summary_source=content_src)
+    text=result['text'];policy=display_policy(content_src,text)
     digest=hashlib.sha256((text or '').encode('utf-8')).hexdigest() if text else None
     c.execute('''INSERT INTO news_item_content(item_id,content_version,original_language,original_text,text_chars,extraction_method,extraction_status,display_policy,source_url,content_sha256)
         VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         ON CONFLICT(item_id) DO UPDATE SET original_text=EXCLUDED.original_text,text_chars=EXCLUDED.text_chars,
         extraction_status=EXCLUDED.extraction_status,display_policy=EXCLUDED.display_policy,
         content_sha256=EXCLUDED.content_sha256,updated_at=now()
-        WHERE news_item_content.content_sha256 IS DISTINCT FROM EXCLUDED.content_sha256''',
+        WHERE news_item_content.extraction_status IS DISTINCT FROM 'available'
+          AND news_item_content.content_sha256 IS DISTINCT FROM EXCLUDED.content_sha256''',
         (item['item_id'],CONTENT_VERSION,item.get('content_language'),text,len(text or ''),
-         'feed_'+(item.get('summary_source') or 'unknown'),result['status'],policy,item['canonical_url'],digest))
+         'feed_'+content_src,result['status'],policy,item['canonical_url'],digest))
+    if result['status'] != 'available' or not text or len(text) < 400:
+        c.execute('''INSERT INTO enrichment_jobs(job_id,item_id,stage,status)
+            VALUES(%s,%s,'extraction','pending')
+            ON CONFLICT(item_id,stage) DO NOTHING''',
+            (hashlib.sha256(f"{item['item_id']}|extraction".encode()).hexdigest()[:32], item['item_id']))
     for m in result['media']:
         c.execute('''INSERT INTO news_item_media(media_id,item_id,kind,url,mime_type,declared_width,declared_height,alt_text,position,relevance,rejection_reason,discovery_method,verification_status)
             VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(media_id) DO NOTHING''',

@@ -24,6 +24,7 @@ import document_verify as dv
 import image_verify as iv
 import ai_gateway as gw
 import content_intelligence as ci
+from content import is_plausible_full_text
 
 DSN = os.environ['DATABASE_URL']
 STAGES = ('extraction', 'media', 'translation', 'classification', 'clustering')
@@ -66,15 +67,18 @@ def recover_stale_jobs(worker_id=None):
 
 
 def _claim_next(stage, worker_id):
-    """Atomically claim exactly one pending, due job for a stage. Uses
-    FOR UPDATE SKIP LOCKED so multiple workers could run concurrently without
-    double-processing the same job — this pilot runs one worker, but the
-    locking is real, not just documentation."""
+    """Atomically claim exactly one pending, due job for a stage. Prioritizes recent articles
+    over historical backfills so breaking news is never starved."""
     with psycopg.connect(DSN) as c:
         with c.transaction():
-            row = c.execute('''SELECT job_id,item_id,attempts FROM enrichment_jobs
-                WHERE stage=%s AND status='pending' AND available_at<=now()
-                ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED''', (stage,)).fetchone()
+            row = c.execute('''SELECT j.job_id, j.item_id, j.attempts FROM enrichment_jobs j
+                LEFT JOIN news_items n ON n.item_id = j.item_id
+                WHERE j.stage=%s AND j.status='pending' AND j.available_at<=now()
+                ORDER BY j.attempts ASC,
+                         (COALESCE(n.published_at, n.fetched_at) >= now() - interval '7 days') DESC,
+                         COALESCE(n.published_at, n.fetched_at) DESC NULLS LAST,
+                         j.created_at ASC
+                LIMIT 1 FOR UPDATE OF j SKIP LOCKED''', (stage,)).fetchone()
             if not row:
                 return None
             job_id, item_id, attempts = row
@@ -117,8 +121,8 @@ def process_extraction(item_id):
     item = _fetch_item(item_id)
     if not item:
         return 'item_not_found'
-    if item['extraction_status'] == 'available' and item['original_text']:
-        return 'already_have_rss_text'  # policy order: RSS content wins; no request made
+    if item['extraction_status'] == 'available' and item.get('original_text') and item['original_text'].strip():
+        return 'already_have_full_text'  # policy order: existing full text wins; no request made
 
     result = ae.fetch_article(item['canonical_url'])
     text = '\n'.join(b['text'] for b in result['blocks'])
@@ -131,18 +135,20 @@ def process_extraction(item_id):
                 unavailable_reason=EXCLUDED.unavailable_reason,updated_at=now()
                 WHERE news_item_content.extraction_status IS DISTINCT FROM 'available'
                 ''', (item_id, result.get('reason', 'no_text_extracted'), item['canonical_url']))
-        return f"extraction_unavailable:{result.get('reason', 'empty')}"
+        raise RuntimeError(f"extraction_unavailable:{result.get('reason', 'empty')}")
 
+    policy = 'full_syndicated' if is_plausible_full_text(text) else 'summary_only'
     digest = hashlib.sha256(text.encode('utf-8')).hexdigest()
     with psycopg.connect(DSN, autocommit=True) as c:
         c.execute('''INSERT INTO news_item_content(item_id,content_version,extraction_method,extraction_status,
             display_policy,content_type,content_sha256,original_text,text_chars,source_url,copyright_status)
-            VALUES(%s,1,'public_article_extraction','available','summary_only','public_article',%s,%s,%s,%s,'source_owned_not_relicensed')
+            VALUES(%s,1,'public_article_extraction','available',%s,'public_article',%s,%s,%s,%s,'source_owned_not_relicensed')
             ON CONFLICT(item_id) DO UPDATE SET extraction_status='available',content_type='public_article',
+            display_policy=EXCLUDED.display_policy,
             content_sha256=EXCLUDED.content_sha256,original_text=EXCLUDED.original_text,
             text_chars=EXCLUDED.text_chars,source_url=EXCLUDED.source_url,updated_at=now()
             WHERE news_item_content.content_sha256 IS DISTINCT FROM EXCLUDED.content_sha256''',
-            (item_id, digest, text, len(text), result.get('final_url', item['canonical_url'])))
+            (item_id, policy, digest, text, len(text), result.get('final_url', item['canonical_url'])))
         for img in result['images'][:10]:
             media_id = hashlib.sha256(f"{item_id}|{img['url']}".encode()).hexdigest()
             c.execute('''INSERT INTO news_item_media(media_id,item_id,kind,url,alt_text,declared_width,declared_height,
@@ -313,50 +319,79 @@ def process_translation(item_id):
     if not item:
         return 'item_not_found'
     body = item['original_text'] if item['display_policy'] == 'full_syndicated' or item['extraction_status'] == 'available' else None
-    summary_source = body or item['summary']
+    publisher_summary = item['summary'] if item['summary'] and item['summary'].strip() else None
     gateway = gw.build_default_gateway(DSN)
     outcomes = []
 
-    for field, text, fn in (
-        ('title', item['title'], lambda t: ci.translate_to_persian(t, gateway=gateway)),
-        ('body', body, lambda t: ci.translate_to_persian(t, gateway=gateway)),
-    ):
-        if not text:
+    # Priority 1: Translate Title
+    if item['title']:
+        digest = gw.content_hash('translation', item['title'], gw.LATEST_PROMPT_VERSION['translation'])
+        existing = q('''SELECT status,input_text_sha256,human_reviewed FROM news_item_translations
+            WHERE item_id=%s AND field='title' AND target_language='fa' ''', (item_id,))
+        if existing and existing[0][2]:
+            outcomes.append('title:skipped_human_reviewed')
+        elif existing and existing[0][0] == 'available' and existing[0][1] == digest:
+            outcomes.append('title:unchanged_skip')
+        else:
+            result = ci.translate_to_persian(item['title'], gateway=gateway)
+            outcomes.append(f'title:{_persist_translation_field(item_id, "title", item["title"], result)}')
+    else:
+        outcomes.append('title:no_source_text')
+
+    # Priority 2: Translate Publisher Summary (strictly publisher summary, never body)
+    if publisher_summary:
+        digest = gw.content_hash('translation', publisher_summary, gw.LATEST_PROMPT_VERSION['translation'])
+        existing = q('''SELECT status,input_text_sha256,human_reviewed FROM news_item_translations
+            WHERE item_id=%s AND field='summary' AND target_language='fa' ''', (item_id,))
+        if existing and existing[0][2]:
+            outcomes.append('summary:skipped_human_reviewed')
+        elif existing and existing[0][0] == 'available' and existing[0][1] == digest:
+            outcomes.append('summary:unchanged_skip')
+        else:
+            result = ci.translate_to_persian(publisher_summary, gateway=gateway)
+            outcomes.append(f'summary:{_persist_translation_field(item_id, "summary", publisher_summary, result)}')
+    else:
+        outcomes.append('summary:no_source_text')
+
+    # Priority 3: Translate Article Body (only if body is available)
+    if body:
+        digest = gw.content_hash('translation', body, gw.LATEST_PROMPT_VERSION['translation'])
+        existing = q('''SELECT status,input_text_sha256,human_reviewed FROM news_item_translations
+            WHERE item_id=%s AND field='body' AND target_language='fa' ''', (item_id,))
+        if existing and existing[0][2]:
+            outcomes.append('body:skipped_human_reviewed')
+        elif existing and existing[0][0] == 'available' and existing[0][1] == digest:
+            outcomes.append('body:unchanged_skip')
+        else:
+            result = ci.translate_to_persian(body, gateway=gateway)
+            outcomes.append(f'body:{_persist_translation_field(item_id, "body", body, result)}')
+    else:
+        outcomes.append('body:no_source_text')
+
+    # Priority 4: AI Analytical Summaries (executive_summary, why_it_matters)
+    analytical_context = body or publisher_summary
+    for field, summary_fn in (('executive_summary', ci.generate_executive_summary), ('why_it_matters', ci.generate_why_it_matters)):
+        if not analytical_context:
             outcomes.append(f'{field}:no_source_text')
             continue
-        digest = gw.content_hash('translation', text, gw.LATEST_PROMPT_VERSION['translation'])
+        prompt_version = {'executive_summary': gw.EXECUTIVE_SUMMARY_PROMPT_VERSION,
+                          'why_it_matters': gw.WHY_IT_MATTERS_PROMPT_VERSION}[field]
+        digest = gw.content_hash('summary', analytical_context, prompt_version)
         existing = q('''SELECT status,input_text_sha256,human_reviewed FROM news_item_translations
             WHERE item_id=%s AND field=%s AND target_language='fa' ''', (item_id, field))
-        if existing:
-            status, prev_hash, human_reviewed = existing[0]
-            if human_reviewed:
-                outcomes.append(f'{field}:skipped_human_reviewed'); continue
-            if status == 'available' and prev_hash == digest:
-                outcomes.append(f'{field}:unchanged_skip'); continue
-        result = fn(text)
-        outcomes.append(f'{field}:{_persist_translation_field(item_id, field, text, result)}')
+        if existing and existing[0][2]:
+            outcomes.append(f'{field}:skipped_human_reviewed')
+            continue
+        if existing and existing[0][0] == 'available' and existing[0][1] == digest:
+            outcomes.append(f'{field}:unchanged_skip')
+            continue
+        result = summary_fn(analytical_context, gateway=gateway)
+        outcomes.append(f'{field}:{_persist_translation_field(item_id, field, analytical_context, result)}')
 
-    for field, summary_fn in _SUMMARY_KIND_FUNCS.items():
-        if not summary_source:
-            outcomes.append(f'{field}:no_source_text'); continue
-        prompt_version = {'summary': gw.LATEST_PROMPT_VERSION['summary'],
-                           'executive_summary': gw.EXECUTIVE_SUMMARY_PROMPT_VERSION,
-                           'why_it_matters': gw.WHY_IT_MATTERS_PROMPT_VERSION}[field]
-        digest = gw.content_hash('summary', summary_source, prompt_version)
-        existing = q('''SELECT status,input_text_sha256,human_reviewed FROM news_item_translations
-            WHERE item_id=%s AND field=%s AND target_language='fa' ''', (item_id, field))
-        if existing:
-            status, prev_hash, human_reviewed = existing[0]
-            if human_reviewed:
-                outcomes.append(f'{field}:skipped_human_reviewed'); continue
-            if status == 'available' and prev_hash == digest:
-                outcomes.append(f'{field}:unchanged_skip'); continue
-        result = summary_fn(summary_source, gateway=gateway)
-        outcomes.append(f'{field}:{_persist_translation_field(item_id, field, summary_source, result)}')
-
-    if summary_source:
-        kp_result = ci.extract_key_points(summary_source, gateway=gateway)
-        outcomes.append(f'key_points:{_persist_key_points(item_id, summary_source, kp_result)}')
+    # Priority 5: Key Points
+    if analytical_context:
+        kp_result = ci.extract_key_points(analytical_context, gateway=gateway)
+        outcomes.append(f'key_points:{_persist_key_points(item_id, analytical_context, kp_result)}')
     else:
         outcomes.append('key_points:no_source_text')
 
@@ -466,16 +501,114 @@ def run_stage(stage, worker_id='pilot-worker', limit=None):
     return {'stage': stage, 'processed': processed, 'succeeded': succeeded, 'failed': failed}
 
 
+def enqueue_missing_articles(limit=250):
+    """Find articles in news_items that lack full text extraction and queue them."""
+    with psycopg.connect(DSN) as c:
+        rows = c.execute('''
+            SELECT n.item_id FROM news_items n
+            LEFT JOIN news_item_content cn USING(item_id)
+            WHERE (cn.extraction_status IS NULL OR cn.extraction_status NOT IN ('available', 'not_applicable'))
+              AND (cn.original_text IS NULL OR length(trim(cn.original_text)) = 0)
+              AND NOT EXISTS (
+                  SELECT 1 FROM enrichment_jobs j 
+                  WHERE j.item_id = n.item_id 
+                    AND j.stage = 'extraction' 
+                    AND j.status IN ('succeeded', 'processing', 'dead_letter')
+              )
+            ORDER BY n.published_at DESC NULLS LAST
+            LIMIT %s
+        ''', (limit,)).fetchall()
+        
+        if not rows:
+            return 0
+            
+        item_ids = [r[0] for r in rows]
+        for item_id in item_ids:
+            job_id = _job_id(item_id, 'extraction')
+            c.execute('''INSERT INTO enrichment_jobs(job_id,item_id,stage,status,available_at)
+                VALUES(%s,%s,'extraction','pending',now())
+                ON CONFLICT(item_id,stage) DO UPDATE SET
+                    status='pending',
+                    available_at=now(),
+                    attempts=0,
+                    updated_at=now()
+                WHERE enrichment_jobs.status NOT IN ('succeeded', 'processing', 'dead_letter')''',
+                (job_id, item_id))
+        return len(item_ids)
+
+
+def daemon_loop():
+    """Continuously run enrichment workers in the background."""
+    worker_id = f"worker-{os.getpid()}-{int(time.time())}"
+    poll_interval = int(os.environ.get('ENRICHMENT_POLL_INTERVAL', '10'))
+    print(f"Starting enrichment daemon [{worker_id}] with poll_interval={poll_interval}s...", flush=True)
+
+    recovered = recover_stale_jobs(worker_id)
+    if recovered:
+        print(f"Recovered {recovered} stale jobs on startup", flush=True)
+
+    n = enqueue_missing_articles(limit=200)
+    if n:
+        print(f"Enqueued {n} initial articles for extraction", flush=True)
+
+    try:
+        import publication_discovery as pd
+        pd.run_discovery()
+    except Exception as e:
+        print(f"Publication discovery startup error: {e}", flush=True)
+
+    last_scan = time.time()
+    last_discovery = time.time()
+    while True:
+        try:
+            now_sec = time.time()
+            if now_sec - last_discovery > 600:
+                try:
+                    import publication_discovery as pd
+                    pd.run_discovery()
+                except Exception as e:
+                    print(f"Publication discovery periodic error: {e}", flush=True)
+                last_discovery = now_sec
+
+            if now_sec - last_scan > 180:
+                recover_stale_jobs(worker_id)
+                enqueue_missing_articles(limit=200)
+                last_scan = now_sec
+
+            report = run_stage('extraction', worker_id=worker_id, limit=5)
+            if report['processed'] > 0:
+                print(f"Batch processed: {report}", flush=True)
+            else:
+                time.sleep(poll_interval)
+        except KeyboardInterrupt:
+            print("Enrichment daemon stopped by user", flush=True)
+            break
+        except Exception as e:
+            print(f"Enrichment loop error: {e}", file=sys.stderr, flush=True)
+            time.sleep(poll_interval)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('--manifest')
     parser.add_argument('--enqueue', action='store_true')
+    parser.add_argument('--enqueue-missing', action='store_true')
+    parser.add_argument('--daemon', action='store_true')
     parser.add_argument('--stage', choices=STAGES)
     parser.add_argument('--all-stages', action='store_true')
     parser.add_argument('--limit', type=int)
     parser.add_argument('--dry-run', action='store_true')
     parser.add_argument('--recover-stale-jobs', action='store_true')
     args = parser.parse_args(argv)
+
+    if args.daemon:
+        daemon_loop()
+        return 0
+
+    if args.enqueue_missing:
+        n = enqueue_missing_articles(limit=args.limit or 250)
+        print(json.dumps({'enqueued': n}))
+        return 0
 
     if args.recover_stale_jobs:
         n = recover_stale_jobs()

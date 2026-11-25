@@ -883,6 +883,28 @@ def register_ops(app):
             'translation_provider':os.getenv('NEWS_TRANSLATION_PROVIDER') or 'none',
             'method':'Counts of stored rows only. A pending field means no provider produced it yet; nothing is generated to fill a gap.'}
 
+    @app.get('/api/v1/enrichment/status')
+    def enrichment_status():
+        """Observable enrichment pipeline statistics: queued, running, succeeded, dead letter."""
+        jobs = dict(q("SELECT status, count(*) FROM enrichment_jobs WHERE stage='extraction' GROUP BY 1"))
+        total_enriched = q("SELECT count(*) FROM news_item_content WHERE extraction_status='available' AND original_text IS NOT NULL AND length(trim(original_text)) >= 400")[0][0]
+        recent_jobs = objects('''SELECT j.item_id, n.title, s.name as source_name, j.status, j.attempts, j.last_error, j.updated_at
+            FROM enrichment_jobs j
+            JOIN news_items n ON n.item_id = j.item_id
+            LEFT JOIN sources s ON s.source_id = n.source_id
+            WHERE j.stage = 'extraction'
+            ORDER BY j.updated_at DESC LIMIT 20''',
+            ['item_id', 'title', 'source_name', 'status', 'attempts', 'last_error', 'updated_at'])
+        return {
+            'stage': 'extraction',
+            'pending': jobs.get('pending', 0),
+            'processing': jobs.get('processing', 0),
+            'succeeded': jobs.get('succeeded', 0),
+            'dead_letter': jobs.get('dead_letter', 0),
+            'total_full_text_articles': total_enriched,
+            'recent_jobs': recent_jobs
+        }
+
     @app.get('/api/v1/taxonomy')
     def taxonomy():return TAX2
 

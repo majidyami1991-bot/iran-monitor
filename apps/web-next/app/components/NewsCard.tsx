@@ -30,14 +30,16 @@ export function useHeadline(item: FeedItem) {
 
 /** Persian line under the original in bilingual mode (or the reason it is absent). */
 export function BiLine({ text, warn, status }: { text: string | null; warn: boolean; status: string }) {
-  if (text) return <p className={warn ? 'card-fa card-fa-warn' : 'card-fa'} dir="rtl">{warn && <span className="fa-warn-mark" title="ترجمه با هشدار کیفیت؛ متن اصلی ملاک است">⚠</span>}{text}</p>;
-  const why = status === 'qc_failed' ? 'ترجمه این عنوان در کنترل کیفیت رد شد؛ فقط متن اصلی معتبر است.'
-    : status === 'translation_error' ? 'ترجمه ناموفق بود؛ دوباره تلاش می‌شود.'
-    : status === 'not_required' ? null : 'در انتظار ترجمه خودکار…';
+  const { t } = usePrefs();
+  if (text) return <p className={warn ? 'card-fa card-fa-warn' : 'card-fa'} dir="rtl">{warn && <span className="fa-warn-mark" title={t.cardFaWarnTitle}>⚠</span>}{text}</p>;
+  const why = status === 'qc_failed' ? t.cardFaQcFailed
+    : status === 'translation_error' ? t.cardFaTranslationError
+    : status === 'not_required' ? null : t.cardFaPending;
   return why ? <p className="card-fa card-fa-missing" dir="rtl">{why}</p> : null;
 }
 
 function Meta({ item, now, withSource = true }: { item: FeedItem; now: number; withSource?: boolean }) {
+  const { t } = usePrefs();
   return (
     <div className="card-meta">
       {withSource && (
@@ -46,21 +48,23 @@ function Meta({ item, now, withSource = true }: { item: FeedItem; now: number; w
           <bdi>{item.source_name}</bdi>
         </Link>
       )}
-      <time dateTime={item.published_at ?? undefined} title={item.published_at ? `انتشار: ${fmtDateTime(item.published_at)}` : 'زمان انتشار در خوراک منبع ثبت نشده'}>
-        {item.published_at ? fmtRelative(item.published_at, now) : 'زمان انتشار ثبت نشده'}
+      <time dateTime={item.published_at ?? undefined} title={item.published_at ? `${t.cardPublishedAt}${fmtDateTime(item.published_at)}` : t.cardPubNotRecorded}>
+        {item.published_at ? fmtRelative(item.published_at, now) : t.cardPubNotRecordedShort}
       </time>
     </div>
   );
 }
 
 function Summary({ item, text, dir, lines = 3 }: { item: FeedItem; text: string | null; dir: 'ltr' | 'rtl'; lines?: number }) {
+  const { t } = usePrefs();
   if (!text) {
-    return <p className="card-summary card-summary-missing">{item.summary_available === false ? 'منبع برای این خبر خلاصه‌ای منتشر نکرده است.' : 'خلاصه‌ای برای این خبر ثبت نشده است.'}</p>;
+    return <p className="card-summary card-summary-missing">{item.summary_available === false ? t.cardSummaryMissingPublisher : t.cardSummaryMissingGeneric}</p>;
   }
   return <p className="card-summary" dir={dir} style={{ WebkitLineClamp: lines }}>{text}</p>;
 }
 
 export function NewsCard({ item, now, variant = 'standard' }: { item: FeedItem; now: number; variant?: 'lead' | 'standard' | 'compact' | 'row' }) {
+  const { t } = usePrefs();
   const h = useHeadline(item);
   const href = `/news/${item.item_id}`;
 
@@ -87,7 +91,7 @@ export function NewsCard({ item, now, variant = 'standard' }: { item: FeedItem; 
             {item.breaking && <BreakingTag />}
             <CategoryTag id={item.category_id} label={item.category_label} />
             <ImportanceTag level={item.importance_level} />
-            {item.event_members > 1 && <Link href={`/events/${item.event_id}`} className="tag tag-info"><Layers size={12} />{fmt(item.event_members)} خبر در رویداد</Link>}
+            {item.event_members > 1 && <Link href={`/events/${item.event_id}`} className="tag tag-info"><Layers size={12} />{fmt(item.event_members)} {t.cardEventArticles}</Link>}
           </div>
           <h3 dir={h.titleDir}><Link href={href}>{h.title}</Link></h3>
           {h.original && <p className="card-original" dir="ltr">{h.original}</p>}
@@ -123,7 +127,7 @@ export function NewsCard({ item, now, variant = 'standard' }: { item: FeedItem; 
           <TranslationTag status={item.title_fa_status} review={item.title_fa_review} />
         </div>
         {item.event_members > 1 && (
-          <Link href={`/events/${item.event_id}`} className="card-event"><Layers size={14} />بخشی از رویدادی با {fmt(item.event_members)} خبر از {fmt(item.event_sources)} منبع</Link>
+          <Link href={`/events/${item.event_id}`} className="card-event"><Layers size={14} />{t.cardEventPartPrefix} {fmt(item.event_members)} {t.cardEventArticlesWord} {fmt(item.event_sources)} {t.cardEventSourcesWord}</Link>
         )}
       </div>
     </article>

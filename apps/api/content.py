@@ -98,6 +98,9 @@ def normalize_text(raw):
     text = re.sub(r'[ \t ]+', ' ', text)
     text = re.sub(r' *\n *', '\n', text)
     text = re.sub(r'\n{3,}', '\n\n', text).strip()
+    text = re.sub(r'(?i)\s*The post\s+.+?\s+appeared first on\s+.+?\.?$', '', text).strip()
+    text = re.sub(r'(?i)\s*Click to read more\s*$', '', text).strip()
+    text = re.sub(r'(?i)\s*skip to main content\s*', ' ', text).strip()
     return text[:MAX_TEXT_CHARS] or None
 
 
@@ -241,14 +244,33 @@ def extract(raw_html, *, item_id, base_url, summary_source):
     return {'text': text, 'media': media, 'status': status, 'error': None}
 
 
+def is_plausible_full_text(text):
+    if not text or len(text.strip()) < 200:
+        return False
+    teaser_patterns = [
+        r'(?i)^\s*read (the )?full (article|story) (at|on)\b',
+        r'(?i)^\s*to continue reading,?\s*(please )?(subscribe|sign in|log in)\b',
+        r'(?i)^\s*click (here|below) to read (more|the full)\b',
+        r'(?i)^\s*this article was originally published on\b',
+    ]
+    for pat in teaser_patterns:
+        if re.search(pat, text.strip()):
+            return False
+    # Substantive sentence/paragraph check
+    sentences = re.split(r'[.!?]\s+', text.strip())
+    if len(sentences) < 2 and '\n' not in text and len(text) < 400:
+        return False
+    return True
+
+
 def display_policy(summary_source, text):
     """What the platform may render for this item.
 
-    `full_syndicated` means the publisher put the article body in its own feed.
-    Anything else gets a summary plus a link to the original.
+    `full_syndicated` means the publisher put the article body in its own feed (content:encoded, atom:content).
+    Anything else (description, atom:summary, or teasers) gets summary_only plus link to original.
     """
     if not text:
         return 'link_only'
-    if summary_source in FULL_TEXT_SOURCES and len(text) >= 400:
+    if summary_source in FULL_TEXT_SOURCES and is_plausible_full_text(text):
         return 'full_syndicated'
     return 'summary_only'

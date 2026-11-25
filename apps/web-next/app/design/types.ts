@@ -82,8 +82,8 @@ export interface StorySummary {
 export interface Story extends StorySummary { frames: Frame[]; evidence: Record<string, unknown>; }
 
 export interface Integration {
-  integration_id: string; kind: string; name_fa: string; status: string; enabled: boolean;
-  reason_fa: string | null; contract: Record<string, unknown>; updated_at: string;
+  integration_id: string; kind: string; name_fa: string; name?: string; status: string; enabled: boolean;
+  reason_fa: string | null; reason?: string | null; contract: Record<string, unknown>; updated_at: string;
   live_status: string; live_detail?: Record<string, unknown> | null;
 }
 

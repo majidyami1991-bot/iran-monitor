@@ -17,13 +17,6 @@ interface Sources { sources: { source_id: string; name: string; item_count: numb
 const KEYS = ['q', 'source_id', 'category', 'topic', 'window', 'date_from', 'date_to', 'lang', 'importance', 'translation', 'sort', 'page'] as const;
 type Key = (typeof KEYS)[number];
 
-const LABELS: Partial<Record<Key, Record<string, string>>> = {
-  window: { '1h': 'یک ساعت', '24h': '۲۴ ساعت', '7d': '۷ روز', '30d': '۳۰ روز' },
-  lang: { en: 'انگلیسی', fa: 'فارسی', unknown: 'زبان نامشخص' },
-  importance: { high: 'اهمیت زیاد', medium: 'اهمیت متوسط', low: 'اهمیت کم' },
-  translation: { available: 'ترجمه خودکار بدون ایراد کیفیت', warning: 'ترجمه با هشدار کیفیت', failed: 'ترجمه ردشده در کنترل کیفیت', pending: 'ترجمه در انتظار', error: 'خطای ترجمه' },
-};
-
 /** All filter state lives in the URL, so every view is shareable and the
  *  back button works; the API receives exactly the same parameters. */
 export function NewsStream() {
@@ -36,6 +29,19 @@ export function NewsStream() {
   const p = useMemo(() => Object.fromEntries(KEYS.map((k) => [k, sp.get(k) ?? ''])) as Record<Key, string>, [sp]);
   const sort = (p.sort || 'newest') as 'newest' | 'important' | 'coverage' | 'oldest';
   const page = Math.max(1, Number(p.page) || 1);
+
+  const labels: Partial<Record<Key, Record<string, string>>> = {
+    window: { '1h': t.filterWindow1h, '24h': t.filterWindow24h, '7d': t.filterWindow7d, '30d': t.filterWindow30d },
+    lang: { en: t.filterLangEn, fa: t.filterLangFa, unknown: t.filterLangUnknown },
+    importance: { high: t.filterImportanceHigh, medium: t.filterImportanceMed, low: t.filterImportanceLow },
+    translation: {
+      available: t.filterTransAvailable,
+      warning: t.filterTransWarning,
+      failed: t.filterTransFailed,
+      pending: t.filterTransPending,
+      error: t.filterTransError,
+    },
+  };
 
   const set = (patch: Partial<Record<Key, string>>) => {
     const next = { ...p, ...patch };
@@ -60,7 +66,7 @@ export function NewsStream() {
   const srcLabel = (id: string) => sources.data?.sources.find((s) => s.source_id === id)?.name ?? t.filterSourceLabel;
   const active = (KEYS.filter((k) => p[k] && !['sort', 'page'].includes(k)) as Key[]).map((k) => ({
     k, label: k === 'category' ? catLabel(p[k]) : k === 'topic' ? subLabel(p[k]) : k === 'source_id' ? srcLabel(p[k])
-      : k === 'q' ? `«${p[k]}»` : k === 'date_from' ? (isEn ? `From ${p[k]}` : `از ${p[k]}`) : k === 'date_to' ? (isEn ? `To ${p[k]}` : `تا ${p[k]}`) : LABELS[k]?.[p[k]] ?? p[k],
+      : k === 'q' ? `«${p[k]}»` : k === 'date_from' ? t.filterDateFrom.replace('{val}', p[k]) : k === 'date_to' ? t.filterDateTo.replace('{val}', p[k]) : labels[k]?.[p[k]] ?? p[k],
   }));
 
   return (
