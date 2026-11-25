@@ -11,6 +11,7 @@ import { useAiState } from '../../design/aiState';
 import { BreakingTag, CategoryTag, Empty, Failure, ImportanceTag, SourceMark, Tag, TranslationTag, Bone, CardBones, MACHINE_LABEL } from '../../design/ui';
 import { useEffect, useState } from 'react';
 import type { TranslationQc } from '../../design/types';
+import { getCategoryLabel, getSubtopicLabel, getOtherReasonLabel } from '../../design/taxonomy';
 import { MediaViewer } from '../../components/MediaViewer';
 import { NewsCard } from '../../components/NewsCard';
 
@@ -226,7 +227,7 @@ export function NewsDetailPage() {
 
           {ctx.same_topic.length > 0 && (
             <section aria-labelledby="rel-h">
-              <h2 id="rel-h" className="brief-sub">{t.otherNewsInCategory} «{it.category_label}»</h2>
+              <h2 id="rel-h" className="brief-sub">{t.otherNewsInCategory} «{getCategoryLabel(it.category_id || it.category_label, isEn)}»</h2>
               {ctx.same_topic.map((s) => <NewsCard key={s.item_id} item={s} now={now} variant="row" />)}
             </section>
           )}
@@ -238,8 +239,8 @@ export function NewsDetailPage() {
             <ul className="prov">
               <li><Database size={14} /><div>{t.sourceProvenanceLabel}<small><bdi>{it.source_name}</bdi> · {x.hostname}</small></div></li>
               <li><Rss size={14} /><div>{t.ingestionMethodLabel}<small>{x.source_type === 'html' ? t.ingestionHtmlDesc : t.ingestionRssDesc}{x.feed_url ? <> · <span dir="ltr">{hostOf(x.feed_url)}</span></> : ''}</small></div></li>
-              <li><Clock3 size={14} /><div>{t.publishedAtLabel}<small>{x.published_at ? fmtDateTime(x.published_at) : t.feedNotRecorded}</small></div></li>
-              <li><Clock3 size={14} /><div>{t.receivedAtLabel}<small>{x.fetched_at ? fmtDateTime(x.fetched_at) : t.notRecordedLegacy}</small></div></li>
+              <li><Clock3 size={14} /><div>{t.publishedAtLabel}<small>{x.published_at ? fmtDateTime(x.published_at, isEn) : t.feedNotRecorded}</small></div></li>
+              <li><Clock3 size={14} /><div>{t.receivedAtLabel}<small>{x.fetched_at ? fmtDateTime(x.fetched_at, isEn) : t.notRecordedLegacy}</small></div></li>
               <li><ShieldCheck size={14} /><div>{t.provenanceStatusLabel}<small>{x.provenance_status === 'COMPLETE' ? t.statusComplete : (x.provenance_status || t.statusUnknown)}{x.provenance[0]?.execution_reference ? ` · ${t.executionRefPrefix} ${x.provenance[0].execution_reference.slice(0, 18)}` : ''}</small></div></li>
               <li><FileText size={14} /><div>{t.textProvenanceLabel}<small>{policyMap[x.content.display_policy] ?? x.content.display_policy} ({fmt(x.content.text_chars)} {t.charsCount})</small></div></li>
             </ul>
@@ -249,18 +250,18 @@ export function NewsDetailPage() {
             {!a ? <Empty title={t.notClassifiedYet} /> : (
               <dl className="kv">
                 <dt>{t.primaryCategory}</dt><dd><CategoryTag id={a.category_id} label={a.category_label} /></dd>
-                {a.other_reason_code && <><dt>{t.otherReasonLabel}</dt><dd>{ctx.other_reason_label}</dd></>}
+                {a.other_reason_code && <><dt>{t.otherReasonLabel}</dt><dd>{getOtherReasonLabel(a.other_reason_code || ctx.other_reason_label, isEn)}</dd></>}
                 <dt>{t.confidenceLabel}</dt><dd>{a.confidence != null && a.category_id !== 'other' ? fmtPercent(a.confidence * 100) : '—'} <small className="muted">{t.evidenceCountNote}</small></dd>
                 <dt>{t.secondaryTopics}</dt><dd>{a.secondary.length ? a.secondary.map((s) => <CategoryTag key={s.id} id={s.id} label={s.label} />) : '—'}</dd>
-                <dt>{t.subtopicsLabel}</dt><dd>{a.subtopics.length ? a.subtopics.map((s) => <Link key={s.id + s.parent} href={`/topics/${s.id}`} className="tag" style={{ marginInlineEnd: 4 }}>{s.label}</Link>) : '—'}</dd>
+                <dt>{t.subtopicsLabel}</dt><dd>{a.subtopics.length ? a.subtopics.map((s) => <Link key={s.id + s.parent} href={`/topics/${s.id}`} className="tag" style={{ marginInlineEnd: 4 }}>{getSubtopicLabel(s.id || s.label, isEn)}</Link>) : '—'}</dd>
                 <dt>{t.evidenceLabel}</dt><dd dir="ltr" style={{ textAlign: isEn ? 'left' : 'right' }}>{a.evidence.length ? a.evidence.join('، ') : '—'}</dd>
                 <dt>{t.methodLabel}</dt><dd>{a.human_locked ? t.methodHumanLocked : t.methodRules}</dd>
-                {ctx.legacy_classification && <><dt>{t.previousClassification}</dt><dd>{ctx.legacy_classification.category_label} <small className="muted">({t.versionPrefix} {ctx.legacy_classification.taxonomy_version})</small></dd></>}
+                {ctx.legacy_classification && <><dt>{t.previousClassification}</dt><dd>{getCategoryLabel(ctx.legacy_classification.category_label, isEn)} <small className="muted">({t.versionPrefix} {ctx.legacy_classification.taxonomy_version})</small></dd></>}
               </dl>
             )}
             {ctx.history.length > 0 && (
               <details style={{ marginTop: 10 }}><summary className="muted"><History size={13} /> {t.classificationHistory} ({fmt(ctx.history.length)})</summary>
-                <ul className="prov" style={{ marginTop: 8 }}>{ctx.history.map((h, i) => <li key={i}><History size={13} /><div>{h.category_label}<small>{changeMap[h.change_kind] ?? h.change_kind} · {t.versionPrefix} {h.taxonomy_version} · {fmtDateTime(h.recorded_at)}</small></div></li>)}</ul>
+                <ul className="prov" style={{ marginTop: 8 }}>{ctx.history.map((h, i) => <li key={i}><History size={13} /><div>{getCategoryLabel(h.category_label, isEn)}<small>{changeMap[h.change_kind] ?? h.change_kind} · {t.versionPrefix} {h.taxonomy_version} · {fmtDateTime(h.recorded_at, isEn)}</small></div></li>)}</ul>
               </details>
             )}
           </section>
@@ -283,15 +284,15 @@ function FaField({ label, cls, text, unverified, status, qc }: { label: string; 
   if (text) return <><p className={cls}>{text}</p>{scope}</>;
   if (unverified) return (
     <><p className={cls}>{unverified}</p>
-      <p className="bi-warn">{isEn ? `QC Warning: ${qc ? `${fmt(qc.uncertain)} items` : 'Some items'} could not be auto-verified. Original text is authoritative.` : `هشدار کنترل کیفیت: ${qc ? `${fmt(qc.uncertain)} مورد (عدد، نام، اصطلاح یا رابطه)` : 'برخی موارد'} به‌طور خودکار قابل تأیید نبود. این ترجمه فقط در کنار متن اصلی نمایش داده می‌شود و متن اصلی ملاک است.`}</p>{scope}</>);
-  if (status === 'qc_failed') return <p className="bi-fail">{isEn ? `Translation rejected in QC${qc?.critical ? ` (${fmt(qc.critical)} critical errors)` : ''}; original text is authoritative.` : `ترجمه ${label} در کنترل کیفیت خطای بحرانی داشت${qc?.critical ? ` (${fmt(qc.critical)} مورد)` : ''} و نمایش داده نمی‌شود؛ متن اصلی انگلیسی معتبر است.`}</p>;
-  if (status === 'translation_failed') return <p className="muted">{isEn ? `Translation failed after multiple attempts; original English text is authoritative.` : `ترجمه ${label} پس از چند تلاش ناموفق ماند؛ متن اصلی انگلیسی معتبر است.`}</p>;
+      <p className="bi-warn">{isEn ? `QC Warning: ${qc ? `${fmt(qc.uncertain)} items` : 'Some items'} could not be auto-verified.` : `هشدار کنترل کیفیت: ${qc ? `${fmt(qc.uncertain)} مورد` : 'برخی موارد'} به‌طور خودکار قابل تأیید نبود.`}</p>{scope}</>);
+  if (status === 'qc_failed') return <p className="bi-fail">{isEn ? `Translation rejected in QC${qc?.critical ? ` (${fmt(qc.critical)} critical errors)` : ''}.` : `ترجمه ${label} در کنترل کیفیت خطای بحرانی داشت${qc?.critical ? ` (${fmt(qc.critical)} مورد)` : ''} و نمایش داده نمی‌شود.`}</p>;
+  if (status === 'translation_failed') return <p className="muted">{isEn ? `Translation failed after multiple attempts.` : `ترجمه ${label} پس از چند تلاش ناموفق ماند.`}</p>;
   if (status === 'no_source_text') return <p className="muted">{isEn ? `Publisher provided no text for ${label}.` : `منبع برای ${label} متنی منتشر نکرده است.`}</p>;
   if (status === 'translation_error') return <p className="muted">{isEn ? `Translation error; will retry automatically.` : `ترجمه ${label} ناموفق بود و خودکار با تأخیر دوباره تلاش می‌شود.`}</p>;
   if (status === 'not_required') return <p className="muted">{isEn ? `Original ${label} is in Persian.` : `متن اصلی ${label} فارسی است.`}</p>;
   if (status === 'processing') return <p className="muted">{isEn ? `Translating ${label}…` : `ترجمه ${label} در حال انجام است…`}</p>;
   if (status === 'needs_review') return <p className="muted">{isEn ? `Translation rejected by QC.` : `ترجمه ${label} در کنترل کیفیت رد شد و نمایش داده نمی‌شود.`}</p>;
-  return <p className="muted">{isEn ? `Persian ${label} not ready yet (awaiting automated translation).` : `${label} فارسی هنوز آماده نیست (در انتظار ترجمه خودکار). متنی حدس زده یا جایگزین نمی‌شود.`}</p>;
+  return <p className="muted">{isEn ? `Persian ${label} not ready yet (awaiting automated translation).` : `${label} فارسی هنوز آماده نیست (در انتظار ترجمه خودکار).`}</p>;
 }
 
 function RequestTranslation({ id }: { id: string }) {

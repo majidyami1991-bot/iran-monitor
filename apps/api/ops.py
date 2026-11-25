@@ -989,6 +989,14 @@ def register_ops(app):
         for stage, status, count in queue_rows:
             queues.setdefault(stage, {})[status] = count
 
+        trans_rows = q('''SELECT field, count(*)::int FROM news_item_translations
+            WHERE target_language='fa' AND status IN ('available', 'translated_auto')
+            GROUP BY 1''')
+        translations_completed = {field: count for field, count in trans_rows}
+        kp_count = q('''SELECT count(*)::int FROM content_key_points WHERE superseded_at IS NULL''')
+        if kp_count and kp_count[0][0]:
+            translations_completed['key_points'] = kp_count[0][0]
+
         circuits = objects('''SELECT domain, consecutive_failures, cooldown_until, last_error, updated_at
             FROM source_circuit_breakers WHERE cooldown_until > now() ORDER BY updated_at DESC''',
             ['domain', 'consecutive_failures', 'cooldown_until', 'last_error', 'updated_at'])
@@ -1006,6 +1014,7 @@ def register_ops(app):
         return {
             'config': cfg,
             'queues': queues,
+            'translations_completed': translations_completed,
             'active_circuit_breakers': circuits,
             'capabilities': capabilities,
         }

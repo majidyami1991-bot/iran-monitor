@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, Inbox, PlugZap, Sparkles, Languages, Zap, CircleDashed, ChevronLeft } from 'lucide-react';
 import { catVar, fmt } from './format';
+import { getCategoryLabel } from './taxonomy';
 import type { Importance, Integration } from './types';
 import { usePrefs } from './prefs';
 
@@ -16,8 +17,8 @@ export function Tag({ children, tone = 'neutral', title, icon }: {
 }
 
 export function CategoryTag({ id, label, href = true }: { id: string | null | undefined; label: string | null | undefined; href?: boolean }) {
-  const { t } = usePrefs();
-  const text = label || t.tagUncategorized;
+  const { t, isEn } = usePrefs();
+  const text = getCategoryLabel(id || label, isEn) || label || t.tagUncategorized;
   const inner = <><i style={{ background: catVar(id) }} />{text}</>;
   if (href && id) return <Link href={`/topics/${id}`} className="cat-tag">{inner}</Link>;
   return <span className="cat-tag">{inner}</span>;

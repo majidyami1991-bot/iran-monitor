@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Pause, Play, X, ExternalLink } from 'lucide-
 import { useApi, useNow } from '../design/useApi';
 import type { Story, StorySummary } from '../design/types';
 import { catVar, fmt, fmtRelative, safeUrl } from '../design/format';
+import { getCategoryLabel, getCollectionLabel } from '../design/taxonomy';
 import { usePrefs } from '../design/prefs';
 import { Empty, Failure } from '../design/ui';
 
@@ -32,7 +33,7 @@ export function useStories() {
 export function StoriesRail({ layout = 'rail' }: { layout?: 'rail' | 'grid' }) {
   const q = useStories();
   const now = useNow();
-  const { seen } = usePrefs();
+  const { seen, isEn } = usePrefs();
   const [open, setOpen] = useState<number | null>(null);
   const railRef = useRef<HTMLDivElement>(null);
   const lastFocus = useRef<HTMLElement | null>(null);
@@ -60,10 +61,10 @@ export function StoriesRail({ layout = 'rail' }: { layout?: 'rail' | 'grid' }) {
             <div role="listitem" key={s.story_id} className="story">
               <button type="button" className={isNew ? 'story-btn story-new' : 'story-btn'} onKeyDown={(e) => onKey(e, idx)}
                 onClick={(e) => { lastFocus.current = e.currentTarget; setOpen(idx); }}
-                aria-label={`${s.title_fa}، ${s.collection_label}، ${fmt(s.frame_count)} بخش${isNew ? '، جدید' : '، دیده‌شده'}`}>
+                aria-label={`${s.title_fa}، ${getCollectionLabel(s.collection_label, isEn)}، ${fmt(s.frame_count)} بخش${isNew ? '، جدید' : '، دیده‌شده'}`}>
                 <Avatar s={s} />
                 <span className="story-title">{s.title_fa}</span>
-                <span className="story-sub">{s.collection_label} · {fmtRelative(s.content_updated_at ?? s.generated_at, now)}</span>
+                <span className="story-sub">{getCollectionLabel(s.collection_label, isEn)} · {fmtRelative(s.content_updated_at ?? s.generated_at, now, isEn)}</span>
               </button>
             </div>
           );
@@ -81,7 +82,7 @@ export function StoriesRail({ layout = 'rail' }: { layout?: 'rail' | 'grid' }) {
 export function StoryViewer({ stories, index, onIndex, onClose }: { stories: StorySummary[]; index: number; onIndex: (i: number) => void; onClose: () => void }) {
   const summary = stories[index];
   const q = useApi<Story>('stories/' + encodeURIComponent(summary.story_id), [summary.story_id]);
-  const { markSeen, contentLang } = usePrefs();
+  const { markSeen, contentLang, isEn } = usePrefs();
   const now = useNow();
   const [frame, setFrame] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -152,7 +153,7 @@ export function StoryViewer({ stories, index, onIndex, onClose }: { stories: Sto
         <div className="viewer-head">
           <div>
             <strong>{summary.title_fa}</strong>
-            <small>{summary.collection_label} · {summary.subtitle_fa}</small>
+            <small>{getCollectionLabel(summary.collection_label, isEn)} · {summary.subtitle_fa}</small>
           </div>
           <div className="viewer-tools">
             <button type="button" onClick={() => setPaused(!paused)} aria-pressed={paused} aria-label={paused ? 'ادامه' : 'توقف'}>{paused ? <Play size={16} /> : <Pause size={16} />}</button>
@@ -174,12 +175,12 @@ export function StoryViewer({ stories, index, onIndex, onClose }: { stories: Sto
               </div>
               <div className="viewer-text" onMouseEnter={() => setHold(true)} onMouseLeave={() => setHold(false)}
                 onFocus={() => setHold(true)} onBlur={() => setHold(false)}>
-                {f.category_label && <span className="viewer-kicker">{f.category_label}</span>}
+                {f.category_label && <span className="viewer-kicker">{getCategoryLabel(f.category_label, isEn)}</span>}
                 <h2 dir={f.headline_lang === 'en' ? 'ltr' : 'rtl'}>{f.headline}</h2>
                 {f.subline && <p dir={f.subline_lang === 'en' ? 'ltr' : 'rtl'}>{f.subline}</p>}
                 <div className="viewer-meta">
                   {f.source_name && <bdi>{f.source_name}</bdi>}
-                  {f.published_at && <span>{fmtRelative(f.published_at, now)}</span>}
+                  {f.published_at && <span>{fmtRelative(f.published_at, now, isEn)}</span>}
                   {f.headline_lang === 'en' && contentLang === 'fa' && <span className="viewer-note">متن اصلی منبع؛ ترجمه فارسی هنوز ذخیره نشده</span>}
                 </div>
                 <Link href={f.href} className="btn-primary" onClick={onClose}>مشاهده جزئیات<ExternalLink size={14} /></Link>

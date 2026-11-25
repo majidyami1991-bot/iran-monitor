@@ -4,6 +4,7 @@ import { ExternalLink } from 'lucide-react';
 import { useApi } from '../design/useApi';
 import { fmt, hostOf, safeUrl } from '../design/format';
 import { ItemImage, CategoryArt } from './Visual';
+import { usePrefs } from '../design/prefs';
 
 interface M {
   id: string; url: string; width: number | null; height: number | null; alt_text: string | null; caption: string | null;
@@ -25,6 +26,8 @@ const STATUS_FA: Record<string, string> = { valid: 'راستی‌آزمایی‌
 export function MediaViewer({ itemId, categoryId, categoryLabel, mediaStatus, articleUrl }: {
   itemId: string; categoryId: string | null; categoryLabel: string | null; mediaStatus: string; articleUrl?: string;
 }) {
+  const { contentLang } = usePrefs();
+  const isEn = contentLang === 'en';
   const q = useApi<{ primary_media: M | null; media: M[] }>(`news/${encodeURIComponent(itemId)}/media`, [itemId]);
   const [sel, setSel] = useState<string | null>(null);
   const media = q.data?.media ?? [];
@@ -53,7 +56,7 @@ export function MediaViewer({ itemId, categoryId, categoryLabel, mediaStatus, ar
         {current.caption && <span>{current.caption}</span>}
         {current.credit && <span>اعتبار تصویر: <bdi>{current.credit}</bdi></span>}
         <small>
-          منبع تصویر: <bdi dir="ltr">{current.source_hostname ?? hostOf(current.url)}</bdi>
+          {isEn ? 'Image source: ' : 'منبع تصویر: '}<bdi dir="ltr">{current.source_hostname ?? hostOf(current.url)}</bdi>
           {current.source_method && <> · {METHOD_FA[current.source_method] ?? current.source_method}</>}
           {current.width && current.height ? <> · {fmt(current.width)}×{fmt(current.height)}</> : null}
           {' · '}{STATUS_FA[current.validation_status ?? 'unknown'] ?? current.validation_status}

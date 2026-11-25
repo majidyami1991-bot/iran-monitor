@@ -14,7 +14,7 @@ export function MapPage() {
   const osint = integ.data?.integrations.filter((i) => ['geolocation', 'connectivity', 'flight_marine'].includes(i.integration_id)) ?? [];
   return (
     <Shell>
-      <PageHead eyebrow="تحلیل" title="نقشه رصد" lede="نقشه فقط نقاطی را نشان می‌دهد که مکان آن‌ها با شواهد متنی از خود خبر استخراج و ثبت شده باشد. هیچ مختصات حدسی یا تزئینی ساخته نمی‌شود." />
+      <PageHead eyebrow="تحلیل" title="نقشه رصد" lede="نقشه فقط نقاطی را نشان می‌دهد که مکان آن‌ها با شواهد متنی از خود خبر استخراج و ثبت شده باشد." />
       {q.error && <Failure onRetry={q.reload} />}
       {!q.data && !q.error && <Bone h={320} />}
       {q.data && q.data.total === 0 && (

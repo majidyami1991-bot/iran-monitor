@@ -8,6 +8,7 @@ import { fmt, fmtDateTime, fmtPercent, fmtRelative, sourceColor } from '../../de
 import { CategoryTag, Failure, PageHead, SourceMark, Tag, TranslationTag, Bone, CardBones } from '../../design/ui';
 import { ConfidenceTag, Pulse } from '../../components/EventTimeline';
 import { ItemImage } from '../../components/Visual';
+import { usePrefs } from '../../design/prefs';
 
 type Member = FeedItem & { similarity_score: number | null; membership_reason: { shared_entities?: string[]; shared_words?: string[]; hours_apart?: number; weighted_jaccard?: number } | null };
 interface Resp {
@@ -20,23 +21,25 @@ export function EventDetailPage() {
   const { id } = useParams<{ id: string }>();
   const q = useApi<Resp>('timeline/events/' + encodeURIComponent(id), [id]);
   const now = useNow();
-  if (q.error) return <Shell><Failure onRetry={q.reload}>این رویداد پیدا نشد یا دریافت آن ناموفق بود.</Failure></Shell>;
+  const { contentLang } = usePrefs();
+  const isEn = contentLang === 'en';
+  if (q.error) return <Shell><Failure onRetry={q.reload}>{isEn ? 'This event could not be found.' : 'این رویداد پیدا نشد یا دریافت آن ناموفق بود.'}</Failure></Shell>;
   if (!q.data) return <Shell><Bone h={28} w="60%" /><CardBones n={3} /></Shell>;
   const { event: e, items, sources } = q.data;
   return (
     <Shell>
-      <nav className="muted" aria-label="مسیر"><Link href="/events">رویدادها</Link></nav>
-      <PageHead eyebrow="داستان رویداد" title={e.title}>
+      <nav className="muted" aria-label={isEn ? 'Breadcrumbs' : 'مسیر'}><Link href="/events">{isEn ? 'Events' : 'رویدادها'}</Link></nav>
+      <PageHead eyebrow={isEn ? 'Event Story' : 'داستان رویداد'} title={e.title}>
         <div className="card-flags">
           <CategoryTag id={e.primary_category} label={e.primary_category_label ?? 'دسته غالب ندارد'} href={!!e.primary_category} />
           <ConfidenceTag level={e.confidence_level} />
-          <Tag tone="brand">{fmt(e.source_count)} منبع · {fmt(e.member_count)} خبر</Tag>
+          <Tag tone="brand">{fmt(e.source_count)} {isEn ? (e.source_count === 1 ? 'source' : 'sources') : 'منبع'} · {fmt(e.member_count)} {isEn ? (e.member_count === 1 ? 'article' : 'articles') : 'خبر'}</Tag>
         </div>
       </PageHead>
       <div className="grid-3">
-        <div className="stat"><span className="stat-label">نخستین گزارش</span><strong className="stat-value" style={{ fontSize: 16 }}>{fmtDateTime(e.first_published_at)}</strong></div>
-        <div className="stat"><span className="stat-label">آخرین تحول</span><strong className="stat-value" style={{ fontSize: 16 }}>{fmtDateTime(e.last_updated_at)}</strong><span className="stat-note">{fmtRelative(e.last_updated_at, now)}</span></div>
-        <div className="stat"><span className="stat-label">اطمینان گروه‌بندی</span><strong className="stat-value" style={{ fontSize: 16 }}>{e.confidence != null ? fmtPercent(e.confidence * 100) : 'نامشخص'}</strong><span className="stat-note">میانگین امتیاز شباهت دوبه‌دو</span></div>
+        <div className="stat"><span className="stat-label">{isEn ? 'First Report' : 'نخستین گزارش'}</span><strong className="stat-value" style={{ fontSize: 16 }}>{fmtDateTime(e.first_published_at)}</strong></div>
+        <div className="stat"><span className="stat-label">{isEn ? 'Latest Update' : 'آخرین تحول'}</span><strong className="stat-value" style={{ fontSize: 16 }}>{fmtDateTime(e.last_updated_at)}</strong><span className="stat-note">{fmtRelative(e.last_updated_at, now, isEn)}</span></div>
+        <div className="stat"><span className="stat-label">{isEn ? 'Cluster Confidence' : 'اطمینان گروه‌بندی'}</span><strong className="stat-value" style={{ fontSize: 16 }}>{e.confidence != null ? fmtPercent(e.confidence * 100) : (isEn ? 'Unknown' : 'نامشخص')}</strong><span className="stat-note">{isEn ? 'Average pairwise similarity' : 'میانگین امتیاز شباهت دوبه‌دو'}</span></div>
       </div>
       <section className="panel">
         <h2 className="brief-sub">شدت پوشش در طول زمان</h2>

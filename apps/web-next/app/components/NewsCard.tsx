@@ -39,7 +39,7 @@ export function BiLine({ text, warn, status }: { text: string | null; warn: bool
 }
 
 function Meta({ item, now, withSource = true }: { item: FeedItem; now: number; withSource?: boolean }) {
-  const { t } = usePrefs();
+  const { t, isEn } = usePrefs();
   return (
     <div className="card-meta">
       {withSource && (
@@ -48,8 +48,8 @@ function Meta({ item, now, withSource = true }: { item: FeedItem; now: number; w
           <bdi>{item.source_name}</bdi>
         </Link>
       )}
-      <time dateTime={item.published_at ?? undefined} title={item.published_at ? `${t.cardPublishedAt}${fmtDateTime(item.published_at)}` : t.cardPubNotRecorded}>
-        {item.published_at ? fmtRelative(item.published_at, now) : t.cardPubNotRecordedShort}
+      <time dateTime={item.published_at ?? undefined} title={item.published_at ? `${t.cardPublishedAt}${fmtDateTime(item.published_at, isEn)}` : t.cardPubNotRecorded}>
+        {item.published_at ? fmtRelative(item.published_at, now, isEn) : t.cardPubNotRecordedShort}
       </time>
     </div>
   );

@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import type { EventRow } from '../design/types';
 import { fmt, fmtDateTime, fmtRelative, fmtTime } from '../design/format';
+import { usePrefs } from '../design/prefs';
 import { CategoryTag, Tag } from '../design/ui';
 
 const CONF: Record<string, [string, 'ok' | 'warn' | 'uncertain']> = {
@@ -30,24 +31,25 @@ export function Pulse({ pulses, label }: { pulses: EventRow['pulses']; label: st
 }
 
 export function EventTimeline({ events, now, compact = false }: { events: EventRow[]; now: number; compact?: boolean }) {
+  const { isEn } = usePrefs();
   return (
     <ol className={compact ? 'timeline timeline-compact' : 'timeline'}>
       {events.map((e) => (
         <li key={e.event_id} className="tl-item">
           <div className="tl-when">
-            <time dateTime={e.last_updated_at ?? undefined} title={`آخرین تحول: ${fmtDateTime(e.last_updated_at)}`}>{fmtTime(e.last_updated_at)}</time>
-            <small>{fmtRelative(e.last_updated_at, now)}</small>
+            <time dateTime={e.last_updated_at ?? undefined} title={isEn ? `Last update: ${fmtDateTime(e.last_updated_at, isEn)}` : `آخرین تحول: ${fmtDateTime(e.last_updated_at)}`}>{fmtTime(e.last_updated_at)}</time>
+            <small>{fmtRelative(e.last_updated_at, now, isEn)}</small>
           </div>
           <span className="tl-dot" aria-hidden="true" />
           <div className="tl-body">
             <div className="card-flags">
               <CategoryTag id={e.primary_category} label={e.primary_category_label ?? (e.primary_category ? null : 'دسته غالب ندارد')} href={!!e.primary_category} />
               <ConfidenceTag level={e.confidence_level} />
-              {e.source_count >= 2 && <Tag tone="brand">{fmt(e.source_count)} منبع مستقل</Tag>}
+              {e.source_count >= 2 && <Tag tone="brand">{fmt(e.source_count)} {isEn ? 'independent sources' : 'منبع مستقل'}</Tag>}
             </div>
             <h3 dir="ltr"><Link href={`/events/${e.event_id}`}>{e.title}</Link></h3>
             <p className="tl-meta">
-              {fmt(e.member_count)} خبر · شروع {fmtRelative(e.first_published_at, now)}
+              {fmt(e.member_count)} {isEn ? (e.member_count === 1 ? 'article' : 'articles') : 'خبر'} · {isEn ? 'Started' : 'شروع'} {fmtRelative(e.first_published_at, now, isEn)}
               {e.sources && e.sources.length > 0 && <> · <span className="tl-sources">{e.sources.map((s, i) => <span key={s.source_id}>{i > 0 && '، '}<bdi>{s.name}</bdi></span>)}</span></>}
             </p>
             {!compact && <Pulse pulses={e.pulses} label="روند پوشش" />}

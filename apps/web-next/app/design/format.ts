@@ -17,19 +17,28 @@ function parse(value: string | Date | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-export function fmtDateTime(value: string | null | undefined): string {
+export function fmtDateTime(value: string | null | undefined, isEn = false): string {
   const d = parse(value);
-  return d ? d.toLocaleString('fa-IR', { timeZone: TZ, dateStyle: 'medium', timeStyle: 'short' }) : 'ثبت نشده';
+  if (!d) return isEn ? 'Not recorded' : 'ثبت نشده';
+  return isEn
+    ? d.toLocaleString('en-US', { timeZone: TZ, dateStyle: 'medium', timeStyle: 'short' })
+    : d.toLocaleString('fa-IR', { timeZone: TZ, dateStyle: 'medium', timeStyle: 'short' });
 }
 
-export function fmtDateShort(value: string | null | undefined): string {
+export function fmtDateShort(value: string | null | undefined, isEn = false): string {
   const d = parse(value);
-  return d ? d.toLocaleDateString('fa-IR', { timeZone: TZ, month: 'short', day: 'numeric' }) : 'ثبت نشده';
+  if (!d) return isEn ? 'Not recorded' : 'ثبت نشده';
+  return isEn
+    ? d.toLocaleDateString('en-US', { timeZone: TZ, month: 'short', day: 'numeric' })
+    : d.toLocaleDateString('fa-IR', { timeZone: TZ, month: 'short', day: 'numeric' });
 }
 
-export function fmtDateLong(value: string | Date | null | undefined): string {
+export function fmtDateLong(value: string | Date | null | undefined, isEn = false): string {
   const d = parse(value);
-  return d ? d.toLocaleDateString('fa-IR', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : 'ثبت نشده';
+  if (!d) return isEn ? 'Not recorded' : 'ثبت نشده';
+  return isEn
+    ? d.toLocaleDateString('en-US', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    : d.toLocaleDateString('fa-IR', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 export function fmtTime(value: string | Date | null | undefined): string {
@@ -41,24 +50,28 @@ export function fmtClock(d: Date): string {
   return d.toLocaleTimeString('fa-IR', { timeZone: TZ, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-export function fmtDay(value: string | null | undefined): string {
+export function fmtDay(value: string | null | undefined, isEn = false): string {
   const d = parse(value);
-  return d ? d.toLocaleDateString('fa-IR', { timeZone: TZ, month: 'numeric', day: 'numeric' }) : '—';
+  if (!d) return '—';
+  return isEn
+    ? d.toLocaleDateString('en-US', { timeZone: TZ, month: 'numeric', day: 'numeric' })
+    : d.toLocaleDateString('fa-IR', { timeZone: TZ, month: 'numeric', day: 'numeric' });
 }
 
-/** Relative "چند دقیقه پیش" phrasing; absolute date once relative stops helping. */
-export function fmtRelative(value: string | null | undefined, nowMs: number): string {
+/** Relative phrasing with Persian and English support; absolute date once relative stops helping. */
+export function fmtRelative(value: string | null | undefined, nowMs: number, langOrIsEn: 'fa' | 'en' | boolean = 'fa'): string {
+  const isEn = langOrIsEn === 'en' || langOrIsEn === true;
   const d = parse(value);
-  if (!d) return 'ثبت نشده';
+  if (!d) return isEn ? 'Not recorded' : 'ثبت نشده';
   const diffMin = Math.round((nowMs - d.getTime()) / 60000);
-  if (diffMin < -5) return fmtDateTime(value ?? null); // future-dated by the publisher
-  if (diffMin < 1) return 'همین الان';
-  if (diffMin < 60) return `${fmt(diffMin)} دقیقه پیش`;
+  if (diffMin < -5) return fmtDateTime(value ?? null, isEn); // future-dated by the publisher
+  if (diffMin < 1) return isEn ? 'just now' : 'همین الان';
+  if (diffMin < 60) return isEn ? `${diffMin}m ago` : `${fmt(diffMin)} دقیقه پیش`;
   const h = Math.round(diffMin / 60);
-  if (h < 24) return `${fmt(h)} ساعت پیش`;
+  if (h < 24) return isEn ? `${h}h ago` : `${fmt(h)} ساعت پیش`;
   const days = Math.round(h / 24);
-  if (days < 14) return `${fmt(days)} روز پیش`;
-  return fmtDateShort(value);
+  if (days < 14) return isEn ? `${days}d ago` : `${fmt(days)} روز پیش`;
+  return fmtDateShort(value, isEn);
 }
 
 /** Only ever return a URL that is safe for an href/src: http(s), no credentials. */

@@ -119,18 +119,10 @@ def get_enabled_ai_stages(dsn=DSN):
 def is_ollama_connection_error(exc):
     msg = str(exc).lower()
     return (
-        isinstance(exc, (urllib.error.URLError, TimeoutError, ConnectionError, OSError))
-        or 'connection refused' in msg
-        or 'timed out' in msg
-        or 'timeout' in msg
-        or 'remotedisconnected' in msg
-        or 'service unavailable' in msg
-        or '503' in msg
-        or '502' in msg
-        or 'unreachable' in msg
-        or 'failed to establish a new connection' in msg
-        or 'circuit_open' in msg
-        or 'circuit_breaker_open' in msg
+        'ollama_connection_error' in msg
+        or 'circuit_breaker_open_provider_failing' in msg
+        or (isinstance(exc, (urllib.error.URLError, TimeoutError, ConnectionError, OSError))
+            and ('11434' in msg or 'ollama' in msg or 'connection refused' in msg or 'timed out' in msg or 'remotedisconnected' in msg))
     )
 
 
@@ -190,67 +182,136 @@ def _postpone_connection_error(job_id, error, backoff_seconds=60):
             (error[:250], backoff_seconds, job_id))
 
 
+STAGE_WEIGHTS = {
+    'translation_title': 2,
+    'translation_summary': 2,
+    'translation_body': 1,
+    'ai_executive_summary': 1,
+    'ai_why_it_matters': 1,
+    'ai_key_points': 1,
+    'translation': 1,
+}
+
+
+class FairStageScheduler:
+    """Interleaves processing across active AI capabilities using deficit round-robin.
+    Prevents starvation when multiple capabilities are enabled, ensuring titles, summaries,
+    bodies, and analytical stages make continuous progress at their proportional weights."""
+    _credits = {}
+    _last_stage = None
+
+    @classmethod
+    def pick_stage(cls, pending_counts: dict) -> str:
+        active_stages = [s for s, c in pending_counts.items() if c > 0]
+        if not active_stages:
+            return None
+        if len(active_stages) == 1:
+            cls._last_stage = active_stages[0]
+            return active_stages[0]
+
+        has_credit = any(cls._credits.get(s, 0) > 0 for s in active_stages)
+        if not has_credit:
+            for s in active_stages:
+                cls._credits[s] = cls._credits.get(s, 0) + STAGE_WEIGHTS.get(s, 1)
+
+        candidates = sorted(
+            active_stages,
+            key=lambda s: (
+                cls._credits.get(s, 0),
+                1 if s != cls._last_stage else 0,
+                STAGE_WEIGHTS.get(s, 1)
+            ),
+            reverse=True
+        )
+        chosen = candidates[0]
+        cls._last_stage = chosen
+        return chosen
+
+    @classmethod
+    def consume_credit(cls, stage: str):
+        if stage in cls._credits:
+            cls._credits[stage] = max(0, cls._credits[stage] - 1)
+
+
 def _claim_next_ai_job(enabled_stages, worker_id='pilot-worker'):
-    """Atomically claim the highest-priority pending AI job across all currently enabled capabilities.
-    Enforces cross-article priority: recent publisher-summaries > recent titles > older summaries > bodies.
-    Includes starvation prevention for older or lower-priority jobs waiting > 6 hours."""
+    """Atomically claim the next pending AI job across all currently enabled capabilities.
+    1. Explicit user on-demand requests (translation_queue_requests) bypass round-robin and execute immediately.
+    2. Background queue uses FairStageScheduler to interleave across active stages, preventing title or body starvation.
+    3. Within each chosen stage, jobs are claimed by recency (published_at/fetched_at DESC).
+    4. Hard anti-starvation: jobs waiting > 4 hours in any stage get boosted to the front of their stage."""
     if not enabled_stages:
         return None
+
     with psycopg.connect(DSN) as c:
         with c.transaction():
-            row = c.execute('''
+            # 1. First priority: Explicit user on-demand requests from the web UI
+            on_demand_job = c.execute('''
                 SELECT j.job_id, j.item_id, j.stage, j.attempts
                 FROM enrichment_jobs j
-                LEFT JOIN news_items n ON n.item_id = j.item_id
-                LEFT JOIN translation_queue_requests tqr ON tqr.item_id = j.item_id
+                JOIN translation_queue_requests tqr ON tqr.item_id = j.item_id
                 WHERE j.stage = ANY(%s)
                   AND j.status = 'pending'
                   AND j.available_at <= now()
-                ORDER BY
-                  -- 1. Explicit user on-demand request gets highest priority
-                  (tqr.item_id IS NOT NULL) DESC,
-                  
-                  -- 2. Hard starvation prevention: any job waiting > 6 hours gets boosted
-                  (j.created_at < now() - interval '6 hours') DESC,
-                  
-                  -- 3. Cross-article stage & recency priority score
-                  (CASE
-                     -- Recent publisher summary (published in last 24h)
-                     WHEN j.stage = 'translation_summary' AND COALESCE(n.published_at, n.fetched_at) >= now() - interval '24 hours' THEN 100
-                     -- Recent title (published in last 24h)
-                     WHEN j.stage = 'translation_title'   AND COALESCE(n.published_at, n.fetched_at) >= now() - interval '24 hours' THEN 90
-                     -- Older publisher summary
-                     WHEN j.stage = 'translation_summary' THEN 80
-                     -- Older title
-                     WHEN j.stage = 'translation_title'   THEN 70
-                     -- AI analytical enhancements
-                     WHEN j.stage IN ('ai_executive_summary', 'ai_why_it_matters', 'ai_key_points') THEN 60
-                     -- Full article body (recent)
-                     WHEN j.stage = 'translation_body'    AND COALESCE(n.published_at, n.fetched_at) >= now() - interval '24 hours' THEN 50
-                     -- Full article body (older / backfill)
-                     WHEN j.stage = 'translation_body'    THEN 30
-                     ELSE 10
-                   END
-                   -- Starvation boost: +5 priority points per hour waiting, capped at +40
-                   + LEAST(40.0, EXTRACT(EPOCH FROM (now() - j.created_at)) / 3600.0 * 5.0)
-                  ) DESC,
-                  
-                  -- 4. Fewer attempts first
-                  j.attempts ASC,
-                  
-                  -- 5. Newer published articles first within same score
-                  COALESCE(n.published_at, n.fetched_at) DESC NULLS LAST,
-                  
-                  -- 6. FIFO on creation
-                  j.created_at ASC
+                ORDER BY j.created_at ASC
                 LIMIT 1 FOR UPDATE OF j SKIP LOCKED
             ''', (enabled_stages,)).fetchone()
-            if not row:
+
+            if on_demand_job:
+                job_id, item_id, stage, attempts = on_demand_job
+                c.execute('''UPDATE enrichment_jobs SET status='processing', locked_at=now(), locked_by=%s,
+                    attempts=attempts+1, updated_at=now() WHERE job_id=%s''', (worker_id, job_id))
+                return {'job_id': job_id, 'item_id': item_id, 'stage': stage, 'attempts': attempts + 1}
+
+            # 2. Query pending counts for enabled stages
+            stage_rows = c.execute('''
+                SELECT stage, count(*)::int
+                FROM enrichment_jobs
+                WHERE stage = ANY(%s)
+                  AND status = 'pending'
+                  AND available_at <= now()
+                GROUP BY stage
+            ''', (enabled_stages,)).fetchall()
+
+            if not stage_rows:
                 return None
-            job_id, item_id, stage, attempts = row
-            c.execute('''UPDATE enrichment_jobs SET status='processing', locked_at=now(), locked_by=%s,
-                attempts=attempts+1, updated_at=now() WHERE job_id=%s''', (worker_id, job_id))
-            return {'job_id': job_id, 'item_id': item_id, 'stage': stage, 'attempts': attempts + 1}
+
+            pending_counts = {row[0]: row[1] for row in stage_rows}
+
+            # Try candidate stages in order of scheduler preference
+            active_candidates = list(pending_counts.keys())
+            while active_candidates:
+                chosen_stage = FairStageScheduler.pick_stage({s: pending_counts[s] for s in active_candidates})
+                if not chosen_stage:
+                    break
+
+                # Claim the best job for the chosen stage
+                job_row = c.execute('''
+                    SELECT j.job_id, j.item_id, j.stage, j.attempts
+                    FROM enrichment_jobs j
+                    LEFT JOIN news_items n ON n.item_id = j.item_id
+                    WHERE j.stage = %s
+                      AND j.status = 'pending'
+                      AND j.available_at <= now()
+                    ORDER BY
+                      -- Hard starvation: jobs waiting > 4 hours get top priority
+                      (j.created_at < now() - interval '4 hours') DESC,
+                      -- Newer articles first within stage
+                      COALESCE(n.published_at, n.fetched_at) DESC NULLS LAST,
+                      j.attempts ASC,
+                      j.created_at ASC
+                    LIMIT 1 FOR UPDATE OF j SKIP LOCKED
+                ''', (chosen_stage,)).fetchone()
+
+                if job_row:
+                    FairStageScheduler.consume_credit(chosen_stage)
+                    job_id, item_id, stage, attempts = job_row
+                    c.execute('''UPDATE enrichment_jobs SET status='processing', locked_at=now(), locked_by=%s,
+                        attempts=attempts+1, updated_at=now() WHERE job_id=%s''', (worker_id, job_id))
+                    return {'job_id': job_id, 'item_id': item_id, 'stage': stage, 'attempts': attempts + 1}
+                else:
+                    active_candidates.remove(chosen_stage)
+
+            return None
 
 
 def _finish(job_id, *, ok, error=None):
@@ -783,20 +844,13 @@ def run_stage(stage, worker_id='pilot-worker', limit=None):
                 _postpone_disabled(job['job_id'])
                 print(json.dumps({'stage': stage, 'item_id': job['item_id'], 'status': 'postponed_disabled', 'detail': detail}, ensure_ascii=False))
             else:
-                OllamaCircuitBreaker.record_success()
                 _finish(job['job_id'], ok=True)
                 succeeded += 1
                 print(json.dumps({'stage': stage, 'item_id': job['item_id'], 'status': 'succeeded', 'detail': detail}, ensure_ascii=False))
         except Exception as exc:
-            if is_ollama_connection_error(exc):
-                err_msg = f"{type(exc).__name__}: {str(exc)[:180]}"
-                OllamaCircuitBreaker.record_failure(err_msg)
-                _postpone_connection_error(job['job_id'], err_msg)
-                print(json.dumps({'stage': stage, 'item_id': job['item_id'], 'status': 'postponed_connection_error', 'error': err_msg}, ensure_ascii=False))
-            else:
-                _finish(job['job_id'], ok=False, error=f'{type(exc).__name__}: {str(exc)[:200]}')
-                failed += 1
-                print(json.dumps({'stage': stage, 'item_id': job['item_id'], 'status': 'failed', 'error': str(exc)[:200]}, ensure_ascii=False))
+            _finish(job['job_id'], ok=False, error=f'{type(exc).__name__}: {str(exc)[:200]}')
+            failed += 1
+            print(json.dumps({'stage': stage, 'item_id': job['item_id'], 'status': 'failed', 'error': str(exc)[:200]}, ensure_ascii=False))
     return {'stage': stage, 'processed': processed, 'succeeded': succeeded, 'failed': failed}
 
 

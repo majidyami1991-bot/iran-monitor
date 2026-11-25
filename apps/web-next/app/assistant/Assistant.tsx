@@ -6,6 +6,7 @@ import { Shell } from '../design/Shell';
 import { useApi } from '../design/useApi';
 import { fmt, fmtDateTime, safeUrl } from '../design/format';
 import { Empty, PageHead, Segmented, Tag } from '../design/ui';
+import { usePrefs } from '../design/prefs';
 
 /** «دستیار هوشمند» — answers only from Defence Monitor's own records, with the
  *  local model. The page talks to /api/v1/assistant/* only; it never calls
@@ -144,6 +145,8 @@ function AssistantMessage({ r }: { r: Result }) {
 }
 
 export function Assistant() {
+  const { contentLang } = usePrefs();
+  const isEn = contentLang === 'en';
   const status = useApi<Status>('assistant/status');
   const models = useApi<Models>('local-ai/models');
   const usage = useApi<Usage>('assistant/usage');
@@ -297,15 +300,15 @@ export function Assistant() {
             <div className="panel-title"><h3>دامنه جست‌وجو</h3></div>
             <Segmented label="بازه زمانی" value={win} onChange={setWin} items={[['24h', '۲۴ ساعت'], ['7d', '۷ روز'], ['30d', '۳۰ روز'], ['all', 'همه']]} />
             <Segmented label="نوع محتوا" value={kind} onChange={setKind} items={[['all', 'همه'], ['news', 'خبر'], ['x', 'X']]} />
-            <label className="field">منبع
+            <label className="field">{isEn ? 'Source' : 'منبع'}
               <select value={source} onChange={(e) => setSource(e.target.value)}>
-                <option value="">همه منابع</option>
+                <option value="">{isEn ? 'All Sources' : 'همه منابع'}</option>
                 {sources.data?.sources.map((s) => <option key={s.source_id} value={s.source_id}>{s.display_name || s.hostname}</option>)}
               </select>
             </label>
-            <label className="field">موضوع
+            <label className="field">{isEn ? 'Topic' : 'موضوع'}
               <select value={topic} onChange={(e) => setTopic(e.target.value)}>
-                <option value="">همه موضوعات</option>
+                <option value="">{isEn ? 'All Topics' : 'همه موضوعات'}</option>
                 {topics.data?.categories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
               </select>
             </label>

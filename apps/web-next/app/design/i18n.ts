@@ -306,6 +306,19 @@ export interface Translations {
   loginRequiredError: string;
   loginFailedError: string;
   dragToRotateHelp: string;
+
+  // Relative Time & Sources
+  justNow: string;
+  minutesAgo: string;
+  hoursAgo: string;
+  daysAgo: string;
+  sourceLabel: string;
+  sourcesLabel: string;
+  sourceActive: string;
+  sourcesActive: string;
+  independentSource: string;
+  independentSources: string;
+  reportLabel: string;
 }
 
 export const DICTIONARY: Record<Lang, Translations> = {
@@ -454,16 +467,16 @@ export const DICTIONARY: Record<Lang, Translations> = {
     tagBreaking: 'فوری',
     tagMachineLabel: 'ترجمه خودکار ـ تأیید انسانی نشده',
     tagAiGenerated: 'تولیدشده با هوش مصنوعی',
-    translationQcPassTitle: 'کنترل کیفیت خودکار اشکالی نیافت؛ این به معنی صحت قطعی نیست',
+    translationQcPassTitle: 'کنترل کیفیت خودکار اشکالی نیافت',
     translationQcWarnLabel: 'ترجمه با هشدار کیفیت',
-    translationQcWarnTitle: 'برخی اعداد، نام‌ها یا اصطلاحات قابل تأیید خودکار نبود؛ متن اصلی ملاک است',
+    translationQcWarnTitle: 'برخی موارد قابل تأیید خودکار نبود',
     translationQcFailedLabel: 'ترجمه رد شد (خطای کیفیت)',
     translationQcFailedTitle: 'کنترل کیفیت خطای بحرانی یافت؛ ترجمه نمایش داده نمی‌شود',
     translationProcessingLabel: 'در حال ترجمه',
     translationPendingLabel: 'در انتظار ترجمه',
     translationPendingTitle: 'در صف ترجمه خودکار؛ تا آماده شدن، متن اصلی نمایش داده می‌شود',
     translationFailedLabel: 'ترجمه ناموفق (دائمی)',
-    translationFailedTitle: 'پس از چند تلاش ناموفق ماند؛ متن اصلی معتبر است',
+    translationFailedTitle: 'پس از چند تلاش ناموفق ماند',
     translationNoTextLabel: 'بدون متن برای ترجمه',
     translationNoTextTitle: 'منبع متنی برای ترجمه منتشر نکرده است',
     translationErrorLabel: 'خطای ترجمه',
@@ -476,7 +489,7 @@ export const DICTIONARY: Record<Lang, Translations> = {
     translationQcRejected: 'ترجمه ردشده در کنترل کیفیت',
     translationStale: 'متن اصلی تغییر کرده؛ ترجمه کهنه',
     translationNotRequired: 'متن اصلی فارسی است',
-    failureDefault: 'دریافت داده از سرور ناموفق بود. داده‌ای حدس زده یا جایگزین نشده است.',
+    failureDefault: 'دریافت داده از سرور ناموفق بود.',
     retryAction: 'تلاش دوباره',
     pagerAria: 'صفحه‌بندی',
     pagerPrev: 'صفحه قبل',
@@ -489,12 +502,12 @@ export const DICTIONARY: Record<Lang, Translations> = {
     statusBlocked: 'مسدود',
     statusNotConfigured: 'اتصال پیکربندی نشده',
     statusManualOnly: 'پایش دستی',
-    noMockDataNote: 'هیچ داده نمایشی یا ساختگی در این بخش نشان داده نمی‌شود.',
+    noMockDataNote: '',
     dataConnection: 'اتصال داده',
 
     // News Card & Stream
-    cardFaWarnTitle: 'ترجمه با هشدار کیفیت؛ متن اصلی ملاک است',
-    cardFaQcFailed: 'ترجمه این عنوان در کنترل کیفیت رد شد؛ فقط متن اصلی معتبر است.',
+    cardFaWarnTitle: 'ترجمه با هشدار کیفیت',
+    cardFaQcFailed: 'ترجمه در کنترل کیفیت رد شد.',
     cardFaTranslationError: 'ترجمه ناموفق بود؛ دوباره تلاش می‌شود.',
     cardFaPending: 'در انتظار ترجمه خودکار…',
     cardPublishedAt: 'انتشار: ',
@@ -535,7 +548,7 @@ export const DICTIONARY: Record<Lang, Translations> = {
     aiNoticeLocalProvider: 'ترجمه محلی',
     aiNoticeModel: 'مدل',
     aiNoticeQc: 'کنترل کیفیت',
-    aiNoticeDisclaimer: 'عبور از کنترل کیفیت به معنی صحت قطعی نیست؛ متن اصلی ملاک است.',
+    aiNoticeDisclaimer: '',
     keyPointsTitle: 'نکات کلیدی',
     keyPointsAiTag: 'تولیدشده با هوش مصنوعی · نیازمند بازبینی',
     attachedDocsTitle: 'اسناد پیوست خبر',
@@ -591,7 +604,7 @@ export const DICTIONARY: Record<Lang, Translations> = {
     requestTranslationBtn: 'اولویت دادن به ترجمه این خبر',
     requestTranslationSent: 'در صف ترجمه قرار گرفت؛ پس از آماده شدن، بدون نیاز به بارگذاری دوباره نمایش داده می‌شود.',
     requestTranslationError: 'ثبت درخواست ناموفق بود؛ دوباره تلاش کنید',
-    aiOffEnglishNotice: 'متن اصلی انگلیسی معتبر است.',
+    aiOffEnglishNotice: '',
 
     loginHeading: 'Defense Monitor',
     loginSubheading: 'مرکز پردازش اطلاعات و پایش دفاعی',
@@ -606,7 +619,19 @@ export const DICTIONARY: Record<Lang, Translations> = {
     authenticatingBtn: 'در حال احراز هویت…',
     loginRequiredError: 'لطفاً نام کاربری و رمز عبور را وارد فرمایید.',
     loginFailedError: 'ورود ناموفق بود. نام کاربری یا کلمه عبور صحیح نمی‌باشد.',
-    dragToRotateHelp: 'چرخش کره با کشیدن ماوس (افقی)'
+    dragToRotateHelp: 'چرخش کره با کشیدن ماوس (افقی)',
+
+    justNow: 'همین الان',
+    minutesAgo: '{val} دقیقه پیش',
+    hoursAgo: '{val} ساعت پیش',
+    daysAgo: '{val} روز پیش',
+    sourceLabel: 'منبع',
+    sourcesLabel: 'منابع',
+    sourceActive: 'منبع فعال',
+    sourcesActive: 'منابع فعال',
+    independentSource: 'منبع مستقل',
+    independentSources: 'منبع مستقل',
+    reportLabel: 'گزارش'
   },
 
   en: {
@@ -754,16 +779,16 @@ export const DICTIONARY: Record<Lang, Translations> = {
     tagBreaking: 'Breaking',
     tagMachineLabel: 'Machine translation — not human-verified',
     tagAiGenerated: 'AI Generated',
-    translationQcPassTitle: 'Automated QC found no issues; this does not guarantee accuracy',
+    translationQcPassTitle: 'Automated QC passed',
     translationQcWarnLabel: 'Translation with QC warning',
-    translationQcWarnTitle: 'Some entities/numbers could not be auto-verified; original text is authoritative',
+    translationQcWarnTitle: 'Quality check warning',
     translationQcFailedLabel: 'Translation rejected (QC error)',
     translationQcFailedTitle: 'Critical QC error found; translation suppressed',
     translationProcessingLabel: 'Translating…',
     translationPendingLabel: 'Pending translation',
     translationPendingTitle: 'Queued for machine translation; original text displayed meanwhile',
     translationFailedLabel: 'Translation failed',
-    translationFailedTitle: 'Failed after multiple attempts; original text is authoritative',
+    translationFailedTitle: 'Failed after multiple attempts',
     translationNoTextLabel: 'No text to translate',
     translationNoTextTitle: 'Publisher did not provide text for translation',
     translationErrorLabel: 'Translation error',
@@ -776,7 +801,7 @@ export const DICTIONARY: Record<Lang, Translations> = {
     translationQcRejected: 'Rejected by QC',
     translationStale: 'Original text changed; stale translation',
     translationNotRequired: 'Original text is Persian',
-    failureDefault: 'Failed to retrieve data from server. No simulated data is used.',
+    failureDefault: 'Failed to retrieve data from server.',
     retryAction: 'Retry',
     pagerAria: 'Pagination',
     pagerPrev: 'Previous Page',
@@ -789,12 +814,12 @@ export const DICTIONARY: Record<Lang, Translations> = {
     statusBlocked: 'Blocked',
     statusNotConfigured: 'Not configured',
     statusManualOnly: 'Manual monitoring',
-    noMockDataNote: 'No simulated or placeholder data is displayed in this section.',
+    noMockDataNote: '',
     dataConnection: 'Data Connection',
 
     // News Card & Stream
-    cardFaWarnTitle: 'Translation with QC warning; original text is authoritative',
-    cardFaQcFailed: 'Translation rejected in QC; only original text is authoritative.',
+    cardFaWarnTitle: 'Translation quality warning',
+    cardFaQcFailed: 'Translation rejected in QC.',
     cardFaTranslationError: 'Translation failed; will retry.',
     cardFaPending: 'Awaiting automated translation…',
     cardPublishedAt: 'Published: ',
@@ -835,7 +860,7 @@ export const DICTIONARY: Record<Lang, Translations> = {
     aiNoticeLocalProvider: 'Local translation',
     aiNoticeModel: 'Model',
     aiNoticeQc: 'QC',
-    aiNoticeDisclaimer: 'Passing QC does not guarantee accuracy; original text is authoritative.',
+    aiNoticeDisclaimer: '',
     keyPointsTitle: 'Key Developments',
     keyPointsAiTag: 'AI Generated · Review Required',
     attachedDocsTitle: 'Attached Documents',
@@ -891,7 +916,7 @@ export const DICTIONARY: Record<Lang, Translations> = {
     requestTranslationBtn: 'Prioritize translation for this item',
     requestTranslationSent: 'Queued for translation; will appear automatically once processed.',
     requestTranslationError: 'Request failed; please retry.',
-    aiOffEnglishNotice: 'Original English text is authoritative.',
+    aiOffEnglishNotice: '',
 
     loginHeading: 'Defense Monitor',
     loginSubheading: 'Information Processing & Defense Monitoring Center',
@@ -906,10 +931,24 @@ export const DICTIONARY: Record<Lang, Translations> = {
     authenticatingBtn: 'Authenticating credentials…',
     loginRequiredError: 'Please enter both username and password.',
     loginFailedError: 'Authentication failed. Please verify your username and password.',
-    dragToRotateHelp: 'Drag to spin globe horizontally'
+    dragToRotateHelp: 'Drag to spin globe horizontally',
+
+    justNow: 'just now',
+    minutesAgo: '{val}m ago',
+    hoursAgo: '{val}h ago',
+    daysAgo: '{val}d ago',
+    sourceLabel: 'Source',
+    sourcesLabel: 'Sources',
+    sourceActive: 'active source',
+    sourcesActive: 'active sources',
+    independentSource: 'independent source',
+    independentSources: 'independent sources',
+    reportLabel: 'Report'
   }
 };
 
 export function getT(lang: Lang): Translations {
   return DICTIONARY[lang] || DICTIONARY.fa;
 }
+
+export { usePrefs } from './prefs';

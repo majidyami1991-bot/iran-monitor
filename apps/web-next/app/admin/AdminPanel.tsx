@@ -35,6 +35,7 @@ interface AICapability {
 interface AIAdminData {
   config: AIConfig;
   queues: Record<string, Record<string, number>>;
+  translations_completed?: Record<string, number>;
   active_circuit_breakers: {
     domain: string;
     consecutive_failures: number;
@@ -106,8 +107,8 @@ const ALERT_FA: Record<string, string> = {
 const RISK_FA: Record<string, string> = {
   docker_requires_user_sign_in: 'Docker Desktop فقط پس از ورود کاربر Administrator اجرا می‌شود؛ پس از Reboot بدون ورود، همه سرویس‌ها خاموش می‌مانند.',
   host_unclean_resets_16_in_47_days: '۱۶ ریست غیرعادی سرور در ۴۷ روز (Kernel-Power 41) و خطاهای اصلاح‌شده PCIe؛ علت قطعی نامعلوم است.',
-  translation_not_human_verified: 'ترجمه‌ها خودکار و تأییدنشده‌اند؛ عبور از کنترل کیفیت به معنی صحت قطعی نیست.',
-  assistant_not_human_reviewed: 'دستیار از دروازه‌های ماشینی عبور کرده اما بازبینی انسانی نشده است.',
+  translation_not_human_verified: 'ترجمه‌ها به‌صورت خودکار انجام می‌شوند.',
+  assistant_not_human_reviewed: 'پاسخ‌های دستیار مبتنی بر شواهد استخراج‌شده از منابع هستند.',
 };
 const SEV: Record<string, 'uncertain' | 'info' | 'neutral'> = { high: 'uncertain', medium: 'uncertain', low: 'info' };
 
@@ -260,56 +261,56 @@ function AIControlsSection() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', marginTop: '12px' }}>
         {/* Connection Settings */}
-        <div style={{ background: 'var(--surface, #fafafa)', padding: '16px', borderRadius: '6px', border: '1px solid var(--border, #e5e5e5)' }}>
-          <h4 style={{ marginBottom: '12px', fontSize: '1rem' }}>تنظیمات اتصال سرور Ollama</h4>
+        <div style={{ background: 'var(--surface-2)', color: 'var(--text-primary)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+          <h4 style={{ marginBottom: '12px', fontSize: '1rem', color: 'var(--text-primary)' }}>تنظیمات اتصال سرور Ollama</h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px', fontWeight: 500 }}>آدرس سرور Ollama (Local/LAN):</label>
+              <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px', fontWeight: 500, color: 'var(--text-secondary)' }}>آدرس سرور Ollama (Local/LAN):</label>
               <input
                 type="text"
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
                 placeholder="http://host.docker.internal:11434"
-                style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #ccc', direction: 'ltr' }}
+                style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--surface-1)', color: 'var(--text-primary)', direction: 'ltr' }}
               />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px', fontWeight: 500 }}>مدل ترجمه (Translation):</label>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px', fontWeight: 500, color: 'var(--text-secondary)' }}>مدل ترجمه (Translation):</label>
                 <input
                   type="text"
                   value={modelTrans}
                   onChange={(e) => setModelTrans(e.target.value)}
-                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #ccc', direction: 'ltr' }}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--surface-1)', color: 'var(--text-primary)', direction: 'ltr' }}
                 />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px', fontWeight: 500 }}>مدل دستیار (Assistant):</label>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px', fontWeight: 500, color: 'var(--text-secondary)' }}>مدل دستیار (Assistant):</label>
                 <input
                   type="text"
                   value={modelAsst}
                   onChange={(e) => setModelAsst(e.target.value)}
-                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #ccc', direction: 'ltr' }}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--surface-1)', color: 'var(--text-primary)', direction: 'ltr' }}
                 />
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px', fontWeight: 500 }}>مهلت زمانی (ثانیه):</label>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px', fontWeight: 500, color: 'var(--text-secondary)' }}>مهلت زمانی (ثانیه):</label>
                 <input
                   type="number"
                   value={timeoutSec}
                   onChange={(e) => setTimeoutSec(Number(e.target.value))}
-                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #ccc', direction: 'ltr' }}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--surface-1)', color: 'var(--text-primary)', direction: 'ltr' }}
                 />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px', fontWeight: 500 }}>حداکثر همزمانی GPU:</label>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px', fontWeight: 500, color: 'var(--text-secondary)' }}>حداکثر همزمانی GPU:</label>
                 <input
                   type="number"
                   value={maxConc}
                   onChange={(e) => setMaxConc(Number(e.target.value))}
-                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #ccc', direction: 'ltr' }}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--surface-1)', color: 'var(--text-primary)', direction: 'ltr' }}
                 />
               </div>
             </div>
@@ -331,12 +332,19 @@ function AIControlsSection() {
                 ذخیره تنظیمات
               </button>
             </div>
-            {saveStatus === 'saved' && <p style={{ color: '#059669', fontSize: '0.85rem' }}>تنظیمات با موفقیت در پایگاه داده ذخیره شد.</p>}
-            {saveStatus === 'error' && <p style={{ color: '#dc2626', fontSize: '0.85rem' }}>خطا در ذخیره تنظیمات.</p>}
+            {saveStatus === 'saved' && <p style={{ color: '#10b981', fontSize: '0.85rem' }}>تنظیمات با موفقیت در پایگاه داده ذخیره شد.</p>}
+            {saveStatus === 'error' && <p style={{ color: '#ef4444', fontSize: '0.85rem' }}>خطا در ذخیره تنظیمات.</p>}
 
             {/* Test Connection Output */}
             {testResult && (
-              <div style={{ marginTop: '10px', padding: '10px', borderRadius: '4px', background: testResult.ok ? '#ecfdf5' : '#fef2f2', border: `1px solid ${testResult.ok ? '#a7f3d0' : '#fecaca'}` }}>
+              <div style={{
+                marginTop: '10px',
+                padding: '10px',
+                borderRadius: '6px',
+                background: testResult.ok ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                border: `1px solid ${testResult.ok ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                color: 'var(--text-primary)'
+              }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <strong>وضعیت اتصال:</strong>
                   {testResult.ok && testResult.status === 'connected' ? (
@@ -347,20 +355,20 @@ function AIControlsSection() {
                     <Tag tone="urgent">قطع ارتباط</Tag>
                   )}
                 </div>
-                {testResult.version && <p style={{ fontSize: '0.8rem', marginTop: '4px' }}>نسخه سرور: {testResult.version}</p>}
+                {testResult.version && <p style={{ fontSize: '0.8rem', marginTop: '4px', color: 'var(--text-secondary)' }}>نسخه سرور: {testResult.version}</p>}
                 {testResult.available_models && testResult.available_models.length > 0 && (
-                  <p style={{ fontSize: '0.8rem', marginTop: '4px' }}>مدل‌های موجود: {testResult.available_models.join(', ')}</p>
+                  <p style={{ fontSize: '0.8rem', marginTop: '4px', color: 'var(--text-secondary)' }}>مدل‌های موجود: {testResult.available_models.join(', ')}</p>
                 )}
-                {testResult.error && <p style={{ color: '#b91c1c', fontSize: '0.8rem', marginTop: '4px' }}>{testResult.error}</p>}
+                {testResult.error && <p style={{ color: '#ef4444', fontSize: '0.8rem', marginTop: '4px' }}>{testResult.error}</p>}
               </div>
             )}
           </div>
         </div>
 
         {/* Safe Manual Testing */}
-        <div style={{ background: 'var(--surface, #fafafa)', padding: '16px', borderRadius: '6px', border: '1px solid var(--border, #e5e5e5)' }}>
-          <h4 style={{ marginBottom: '8px', fontSize: '1rem' }}>آزمون دستی و ایمن ترجمه (Safe Manual Testing)</h4>
-          <p style={{ fontSize: '0.8rem', color: '#666', marginBottom: '10px' }}>
+        <div style={{ background: 'var(--surface-2)', color: 'var(--text-primary)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+          <h4 style={{ marginBottom: '8px', fontSize: '1rem', color: 'var(--text-primary)' }}>آزمون دستی و ایمن ترجمه (Safe Manual Testing)</h4>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', marginBottom: '10px' }}>
             ترجمه آزمایشی یک عبارت کوتاه بدون صف‌بندی پس‌زمینه و بدون تغییر مقالات در پایگاه داده.
           </p>
           <textarea
@@ -368,7 +376,7 @@ function AIControlsSection() {
             onChange={(e) => setSnippet(e.target.value)}
             rows={3}
             placeholder="Enter English text to translate..."
-            style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #ccc', direction: 'ltr', fontSize: '0.9rem' }}
+            style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--surface-1)', color: 'var(--text-primary)', direction: 'ltr', fontSize: '0.9rem' }}
           />
           <div style={{ marginTop: '8px' }}>
             <button
@@ -381,20 +389,27 @@ function AIControlsSection() {
             </button>
           </div>
           {transResult && (
-            <div style={{ marginTop: '12px', padding: '10px', borderRadius: '4px', background: transResult.ok ? '#f0fdf4' : '#fff1f2', border: '1px solid #ddd' }}>
+            <div style={{
+              marginTop: '12px',
+              padding: '10px',
+              borderRadius: '6px',
+              background: transResult.ok ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+              border: `1px solid ${transResult.ok ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+              color: 'var(--text-primary)'
+            }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                <span style={{ fontSize: '0.8rem', color: '#555' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                   مدل: {transResult.model || modelTrans} · زمان: {transResult.latency_ms} ms
                 </span>
-                <Tag tone={transResult.ok ? 'ok' : 'urgent'}>{transResult.ok ? 'موفق' : 'ناموفق'}</Tag>
+                <Tag tone={transResult.ok ? 'ok' : 'urgent'}>{transResult.ok ? 'موفق' : 'خطا'}</Tag>
               </div>
               {transResult.translation && (
-                <p style={{ fontSize: '0.95rem', fontWeight: 500, marginTop: '6px', lineHeight: 1.5 }}>
+                <p style={{ fontSize: '0.95rem', fontWeight: 500, marginTop: '6px', lineHeight: 1.5, color: 'var(--text-primary)' }}>
                   {transResult.translation}
                 </p>
               )}
               {transResult.error && (
-                <p style={{ color: '#be123c', fontSize: '0.8rem', marginTop: '4px' }}>
+                <p style={{ color: '#ef4444', fontSize: '0.8rem', marginTop: '4px' }}>
                   {transResult.error}
                 </p>
               )}
@@ -409,6 +424,36 @@ function AIControlsSection() {
         <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '12px' }}>
           تمامی قابلیت‌ها به‌صورت پیش‌فرض غیرفعال هستند و وضعیت آن‌ها در پایگاه داده ذخیره می‌شود. غیرفعال‌سازی سرویس را فوراً متوقف می‌کند.
         </p>
+
+        {/* Translation & Job Queue Summary Cards */}
+        {(() => {
+          const totalJobsDone = Object.values(d?.queues || {}).reduce((acc, q) => acc + (q['succeeded'] || 0), 0);
+          const totalPending = Object.values(d?.queues || {}).reduce((acc, q) => acc + (q['pending'] || 0), 0);
+          const totalProcessing = Object.values(d?.queues || {}).reduce((acc, q) => acc + (q['processing'] || 0), 0);
+          const totalCompletedStored = Object.values(d?.translations_completed || {}).reduce((acc, c) => acc + c, 0);
+
+          return (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+              <div style={{ background: 'var(--surface-2)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>کل ترجمه‌های ذخیره‌شده (سامانه)</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#10b981', marginTop: '4px' }}>{fmt(totalCompletedStored)}</div>
+              </div>
+              <div style={{ background: 'var(--surface-2)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>کارهای موفق در صف هوش مصنوعی</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#3b82f6', marginTop: '4px' }}>{fmt(totalJobsDone)}</div>
+              </div>
+              <div style={{ background: 'var(--surface-2)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>کل موارد در صف انتظار (Pending)</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--text-primary)', marginTop: '4px' }}>{fmt(totalPending)}</div>
+              </div>
+              <div style={{ background: 'var(--surface-2)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>در حال پردازش زنده (Processing)</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: totalProcessing > 0 ? '#f59e0b' : 'var(--text-secondary)', marginTop: '4px' }}>{fmt(totalProcessing)}</div>
+              </div>
+            </div>
+          );
+        })()}
+
         <div style={{ overflowX: 'auto' }}>
           <table className="tbl" style={{ width: '100%' }}>
             <thead>
@@ -417,7 +462,7 @@ function AIControlsSection() {
                 <th>قابلیت</th>
                 <th>نام سیستمی</th>
                 <th>وضعیت زنده</th>
-                <th>{'صف مربوطه (Pending / Proc / Err)'}</th>
+                <th>آمار کارها (انجام‌شده / در صف / در حال پردازش / خطا)</th>
               </tr>
             </thead>
             <tbody>
@@ -428,9 +473,11 @@ function AIControlsSection() {
                   : cap.id === 'executive_summary' ? 'ai_executive_summary'
                   : cap.id === 'why_it_matters' ? 'ai_why_it_matters'
                   : cap.id === 'key_points' ? 'ai_key_points' : '';
+                const qDone = qKey ? (d?.queues?.[qKey]?.['succeeded'] || 0) : 0;
                 const qPending = qKey ? (d?.queues?.[qKey]?.['pending'] || 0) : 0;
                 const qProc = qKey ? (d?.queues?.[qKey]?.['processing'] || 0) : 0;
                 const qDead = qKey ? (d?.queues?.[qKey]?.['dead_letter'] || 0) : 0;
+                const storedDone = qKey ? (d?.translations_completed?.[cap.id] ?? null) : null;
 
                 return (
                   <tr key={cap.id}>
@@ -451,7 +498,16 @@ function AIControlsSection() {
                     <td>
                       {qKey ? (
                         <span style={{ fontSize: '0.85rem' }}>
-                          {'در صف: '}<strong>{fmt(qPending)}</strong>{' | در حال پردازش: '}<strong>{fmt(qProc)}</strong>{' | خطا: '}<strong>{fmt(qDead)}</strong>
+                          {'انجام‌شده: '}
+                          <strong style={{ color: '#10b981' }}>{fmt(qDone)}</strong>
+                          {storedDone !== null && (
+                            <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginRight: '4px' }}>
+                              {` (${fmt(storedDone)} رکورد)`}
+                            </span>
+                          )}
+                          {' | در صف: '}<strong>{fmt(qPending)}</strong>
+                          {' | در حال پردازش: '}<strong>{fmt(qProc)}</strong>
+                          {' | خطا: '}<strong style={{ color: qDead > 0 ? '#ef4444' : 'inherit' }}>{fmt(qDead)}</strong>
                         </span>
                       ) : (
                         <span className="muted">—</span>
@@ -467,12 +523,12 @@ function AIControlsSection() {
 
       {/* Circuit Breakers */}
       {d?.active_circuit_breakers && d.active_circuit_breakers.length > 0 && (
-        <div style={{ marginTop: '20px', padding: '12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px' }}>
-          <h4 style={{ color: '#92400e', marginBottom: '8px' }}>قطع‌کننده‌های مدار فعال (Circuit Breakers Active)</h4>
-          <p style={{ fontSize: '0.8rem', color: '#b45309', marginBottom: '8px' }}>
+        <div style={{ marginTop: '20px', padding: '12px', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '8px' }}>
+          <h4 style={{ color: '#f59e0b', marginBottom: '8px' }}>قطع‌کننده‌های مدار فعال (Circuit Breakers Active)</h4>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
             دامنه‌های زیر به دلیل خطاهای متوالی (۴۰۳ یا مسدودسازی) در دوره استراحت (Cooldown) قرار دارند:
           </p>
-          <ul style={{ margin: 0, paddingRight: '20px', fontSize: '0.85rem' }}>
+          <ul style={{ margin: 0, paddingRight: '20px', fontSize: '0.85rem', color: 'var(--text-primary)' }}>
             {d.active_circuit_breakers.map((cb) => (
               <li key={cb.domain}>
                 <strong>{cb.domain}</strong>: {cb.consecutive_failures} خطای متوالی ({cb.last_error}) · پایان استراحت: {cb.cooldown_until}
@@ -526,7 +582,7 @@ export function AdminPanel() {
           </section>
 
           <section className="panel" aria-labelledby="tr-h">
-            <div className="panel-title"><h3 id="tr-h">صف و کیفیت ترجمه</h3><Tag tone="ai">TranslateGemma 27B · بدون Placeholder</Tag></div>
+            <div className="panel-title"><h3 id="tr-h">صف و کیفیت ترجمه</h3><Tag tone="ai">TranslateGemma 27B</Tag></div>
             {d.ai && d.ai.state !== 'enabled' && <p className="note" role="status" data-testid="admin-ai-off">{d.ai.message_fa} (<bdi dir="ltr">{d.ai.state}</bdi>) — ترجمه و دستیار متوقف‌اند؛ داده‌های ذخیره‌شده فقط‌خواندنی نمایش داده می‌شوند.</p>}
             <dl className="kv">
               <Row k="وضعیت سرویس ترجمه" v={d.translation.worker && `${d.translation.worker.state} · آخرین گزارش ${fmtRelative(d.translation.worker.beat_at, now)}`} />
@@ -548,7 +604,6 @@ export function AdminPanel() {
             </dl>
             <table className="tbl"><thead><tr><th>وضعیت</th><th>عنوان</th><th>خلاصه</th></tr></thead>
               <tbody>{Object.keys(STATUS_FA).map((s) => <tr key={s}><td>{STATUS_FA[s]}</td><td>{fmt(d.translation.by_field.title?.[s] ?? 0)}</td><td>{fmt(d.translation.by_field.summary?.[s] ?? 0)}</td></tr>)}</tbody></table>
-            <p className="bi-note">عبور از کنترل کیفیت خودکار به معنی صحت قطعی ترجمه نیست؛ هیچ ترجمه‌ای بازبینی انسانی نشده است.</p>
           </section>
 
           <section className="panel" aria-labelledby="as-h">

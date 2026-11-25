@@ -76,7 +76,7 @@ export function SourceDetail() {
               <dt>وب‌سایت</dt><dd>{site ? <a href={site} target="_blank" rel="noopener noreferrer nofollow" dir="ltr" className="sec-link">{site}</a> : '—'}</dd>
               <dt>نوع</dt><dd>{TYPE_FA[s.source_type ?? ''] ?? 'ثبت نشده'}</dd>
               <dt>زبان</dt><dd>{s.language ? <><bdi>{s.language}</bdi> <small className="muted">(اعلام‌شده در خوراک)</small></> : 'اعلام نشده'}</dd>
-              <dt>کشور</dt><dd className="muted">ثبت نشده — بدون منبع مستند ثبت نمی‌شود</dd>
+              <dt>کشور</dt><dd className="muted">ثبت نشده</dd>
               <dt>ردیف گردآوری</dt><dd dir="ltr">{s.collection_tier ?? '—'}</dd>
               <dt>آخرین تلاش</dt><dd>{fmtDateTime(s.last_attempt_at)}{s.last_http_status ? ` · HTTP ${s.last_http_status}` : ''}</dd>
               <dt>آخرین موفقیت</dt><dd>{fmtDateTime(s.last_success_at)}</dd>

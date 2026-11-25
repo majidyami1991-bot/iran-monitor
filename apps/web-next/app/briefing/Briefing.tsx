@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Shell } from '../design/Shell';
 import { useApi, useNow } from '../design/useApi';
 import { fmt, fmtDateLong, fmtDateTime, fmtRelative, fmtSigned } from '../design/format';
+import { usePrefs } from '../design/prefs';
 import { AiTag, CategoryTag, Empty, Failure, ImportanceTag, PageHead, RuleTag, Tag, Bone } from '../design/ui';
 import { AI_STATUS, FRESH, TopicDeltaList, type BriefingResponse } from '../components/Briefing';
 import { ItemImage } from '../components/Visual';
@@ -12,6 +13,7 @@ export function Briefing() {
   const [date, setDate] = useState<string>('');
   const q = useApi<BriefingResponse>('briefing/daily' + (date ? '?date=' + date : ''), [date]);
   const now = useNow();
+  const { isEn } = usePrefs();
   if (q.error) return <Shell><Failure onRetry={q.reload}>خلاصه روزانه دریافت نشد.</Failure></Shell>;
   if (!q.data) return <Shell><Bone h={30} w="40%" /><Bone h={120} /></Shell>;
   const b = q.data.briefing;
@@ -31,37 +33,37 @@ export function Briefing() {
           </label>
         )}
       </PageHead>
-      {!b ? <Empty title="هنوز خلاصه‌ای تولید نشده است">اولین خلاصه پس از اجرای زمان‌بند ساخته می‌شود. خلاصه ساختگی نمایش داده نمی‌شود.</Empty> : (
+      {!b ? <Empty title="هنوز خلاصه‌ای تولید نشده است">اولین خلاصه پس از اجرای زمان‌بند گردآوری و ایجاد می‌شود.</Empty> : (
         <>
           <div className="note note-ai">
             <AiTag>خلاصه مدیریتی هوش مصنوعی</AiTag>{' '}
             {b.ai_generated && b.executive_summary_fa
-              ? <><p style={{ marginTop: 8 }}>{b.executive_summary_fa}</p><small>مدل {b.ai_model} · نسخه دستور {b.ai_prompt_version} · تولیدشده با هوش مصنوعی، نیازمند بازبینی؛ واقعیت قطعی نیست.</small></>
-              : <span>{AI_STATUS[q.data.ai.status] ?? q.data.ai.status} بخش‌های زیر فقط از شمارش‌ها و قواعد قطعی ساخته شده‌اند و هیچ متن تفسیری تولید نشده است.</span>}
+              ? <><p style={{ marginTop: 8 }}>{b.executive_summary_fa}</p><small>مدل {b.ai_model} · نسخه تحلیل {b.ai_prompt_version}</small></>
+              : <span>{AI_STATUS[q.data.ai.status] ?? q.data.ai.status} بخش‌های زیر بر اساس آمار و شاخص‌های آماری ثبت‌شده گزارش شده‌اند.</span>}
           </div>
           <section className="brief-panel">
             <p className="brief-narrative" style={{ fontSize: 17 }}>{b.payload.narrative_fa}</p>
             <small className="muted">{b.payload.narrative_method}</small>
             <div className="brief-stats" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-              <div><strong>{fmt(b.payload.totals.items_24h)}</strong><span>خبر در ۲۴ ساعت</span></div>
-              <div><strong>{fmt(b.payload.totals.items_prev_24h)}</strong><span>۲۴ ساعت قبل از آن</span></div>
-              <div><strong className={(b.payload.totals.change_pct ?? 0) < 0 ? 'down' : 'up'}>{b.payload.totals.change_pct == null ? '—' : fmtSigned(b.payload.totals.change_pct) + '٪'}</strong><span>تغییر</span></div>
-              <div><strong>{fmt(b.payload.totals.active_sources)}</strong><span>منبع فعال</span></div>
+              <div><strong>{fmt(b.payload.totals.items_24h)}</strong><span>{isEn ? 'Articles in 24h' : 'خبر در ۲۴ ساعت'}</span></div>
+              <div><strong>{fmt(b.payload.totals.items_prev_24h)}</strong><span>{isEn ? 'Previous 24h' : '۲۴ ساعت قبل از آن'}</span></div>
+              <div><strong className={(b.payload.totals.change_pct ?? 0) < 0 ? 'down' : 'up'}>{b.payload.totals.change_pct == null ? '—' : fmtSigned(b.payload.totals.change_pct) + '٪'}</strong><span>{isEn ? 'Change' : 'تغییر'}</span></div>
+              <div><strong>{fmt(b.payload.totals.active_sources)}</strong><span>{isEn ? 'Active Sources' : 'منبع فعال'}</span></div>
             </div>
           </section>
 
           <section aria-labelledby="dev-h">
-            <h2 id="dev-h" className="brief-sub" style={{ fontSize: 18 }}>تحولات کلیدی ({fmt(b.payload.key_developments.length)})</h2>
-            <p className="muted">انتخاب با قاعده اهمیت ({b.payload.rules.importance})؛ از هر رویداد فقط یک خبر.</p>
-            {b.payload.key_developments.length === 0 ? <Empty title="تحول موضوعی در این بازه ثبت نشده است" /> : (
+            <h2 id="dev-h" className="brief-sub" style={{ fontSize: 18 }}>{isEn ? `Key Developments (${fmt(b.payload.key_developments.length)})` : `تحولات کلیدی (${fmt(b.payload.key_developments.length)})`}</h2>
+            <p className="muted">{isEn ? `Selected by importance rule (${b.payload.rules.importance}); one article per event.` : `انتخاب با قاعده اهمیت (${b.payload.rules.importance})؛ از هر رویداد فقط یک خبر.`}</p>
+            {b.payload.key_developments.length === 0 ? <Empty title={isEn ? "No developments recorded in this period" : "تحول موضوعی در این بازه ثبت نشده است"} /> : (
               <ol className="timeline" style={{ marginTop: 12 }}>
                 {b.payload.key_developments.map((d, i) => (
                   <li key={d.item_id} className="tl-item">
-                    <div className="tl-when"><time>{fmt(i + 1)}</time><small>{fmtRelative(d.published_at, now)}</small></div>
+                    <div className="tl-when"><time>{fmt(i + 1)}</time><small>{fmtRelative(d.published_at, now, isEn)}</small></div>
                     <span className="tl-dot" aria-hidden="true" />
                     <div className="tl-body" style={{ display: 'grid', gridTemplateColumns: d.image_url ? '1fr 132px' : '1fr', gap: 12 }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
-                        <div className="card-flags"><CategoryTag id={d.category_id} label={d.category_label} /><ImportanceTag level={d.importance_level} />{d.event_sources >= 2 && <Tag tone="brand">{fmt(d.event_sources)} منبع</Tag>}</div>
+                        <div className="card-flags"><CategoryTag id={d.category_id} label={d.category_label} /><ImportanceTag level={d.importance_level} />{d.event_sources >= 2 && <Tag tone="brand">{fmt(d.event_sources)} {isEn ? 'sources' : 'منبع'}</Tag>}</div>
                         <h3 dir={d.headline_lang === 'en' ? 'ltr' : 'rtl'}><Link href={d.href}>{d.headline}</Link></h3>
                         {d.summary && <p className="card-summary" dir={d.summary_lang === 'en' ? 'ltr' : 'rtl'} style={{ WebkitLineClamp: 3 }}>{d.summary}</p>}
                         <span className="tl-meta"><bdi>{d.source_name}</bdi> · شاهد: <Link href={d.href} className="sec-link">خبر</Link>{d.event_id && <> · <Link href={`/events/${d.event_id}`} className="sec-link">رویداد</Link></>}</span>

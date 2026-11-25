@@ -1,6 +1,7 @@
 'use client';
 import type { ReactNode } from 'react';
 import { fmt } from './format';
+import { usePrefs } from './prefs';
 
 /* Chart kit. Rules (docs/COMMERCIAL DESIGN SYSTEM.md, dataviz method):
    - every chart answers one question, stated in its title;
@@ -14,22 +15,24 @@ export function Figure({ title, question, unit, range, source, children, table, 
   title: string; question?: string; unit?: string; range?: string; source?: string;
   children: ReactNode; table?: { head: string[]; rows: (string | number)[][] }; legend?: ReactNode; empty?: ReactNode;
 }) {
+  const { contentLang } = usePrefs();
+  const isEn = contentLang === 'en';
   return (
     <figure className="fig">
       <figcaption>
         <h3>{title}</h3>
         {question && <p>{question}</p>}
         <div className="fig-meta">
-          {unit && <span>واحد: {unit}</span>}
-          {range && <span>بازه: {range}</span>}
-          {source && <span>منبع: {source}</span>}
+          {unit && <span>{isEn ? 'Unit' : 'واحد'}: {unit}</span>}
+          {range && <span>{isEn ? 'Range' : 'بازه'}: {range}</span>}
+          {source && <span>{isEn ? 'Source' : 'منبع'}: {source}</span>}
         </div>
       </figcaption>
       {legend && <div className="fig-legend">{legend}</div>}
       {empty ?? children}
       {table && table.rows.length > 0 && !empty && (
         <details className="fig-table">
-          <summary>نمایش جدول داده</summary>
+          <summary>{isEn ? 'Show data table' : 'نمایش جدول داده'}</summary>
           <div className="table-scroll">
             <table>
               <thead><tr>{table.head.map((h) => <th key={h}>{h}</th>)}</tr></thead>
